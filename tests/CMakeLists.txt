@@ -13,7 +13,9 @@ add_executable(AIPackaging_Tests
 "core/app/testpackingscenesaver.cpp"
 "core/app/testdrawcontroller.cpp"
 "core/app/testfigurescenegeometry.cpp"
-"gui/testqtadapters.cpp"
+"solver/testgridenvironment.cpp"
+"solver/testgridsolver.cpp"
+"solver/testgridio.cpp"
 "aipackaging_math/geometry/testpoint2d.cpp"
 "aipackaging_math/geometry/testvector2d.cpp"
 "aipackaging_math/geometry/testline2d.cpp"
@@ -32,7 +34,6 @@ target_include_directories(AIPackaging_Tests PUBLIC
 "${CMAKE_SOURCE_DIR}/src/core/app/services"
 "${CMAKE_SOURCE_DIR}/src/core/app/services/packing"
 "${CMAKE_SOURCE_DIR}/src/core/app/services/io"
-"${CMAKE_SOURCE_DIR}/src/gui"
 )
 
 target_link_libraries(AIPackaging_Tests PUBLIC
@@ -42,10 +43,56 @@ AIPackaging_App
 AIPackaging_Math
 AIPackaging_Domain
 AIPackaging_Contract
-AIPackaging_GUI
+AIPackaging_Solver
 )
+
+if (BUILD_DESKTOP)
+  target_sources(AIPackaging_Tests PRIVATE "gui/testqtadapters.cpp")
+  target_include_directories(AIPackaging_Tests PUBLIC "${CMAKE_SOURCE_DIR}/src/gui")
+  target_link_libraries(AIPackaging_Tests PUBLIC AIPackaging_GUI)
+endif()
 
 add_test(NAME AllTests COMMAND $<TARGET_FILE:AIPackaging_Tests>)
 
+if (BUILD_SOLVER_CLI)
+  foreach(solver_name IN ITEMS input-first-fit area-left-bottom max-side-left-bottom random-left-bottom beam)
+    add_test(
+      NAME "GridCli_${solver_name}"
+      COMMAND $<TARGET_FILE:AIPackaging_Cli> solve
+        --input "${CMAKE_SOURCE_DIR}/examples/grid/problem-small.json"
+        --output "$<TARGET_FILE_DIR:AIPackaging_Cli>/solution-${solver_name}.json"
+        --solver "${solver_name}"
+        --random-iterations 8
+        --beam-width 8
+        --max-expanded-states 5000
+        --timeout-ms 0
+    )
+  endforeach()
+
+  add_test(
+    NAME GridCli_PartialExitCode
+    COMMAND ${CMAKE_COMMAND}
+      "-DCLI=$<TARGET_FILE:AIPackaging_Cli>"
+      "-DINPUT=${CMAKE_SOURCE_DIR}/examples/grid/problem-partial.json"
+      "-DOUTPUT=$<TARGET_FILE_DIR:AIPackaging_Cli>/solution-partial.json"
+      "-DSOLVER=input-first-fit"
+      "-DEXPECTED_EXIT=2"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/assert_cli_exit.cmake"
+  )
+
+  add_test(
+    NAME GridCli_InvalidJsonExitCode
+    COMMAND ${CMAKE_COMMAND}
+      "-DCLI=$<TARGET_FILE:AIPackaging_Cli>"
+      "-DINPUT=${CMAKE_SOURCE_DIR}/examples/grid/problem-invalid.json"
+      "-DOUTPUT=$<TARGET_FILE_DIR:AIPackaging_Cli>/solution-invalid.json"
+      "-DSOLVER=area-left-bottom"
+      "-DEXPECTED_EXIT=3"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/assert_cli_exit.cmake"
+  )
+endif()
+
 copy_target_dll(AIPackaging_Tests AIPackaging_Math)
-copy_target_qt_dll(AIPackaging_Tests)
+if (BUILD_DESKTOP)
+  copy_target_qt_dll(AIPackaging_Tests)
+endif()

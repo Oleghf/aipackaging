@@ -5,18 +5,23 @@
 ## Baseline
 
 - Windows Debug приложение собирается MSVC с Qt 6.9.3.
-- Зарегистрированный CTest target собирается и проходит (`1/1`, 238 GoogleTest
-  cases из 41 test suite).
+- Desktop и headless CTest targets проверяют существующее приложение и новое
+  solver-ядро.
 - Проект использует C++20, CMake, Qt 6 и закреплённую Git-ревизию
   `AIPackaging_Math`.
 - Код разделён на contract, domain, application и GUI.
 - Автоупаковка реализована детерминированным first-fit по клеткам.
 - Фигуры сериализуются списками целочисленных координат клеток.
+- Независимый `AIPackaging_Solver` поддерживает пять воспроизводимых baseline:
+  input-first-fit, две сортировки с left-bottom, seeded random и beam search.
+- `AIPackaging_Cli` читает `grid_problem` v1 и сохраняет `grid_solution` v1 с
+  независимо проверяемыми placements, objective и метриками.
 
 ## Инфраструктура проверки
 
 - Обычные presets используют `BUILD_TESTS=OFF`; для тестов нужен test preset.
-- Чистая конфигурация требует локальный `Qt6_DIR` или `CMAKE_PREFIX_PATH`.
+- Desktop-конфигурация требует локальный `Qt6_DIR` или `CMAKE_PREFIX_PATH`;
+  `windows-headless-tests` собирает solver и CLI без Qt.
 - `testCountour2D.cpp` включён в test target и проверяет публичные `Create` и
   `GetPoints`.
 - MSVC собирает C++ с `/EHsc`; предупреждение C4530 устранено.
@@ -39,6 +44,6 @@
 
 ## Ограничения ML
 
-Пока нет среды обучения, датасета, модели, reward, experiment tracking,
-экспортированного inference-модуля или C++ runtime. Их описание в других
-документах относится к целевой архитектуре.
+Клеточная C++-среда и baseline готовы, но пока нет Python-границы, датасета,
+модели, reward shaping, experiment tracking или экспортированного
+inference-модуля. Они входят в M2–M3.

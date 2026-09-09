@@ -1,0 +1,15 @@
+{
+  "format": "aipackaging.grid_problem",
+  "version": 1,
+  "problemId": "partial-demo",
+  "sheet": { "columns": 2, "rows": 1, "unit": "cell" },
+  "parts": [
+    {
+      "id": "single",
+      "quantity": 3,
+      "cells": [{ "column": 0, "row": 0 }],
+      "allowedRotations": [0]
+    }
+  ],
+  "objective": { "type": "valuable_right_remnant", "version": 1 }
+}

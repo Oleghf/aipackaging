@@ -46,6 +46,18 @@
             }
         },
         {
+            "name": "windows-headless-tests",
+            "displayName": "Windows Headless Solver Tests",
+            "inherits": "windows-base",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "BUILD_DESKTOP": "OFF",
+                "BUILD_SOLVER_CLI": "ON",
+                "BUILD_TESTS": "ON",
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
             "name": "unix-base",
             "hidden": true,
             "generator": "Unix Makefiles",
@@ -144,6 +156,17 @@
             "name": "build-windows-tests",
             "configurePreset": "windows-tests",
             "displayName": "Build Windows Tests",
+            "configuration": "Debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "build-windows-headless-tests",
+            "configurePreset": "windows-headless-tests",
+            "displayName": "Build Windows Headless Solver Tests",
             "configuration": "Debug",
             "condition": {
                 "type": "equals",

@@ -1,0 +1,35 @@
+{
+  "format": "aipackaging.grid_problem",
+  "version": 1,
+  "problemId": "small-demo",
+  "sheet": {
+    "columns": 4,
+    "rows": 3,
+    "unit": "cell"
+  },
+  "parts": [
+    {
+      "id": "L",
+      "quantity": 1,
+      "cells": [
+        { "column": 0, "row": 0 },
+        { "column": 0, "row": 1 },
+        { "column": 1, "row": 1 }
+      ],
+      "allowedRotations": [0, 90, 180, 270]
+    },
+    {
+      "id": "domino",
+      "quantity": 2,
+      "cells": [
+        { "column": 0, "row": 0 },
+        { "column": 1, "row": 0 }
+      ],
+      "allowedRotations": [0, 90]
+    }
+  ],
+  "objective": {
+    "type": "valuable_right_remnant",
+    "version": 1
+  }
+}

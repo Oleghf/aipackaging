@@ -34,6 +34,8 @@ baseline-алгоритмов, метрик и цикла обучения.
 - загрузка и сохранение пулов клеточных фигур;
 - проверка границ поля и занятых клеток;
 - детерминированное автоматическое размещение first-fit;
+- независимое от Qt клеточное solver-ядро с пятью baseline-алгоритмами;
+- headless CLI и версионированные JSON-контракты задачи и решения;
 - модульные тесты доменного и прикладного слоёв.
 
 Текущие ограничения: квадратные клетки, повороты на 90°, клеточный формат ввода
@@ -71,6 +73,27 @@ ctest --test-dir build/windows-tests -C Debug --output-on-failure
 `CMakeUserPresets.json` и указать в нём локальный путь к Qt. При первой
 конфигурации может потребоваться сеть для загрузки зависимостей.
 
+Headless solver и тесты без Qt:
+
+```powershell
+cmake --preset windows-headless-tests
+cmake --build --preset build-windows-headless-tests
+ctest --test-dir build/windows-headless-tests --output-on-failure
+```
+
+Пример запуска CLI:
+
+```powershell
+build/windows-headless-tests/src/cli/AIPackaging_Cli.exe solve `
+  --input examples/grid/problem-small.json `
+  --output build/solution.json `
+  --solver area-left-bottom
+```
+
+Схемы находятся в `schemas/`, а распространяемые примеры — в `examples/grid/`.
+Формат сцены desktop-приложения `aipackaging.packing_scene` от solver-форматов
+не зависит и в M1 не менялся.
+
 ## Структура репозитория
 
 ```text
@@ -78,8 +101,11 @@ src/core/domain/     Клеточная доменная модель и гео�
 src/core/app/        Сценарии, команды, валидация и стратегии упаковки
 src/core/contract/   Общие события и интерфейсы
 src/gui/             Пользовательский интерфейс Qt
+src/solver/          Headless клеточная среда, baseline и JSON I/O
+src/cli/             Командная строка исследовательского solver
 tests/               Автоматические тесты C++
 examples/            Примеры клеточных фигур
+schemas/             JSON Schema публичных форматов
 docs/                Цели, архитектура, качество и план разработки
 ```
 

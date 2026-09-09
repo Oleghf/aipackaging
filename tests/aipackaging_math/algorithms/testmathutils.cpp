@@ -1,3 +1,5 @@
+#include <cmath>
+
 #include <circle2d.h>
 #include <gtest/gtest.h>
 #include <line2d.h>

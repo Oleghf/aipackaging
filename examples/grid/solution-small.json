@@ -1,0 +1,42 @@
+{
+  "format": "aipackaging.grid_solution",
+  "version": 1,
+  "problemId": "small-demo",
+  "status": "solved",
+  "placements": [
+    { "partId": "L", "instanceIndex": 0, "column": 0, "row": 1, "rotationDegrees": 0 },
+    { "partId": "domino", "instanceIndex": 0, "column": 0, "row": 0, "rotationDegrees": 0 },
+    { "partId": "domino", "instanceIndex": 1, "column": 2, "row": 0, "rotationDegrees": 0 }
+  ],
+  "objective": {
+    "usedLength": 4,
+    "primaryRemnantWidth": 0,
+    "largestExtraRectangleArea": 4,
+    "fragmentationPenalty": 0,
+    "placedParts": 3,
+    "totalParts": 3,
+    "placedCells": 7,
+    "totalPartCells": 7,
+    "materialUtilization": 0.5833333333333334
+  },
+  "metrics": {
+    "candidatesGenerated": 0,
+    "candidatesValidated": 0,
+    "expandedStates": 0,
+    "candidateGenerationTimeUs": 0,
+    "validationTimeUs": 0,
+    "searchTimeUs": 0,
+    "totalTimeUs": 0
+  },
+  "solver": {
+    "name": "area-left-bottom",
+    "projectVersion": "0.1",
+    "revision": "example",
+    "seed": 42,
+    "randomIterations": 64,
+    "beamWidth": 32,
+    "maxExpandedStates": 50000,
+    "timeoutMs": 30000
+  },
+  "errorMessage": ""
+}
