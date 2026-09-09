@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.27)
-project("AIPackaging" VERSION 0.1 LANGUAGES CXX)
+project("AIPackaging" VERSION 0.2.0 LANGUAGES CXX)
 
 set(AIPACKAGING_BUILD_REVISION "unknown")
 find_package(Git QUIET)
@@ -42,6 +42,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 option(BUILD_DESKTOP "Build the Qt desktop application" ON)
 option(BUILD_SOLVER_CLI "Build the headless grid solver CLI" ON)
+option(BUILD_PYTHON_BINDINGS "Build the optional Python ML bindings" OFF)
 option(BUILD_TESTS "Build tests" OFF)
 
 add_subdirectory("src/")

@@ -55,10 +55,22 @@ grid_problem v1 -> GridEnvironment -> baseline solver -> GridSolutionValidator
 компоненты reward и признак завершения. Один контракт обязателен для нейросети и
 эвристик.
 
-В клеточной реализации M1 `GridEnvironment` уже предоставляет value-state
-занятости, уникальные четверть-оборотные ориентации, стабильный набор кандидатов,
-применение действий и вычисление objective. Этот контракт станет исходной точкой
-Python/C++ границы в M2.
+В клеточной реализации `GridEnvironment` предоставляет value-state занятости,
+уникальные четверть-оборотные ориентации, стабильный набор кандидатов, применение
+действий и вычисление objective. `GridLearningEnvironment` строит поверх него
+постоянный каталог действий, динамическую mask и reward, не дублируя геометрию.
+
+```text
+Python GridNestingEnv -> pybind11 -> GridLearningEnvironment -> GridEnvironment
+       |                                      |
+ dataset generator/replay              objective + validator
+```
+
+NumPy-наблюдения владеют копией снимка и доступны только для чтения. Поэтому
+Python-код не может изменить C++ value-state через общий буфер. Датасет не
+хранит объёмные observations: `grid_trajectory` сохраняет индексы, дублирующие
+действия, reward-аудит и итоговый `grid_solution`, а loader воспроизводит
+наблюдения повторным проигрыванием.
 
 ### Генератор кандидатов
 

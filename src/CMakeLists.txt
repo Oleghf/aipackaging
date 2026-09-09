@@ -8,6 +8,10 @@ if (BUILD_SOLVER_CLI)
   add_subdirectory("cli/")
 endif()
 
+if (BUILD_PYTHON_BINDINGS)
+  add_subdirectory("python/")
+endif()
+
 if (BUILD_DESKTOP)
   set(CMAKE_AUTOMOC ON)
   set(CMAKE_AUTOUIC ON)

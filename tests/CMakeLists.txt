@@ -14,6 +14,7 @@ add_executable(AIPackaging_Tests
 "core/app/testdrawcontroller.cpp"
 "core/app/testfigurescenegeometry.cpp"
 "solver/testgridenvironment.cpp"
+"solver/testgridlearning.cpp"
 "solver/testgridsolver.cpp"
 "solver/testgridio.cpp"
 "aipackaging_math/geometry/testpoint2d.cpp"

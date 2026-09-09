@@ -196,14 +196,18 @@ bool placeOne(SearchContext & context, GridState & state, std::size_t instancePo
   return found;
 }
 
-/// Последовательно применяет placement policy к уже определённому порядку экземпляров.
+/// Последовательно применяет placement policy ко всем экземплярам, пропуская неразмещаемые.
 GridState runOrdered(SearchContext & context, const std::vector<std::size_t> & order, PlacementPolicy policy)
 {
   GridState state = context.environment.initialState();
   for (const std::size_t instancePosition : order)
   {
-    if (context.timedOut() || !placeOne(context, state, instancePosition, policy))
+    if (context.timedOut())
       break;
+    // Занятость только увеличивается, поэтому не поместившийся сейчас экземпляр
+    // не станет допустимым позже. Остальные детали всё равно нужно проверить,
+    // чтобы сохранить действительно лучший достижимый partial этого порядка.
+    placeOne(context, state, instancePosition, policy);
   }
   return state;
 }

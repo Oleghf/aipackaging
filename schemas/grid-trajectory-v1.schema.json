@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aipackaging.local/schemas/grid-trajectory-v1.schema.json",
+  "title": "AIPackaging grid trajectory v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "trajectoryId", "problemId", "solver", "actionIndices", "steps", "finalSolution"],
+  "properties": {
+    "format": {"const": "aipackaging.grid_trajectory"},
+    "version": {"const": 1},
+    "trajectoryId": {"type": "string", "minLength": 1},
+    "problemId": {"type": "string", "minLength": 1},
+    "solver": {"$ref": "grid-solution-v1.schema.json#/properties/solver"},
+    "actionIndices": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+    "steps": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/step"}
+    },
+    "finalSolution": {"$ref": "grid-solution-v1.schema.json"}
+  },
+  "$defs": {
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["partId", "instanceIndex", "column", "row", "rotationDegrees"],
+      "properties": {
+        "partId": {"type": "string", "minLength": 1},
+        "instanceIndex": {"type": "integer", "minimum": 0},
+        "column": {"type": "integer", "minimum": 0},
+        "row": {"type": "integer", "minimum": 0},
+        "rotationDegrees": {"enum": [0, 90, 180, 270]}
+      }
+    },
+    "deltas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["placedParts", "placedCells", "usedLength", "largestExtraRectangleArea", "fragmentationPenalty"],
+      "properties": {
+        "placedParts": {"type": "integer"},
+        "placedCells": {"type": "integer"},
+        "usedLength": {"type": "integer"},
+        "largestExtraRectangleArea": {"type": "integer"},
+        "fragmentationPenalty": {"type": "integer"}
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionIndex", "action", "reward", "rankBefore", "rankAfter", "deltas", "terminated", "truncated"],
+      "properties": {
+        "actionIndex": {"type": "integer", "minimum": 0},
+        "action": {"$ref": "#/$defs/action"},
+        "reward": {"type": "number"},
+        "rankBefore": {"type": "integer", "minimum": 0},
+        "rankAfter": {"type": "integer", "minimum": 0},
+        "deltas": {"$ref": "#/$defs/deltas"},
+        "terminated": {"type": "boolean"},
+        "truncated": {"const": false}
+      }
+    }
+  }
+}

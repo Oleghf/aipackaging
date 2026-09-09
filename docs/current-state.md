@@ -16,6 +16,12 @@
   input-first-fit, две сортировки с left-bottom, seeded random и beam search.
 - `AIPackaging_Cli` читает `grid_problem` v1 и сохраняет `grid_solution` v1 с
   независимо проверяемыми placements, objective и метриками.
+- `GridLearningEnvironment` предоставляет постоянный каталог действий, mask,
+  observation v1 и точный reward v1.
+- Python-пакет `aipackaging-ml` предоставляет gym-like API, генератор профилей
+  small/medium и verifier `grid_dataset`/`grid_trajectory` v1.
+- Канонический датасет содержит 768 задач и 3840 baseline-траекторий; он
+  генерируется локально в игнорируемом `artifacts/datasets/grid-v1`.
 
 ## Инфраструктура проверки
 
@@ -44,6 +50,6 @@
 
 ## Ограничения ML
 
-Клеточная C++-среда и baseline готовы, но пока нет Python-границы, датасета,
-модели, reward shaping, experiment tracking или экспортированного
-inference-модуля. Они входят в M2–M3.
+Клеточная C++/Python-среда, reward и воспроизводимый датасет готовы. Пока нет
+обученной модели, experiment tracking, ONNX-экспорта и inference-модуля. Они
+входят в M3 и M5.

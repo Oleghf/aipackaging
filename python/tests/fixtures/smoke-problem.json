@@ -1,0 +1,21 @@
+{
+  "format": "aipackaging.grid_problem",
+  "version": 1,
+  "problemId": "python-smoke",
+  "sheet": {"columns": 3, "rows": 2, "unit": "cell"},
+  "parts": [
+    {
+      "id": "domino",
+      "quantity": 1,
+      "cells": [{"column": 0, "row": 0}, {"column": 1, "row": 0}],
+      "allowedRotations": [0, 90]
+    },
+    {
+      "id": "single",
+      "quantity": 1,
+      "cells": [{"column": 0, "row": 0}],
+      "allowedRotations": [0]
+    }
+  ],
+  "objective": {"type": "valuable_right_remnant", "version": 1}
+}
