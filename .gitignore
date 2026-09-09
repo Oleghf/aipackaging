@@ -1,0 +1,31 @@
+build/
+.vs/
+out/
+CMakeLists.txt.user
+CMakeUserPresets.json
+/build-tests
+/build-wave-verify
+
+# Python/ML tooling (planned training workspace)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Training artifacts and local datasets must not enter Git accidentally.
+artifacts/
+checkpoints/
+runs/
+data/local/
+*.onnx
+*.pt
+*.pth
+
+# IDE and OS metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

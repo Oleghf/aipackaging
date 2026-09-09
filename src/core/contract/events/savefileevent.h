@@ -1,0 +1,18 @@
+#ifndef SAVEFILEEVENT_H__
+#define SAVEFILEEVENT_H__
+
+#include <event.h>
+
+////////////////////////////////////////////////////////////////////////////////
+//
+/// Событие инициации сохранения файла
+/**
+*/
+////////////////////////////////////////////////////////////////////////////////
+class SaveFileEvent : public Event
+{
+public:
+  EventType type() const override { return EventType::Save; }
+};
+
+#endif

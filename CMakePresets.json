@@ -1,0 +1,221 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 27,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "base",
+            "description": "base preset",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "hidden": true,
+            "cacheVariables": {
+                "BUILD_TESTS": "OFF"
+            }
+        },
+      {
+        "name": "windows-base",
+        "description": "windows base preset",
+        "generator": "Visual Studio 18 2026",
+        "hidden": true,
+        "inherits": "base",
+        "condition": {
+          "type": "equals",
+          "lhs": "${hostSystemName}",
+          "rhs": "Windows"
+        }
+      },
+        {
+            "name": "windows-debug",
+            "displayName": "Windows Debug",
+            "inherits": "windows-base"
+        },
+        {
+            "name": "windows-release",
+            "displayName": "Windows Release",
+            "inherits": "windows-base"
+        },
+        {
+            "name": "windows-tests",
+            "displayName": "Windows Tests",
+            "inherits": "windows-base",
+            "cacheVariables": {
+                "BUILD_TESTS": "ON"
+            }
+        },
+        {
+            "name": "unix-base",
+            "hidden": true,
+            "generator": "Unix Makefiles",
+            "inherits": "base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "macos-base",
+            "hidden": true,
+            "inherits": "unix-base",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            }
+        },
+        {
+            "name": "macos-debug",
+            "displayName": "MacOS Debug",
+            "inherits": "macos-base"
+        },
+        {
+            "name": "macos-release",
+            "displayName": "MacOS Release",
+            "inherits": "macos-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "macos-tests",
+            "displayName": "MacOS Tests",
+            "inherits": "macos-base",
+            "cacheVariables": {
+                "BUILD_TESTS": "ON"
+            }
+        },
+        {
+            "name": "linux-base",
+            "hidden": true,
+            "inherits": "unix-base",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "linux-debug",
+            "displayName": "Linux Debug",
+            "inherits": "linux-base"
+        },
+        {
+            "name": "linux-release",
+            "displayName": "Linux Release",
+            "inherits": "linux-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "linux-tests",
+            "displayName": "Linux Tests",
+            "inherits": "linux-base",
+            "cacheVariables": {
+                "BUILD_TESTS": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "build-windows-debug",
+            "configurePreset": "windows-debug",
+            "displayName": "Build Windows Debug",
+            "configuration": "Debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "build-windows-release",
+            "configurePreset": "windows-release",
+            "displayName": "Build Windows Release",
+            "configuration": "Release",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "build-windows-tests",
+            "configurePreset": "windows-tests",
+            "displayName": "Build Windows Tests",
+            "configuration": "Debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "build-macos-debug",
+            "configurePreset": "macos-debug",
+            "displayName": "Build MacOS Debug",
+            "configuration": "Debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            }
+        },
+        {
+            "name": "build-macos-release",
+            "configurePreset": "macos-release",
+            "displayName": "Build MacOS Release",
+            "configuration": "Release",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            }
+        },
+        {
+            "name": "build-macos-tests",
+            "configurePreset": "macos-tests",
+            "displayName": "Build MacOS Tests",
+            "configuration": "Debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            }
+        },
+        {
+            "name": "build-linux-debug",
+            "configurePreset": "linux-debug",
+            "displayName": "Build Linux Debug",
+            "configuration": "Debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "build-linux-release",
+            "configurePreset": "linux-release",
+            "displayName": "Build Linux Release",
+            "configuration": "Release",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "build-linux-tests",
+            "configurePreset": "linux-tests",
+            "displayName": "Build Linux Tests",
+            "configuration": "Debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        }
+    ]
+}

@@ -1,0 +1,18 @@
+#ifndef LOADFILEEVENT_H__
+#define LOADFILEEVENT_H__
+
+#include <event.h>
+
+////////////////////////////////////////////////////////////////////////////////
+//
+///  Событие инициации загрузки файла
+/**
+*/
+////////////////////////////////////////////////////////////////////////////////
+class LoadFileEvent : public Event
+{
+public:
+  EventType type() const override { return EventType::Load; }
+};
+
+#endif

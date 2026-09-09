@@ -1,0 +1,33 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "windows-debug-local",
+      "displayName": "Windows Debug (local Qt)",
+      "inherits": "windows-debug",
+      "cacheVariables": {
+        "Qt6_DIR": "C:/Qt/6.9.3/msvc2022_64/lib/cmake/Qt6"
+      }
+    },
+    {
+      "name": "windows-tests-local",
+      "displayName": "Windows Tests (local Qt)",
+      "inherits": "windows-tests",
+      "cacheVariables": {
+        "Qt6_DIR": "C:/Qt/6.9.3/msvc2022_64/lib/cmake/Qt6"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "build-windows-debug-local",
+      "configurePreset": "windows-debug-local",
+      "configuration": "Debug"
+    },
+    {
+      "name": "build-windows-tests-local",
+      "configurePreset": "windows-tests-local",
+      "configuration": "Debug"
+    }
+  ]
+}

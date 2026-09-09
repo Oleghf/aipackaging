@@ -1,0 +1,18 @@
+#ifndef UNDOEVENT_H__
+#define UNDOEVENT_H__
+
+#include <event.h>
+
+////////////////////////////////////////////////////////////////////////////////
+//
+/// Событие отмены действия
+/**
+*/
+////////////////////////////////////////////////////////////////////////////////
+class UndoEvent : public Event
+{
+public:
+  EventType type() const override { return EventType::Undo; }
+};
+
+#endif
