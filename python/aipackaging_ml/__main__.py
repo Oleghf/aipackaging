@@ -28,6 +28,15 @@ def _parser() -> argparse.ArgumentParser:
     verify = commands.add_parser("verify-dataset", help="проверить manifest, shards и replay")
     verify.add_argument("path", type=Path)
 
+    polygon_generate = commands.add_parser("generate-polygon-dataset", help="создать smoke polygon_dataset v1")
+    polygon_generate.add_argument("--output", type=Path, required=True)
+    polygon_generate.add_argument("--seed", type=int, default=42)
+    polygon_generate.add_argument("--workers", type=int, default=1)
+    polygon_generate.add_argument("--smoke", action="store_true")
+
+    polygon_verify = commands.add_parser("verify-polygon-dataset", help="проверить polygon_dataset v1")
+    polygon_verify.add_argument("path", type=Path)
+
     train = commands.add_parser("train", help="выполнить воспроизводимый BC и PPO")
     train.add_argument("--config", type=Path, required=True)
     train.add_argument("--dataset", type=Path, required=True)
@@ -65,6 +74,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Выполняет выбранную команду и печатает машинно-читаемый итог."""
 
     arguments = _parser().parse_args(argv)
+    if arguments.command == "generate-polygon-dataset":
+        from .polygon_dataset import generate_polygon_dataset
+
+        sizes = {"train": 1, "validation": 1, "test": 1} if arguments.smoke else None
+        keyword = {} if sizes is None else {"split_sizes": sizes}
+        manifest = generate_polygon_dataset(arguments.output, master_seed=arguments.seed,
+                                            workers=arguments.workers, **keyword)
+        print(json.dumps({"manifest": str(arguments.output / "manifest.json"),
+                          "shards": len(manifest["shards"])}, sort_keys=True))
+        return 0
+    if arguments.command == "verify-polygon-dataset":
+        from .polygon_dataset import verify_polygon_dataset
+
+        print(json.dumps(verify_polygon_dataset(arguments.path), sort_keys=True))
+        return 0
     if arguments.command == "generate-dataset":
         split_sizes = (
             {"train": 1, "validation": 1, "test": 1}

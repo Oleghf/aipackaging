@@ -18,6 +18,8 @@
   observation/action/reward M2 и воспроизводимый формат данных.
 - [ADR-0005: иерархическая политика](decisions/0005-hierarchical-grid-policy.md) —
   BC/PPO, masked hierarchy, ONNX bundle и quality gate M3.
+- [ADR-0006: полигональный контракт](decisions/0006-polygon-nesting-contract.md) —
+  микронная геометрия, NFP, производственные расстояния и observation M4.
 
 Документы явно разделяют текущее и целевое состояние. Планируемую возможность
 нельзя выдавать за уже реализованную.

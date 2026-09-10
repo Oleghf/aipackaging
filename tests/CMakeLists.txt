@@ -17,6 +17,7 @@ add_executable(AIPackaging_Tests
 "solver/testgridlearning.cpp"
 "solver/testgridsolver.cpp"
 "solver/testgridio.cpp"
+"solver/testpolygon.cpp"
 "aipackaging_math/geometry/testpoint2d.cpp"
 "aipackaging_math/geometry/testvector2d.cpp"
 "aipackaging_math/geometry/testline2d.cpp"
@@ -91,6 +92,22 @@ if (BUILD_SOLVER_CLI)
       "-DEXPECTED_EXIT=3"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/assert_cli_exit.cmake"
   )
+
+  add_test(
+    NAME PolygonCli_Solve
+    COMMAND $<TARGET_FILE:AIPackaging_Cli> solve
+      --input "${CMAKE_SOURCE_DIR}/examples/polygon/problem-small.json"
+      --output "$<TARGET_FILE_DIR:AIPackaging_Cli>/polygon-solution.json"
+      --solver area-left-bottom
+      --timeout-ms 0
+  )
+  add_test(
+    NAME PolygonCli_Validate
+    COMMAND $<TARGET_FILE:AIPackaging_Cli> validate
+      --problem "${CMAKE_SOURCE_DIR}/examples/polygon/problem-small.json"
+      --solution "$<TARGET_FILE_DIR:AIPackaging_Cli>/polygon-solution.json"
+  )
+  set_tests_properties(PolygonCli_Validate PROPERTIES DEPENDS PolygonCli_Solve)
 endif()
 
 copy_target_dll(AIPackaging_Tests AIPackaging_Math)

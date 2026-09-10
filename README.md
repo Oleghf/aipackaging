@@ -5,10 +5,9 @@ AIPackaging — исследовательский проект нейросет
 работать с деталями произвольной формы, включая криволинейные границы, вырезы и
 отверстия.
 
-Сейчас репозиторий содержит настольный прототип на C++20 и Qt 6 для размещения
-фигур на клеточном поле. Это исходная точка разработки, а не готовая система
-полигонального раскроя: M3 добавляет обучение клеточной политики, но не заменяет
-клетки полигональной геометрией.
+Репозиторий содержит настольный клеточный прототип и независимое headless-ядро
+полигонального раскроя. M4 уже обрабатывает кривые, вогнутость и отверстия, но
+GUI пока остаётся клеточным, а обученная M3-политика — клеточной.
 
 ## Направление разработки
 
@@ -41,11 +40,14 @@ baseline-алгоритмов, метрик и цикла обучения.
 - Python 3.12–3.13 bindings и воспроизводимый генератор baseline-траекторий;
 - иерархическая PyTorch actor-critic policy, BC/PPO pipeline и ONNX-экспорт;
 - neural best-of и безопасный hybrid с точной post-validation;
+- strict polygon JSON, line/arc/Bézier и нормализация в `int64` микроны;
+- динамические NFP-кандидаты, полигональные baseline и точный валидатор;
+- Python `PolygonNestingEnv` и воспроизводимый polygon smoke dataset;
 - модульные тесты доменного и прикладного слоёв.
 
-Текущие ограничения: квадратные клетки, повороты на 90°, клеточный формат ввода
-и отсутствие проверенного канонического checkpoint. Текущий executable нельзя
-описывать как готовый к промышленному раскрою произвольных контуров.
+Текущие ограничения: GUI использует клетки, нет production DXF/SVG, вложения в
+отверстия и проверенного полигонального checkpoint. Текущий executable нельзя
+описывать как готовую промышленную CAD/CAM-систему.
 
 ## Сборка
 
@@ -99,6 +101,18 @@ build/windows-headless-tests/src/cli/AIPackaging_Cli.exe solve `
 Формат сцены desktop-приложения `aipackaging.packing_scene` от solver-форматов
 не зависит и в M1 не менялся.
 
+Полигональный CLI использует ту же команду и автоматически распознаёт формат:
+
+```powershell
+build/windows-headless-tests/src/cli/AIPackaging_Cli.exe solve `
+  --input examples/polygon/problem-small.json `
+  --output build/polygon-solution.json `
+  --solver area-left-bottom
+build/windows-headless-tests/src/cli/AIPackaging_Cli.exe validate `
+  --problem examples/polygon/problem-small.json `
+  --solution build/polygon-solution.json
+```
+
 Python-среда и датасет:
 
 ```powershell
@@ -106,13 +120,15 @@ python -m pip install -e ".[dev]"
 python -m pytest
 python -m aipackaging_ml generate-dataset --output artifacts/datasets/grid-v1
 python -m aipackaging_ml verify-dataset artifacts/datasets/grid-v1
+python -m aipackaging_ml generate-polygon-dataset --output artifacts/datasets/polygon-v1
+python -m aipackaging_ml verify-polygon-dataset artifacts/datasets/polygon-v1
 ```
 
 По умолчанию генератор создаёт 768 задач: по 256/64/64 для обоих tiers. Для
 быстрой проверки добавьте `--smoke`; `--workers` меняет скорость, но не байты.
 
-Каноническое CUDA-обучение M3 выполняется в WSL2; Smart App Control для этого не
-отключается. Подготовка, smoke-команды и канонический запуск описаны в
+CUDA-обучение M3 можно выполнять в WSL2 или непосредственно в проверенной
+Windows-среде. Подготовка и команды запуска описаны в
 [руководстве M3](docs/m3-training.md). Базовый пакет не зависит от PyTorch;
 зависимости обучения устанавливаются через
 `python -m pip install -e ".[dev,train]"`.
@@ -124,7 +140,7 @@ src/core/domain/     Клеточная доменная модель и гео�
 src/core/app/        Сценарии, команды, валидация и стратегии упаковки
 src/core/contract/   Общие события и интерфейсы
 src/gui/             Пользовательский интерфейс Qt
-src/solver/          Headless клеточная среда, baseline и JSON I/O
+src/solver/          Headless клеточная/полигональная среда, baseline и JSON I/O
 src/cli/             Командная строка исследовательского solver
 src/python/          Низкоуровневые pybind11 bindings
 python/aipackaging_ml/ Python API, датасет, обучение, оценка и ONNX-экспорт

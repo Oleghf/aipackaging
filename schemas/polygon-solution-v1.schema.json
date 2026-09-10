@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aipackaging.local/schemas/polygon-solution-v1.schema.json",
+  "title": "AIPackaging polygon solution v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "problemId", "status", "placements", "objective", "metrics", "solver", "errorMessage"],
+  "properties": {
+    "format": {"const": "aipackaging.polygon_solution"},
+    "version": {"const": 1},
+    "problemId": {"type": "string", "minLength": 1},
+    "status": {"enum": ["solved", "no_solution_found", "budget_exhausted", "timed_out", "unsupported_environment", "invalid_problem"]},
+    "placements": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["partId", "instanceIndex", "xMicrometers", "yMicrometers", "rotationDegrees"],
+      "properties": {"partId": {"type": "string"}, "instanceIndex": {"type": "integer", "minimum": 0},
+                     "xMicrometers": {"type": "integer"}, "yMicrometers": {"type": "integer"},
+                     "rotationDegrees": {"enum": [0, 90, 180, 270]}}
+    }},
+    "objective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["usedLengthMicrometers", "primaryRemnantWidthMicrometers", "largestExtraRectangleSquareMicrometers", "fragmentationPenaltySquareMicrometers", "placedParts", "totalParts", "placedAreaSquareMicrometers", "totalPartAreaSquareMicrometers", "materialUtilization", "rasterColumns", "rasterRows"],
+      "properties": {
+        "usedLengthMicrometers": {"type": "integer", "minimum": 0},
+        "primaryRemnantWidthMicrometers": {"type": "integer", "minimum": 0},
+        "largestExtraRectangleSquareMicrometers": {"type": "integer", "minimum": 0},
+        "fragmentationPenaltySquareMicrometers": {"type": "integer", "minimum": 0},
+        "placedParts": {"type": "integer", "minimum": 0},
+        "totalParts": {"type": "integer", "minimum": 0, "maximum": 100},
+        "placedAreaSquareMicrometers": {"type": "integer", "minimum": 0},
+        "totalPartAreaSquareMicrometers": {"type": "integer", "minimum": 0},
+        "materialUtilization": {"type": "number", "minimum": 0, "maximum": 1},
+        "rasterColumns": {"const": 128},
+        "rasterRows": {"const": 128}
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidatesGenerated", "candidatesValidated", "expandedStates", "candidateGenerationTimeUs", "validationTimeUs", "searchTimeUs", "totalTimeUs"],
+      "properties": {
+        "candidatesGenerated": {"type": "integer", "minimum": 0},
+        "candidatesValidated": {"type": "integer", "minimum": 0},
+        "expandedStates": {"type": "integer", "minimum": 0},
+        "candidateGenerationTimeUs": {"type": "integer", "minimum": 0},
+        "validationTimeUs": {"type": "integer", "minimum": 0},
+        "searchTimeUs": {"type": "integer", "minimum": 0},
+        "totalTimeUs": {"type": "integer", "minimum": 0}
+      }
+    },
+    "solver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "projectVersion", "revision", "seed", "randomIterations", "beamWidth", "maxExpandedStates", "timeoutMs"],
+      "properties": {
+        "name": {"enum": ["input-first-fit", "area-left-bottom", "max-side-left-bottom", "random-left-bottom", "beam"]},
+        "projectVersion": {"type": "string", "minLength": 1},
+        "revision": {"type": "string", "minLength": 1},
+        "seed": {"type": "integer", "minimum": 0},
+        "randomIterations": {"type": "integer", "minimum": 1},
+        "beamWidth": {"type": "integer", "minimum": 1},
+        "maxExpandedStates": {"type": "integer", "minimum": 1},
+        "timeoutMs": {"type": "integer", "minimum": 0}
+      }
+    },
+    "errorMessage": {"type": "string"}
+  }
+}

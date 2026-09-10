@@ -5,10 +5,14 @@ target_sources(AIPackaging_Solver PRIVATE
   "gridio.cpp"
   "gridlearning.cpp"
   "gridsolver.cpp"
+  "polygonenvironment.cpp"
+  "polygonio.cpp"
+  "polygonlearning.cpp"
+  "polygonsolver.cpp"
 )
 
 target_include_directories(AIPackaging_Solver PUBLIC "${CMAKE_SOURCE_DIR}/src/solver")
-target_link_libraries(AIPackaging_Solver PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(AIPackaging_Solver PRIVATE nlohmann_json::nlohmann_json Clipper2)
 set_target_properties(AIPackaging_Solver PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_compile_definitions(AIPackaging_Solver PRIVATE

@@ -148,3 +148,94 @@ class GridNestingEnv:
         """Возвращает идентификатор исходной задачи."""
 
         return self._native.problem_id
+
+
+class PolygonNestingEnv:
+    """Предоставляет один эпизод полигонального раскроя с динамическими действиями."""
+
+    def __init__(self, native_environment: _native.PolygonLearningEnvironment) -> None:
+        """Сохраняет уже проверенную нативную среду; используйте фабрики ``from_*``."""
+
+        self._native = native_environment
+
+    @classmethod
+    def from_file(cls, path: str | Path) -> "PolygonNestingEnv":
+        """Загружает строгий ``polygon_problem`` v1 из UTF-8 файла."""
+
+        return cls(_native.create_polygon_environment(Path(path).read_text(encoding="utf-8")))
+
+    @classmethod
+    def from_dict(cls, problem: Mapping[str, Any]) -> "PolygonNestingEnv":
+        """Создаёт эпизод из JSON-совместимого словаря polygon_problem v1."""
+
+        return cls(_native.create_polygon_environment(canonical_json(problem)))
+
+    def reset(self, seed: int | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Сбрасывает детерминированный эпизод и сообщает текущий размер action space."""
+
+        observation = self._native.reset()
+        return observation, {"seed": seed, "problemId": self.problem_id, "actionCount": self.action_count}
+
+    def observation(self) -> dict[str, Any]:
+        """Возвращает независимый read-only снимок базового observation."""
+
+        return self._native.observation()
+
+    def placement_observation(self, instance_index: int, rotation_degrees: int) -> dict[str, Any]:
+        """Возвращает четыре канала и кандидаты выбранной иерархической пары."""
+
+        return self._native.placement_observation(instance_index, rotation_degrees)
+
+    def actions(self) -> list[dict[str, Any]]:
+        """Возвращает снимок текущего динамического каталога действий."""
+
+        return list(self._native.actions())
+
+    def action(self, index: int) -> dict[str, Any]:
+        """Возвращает действие текущего каталога с обычной проверкой индекса Python."""
+
+        actions = self.actions()
+        return actions[index]
+
+    def find_action(self, action: Mapping[str, Any]) -> int:
+        """Находит действие в текущем динамическом каталоге для точного replay."""
+
+        target = dict(action)
+        for index, candidate in enumerate(self.actions()):
+            if candidate == target:
+                return index
+        raise ValueError("action is absent from the current polygon catalog")
+
+    def step(self, action_index: int) -> tuple[dict[str, Any], float, bool, bool, dict[str, Any]]:
+        """Применяет индекс текущего каталога и возвращает gym-like переход."""
+
+        return self._native.step(action_index)
+
+    def snapshot_solution(self, provenance: Mapping[str, Any]) -> dict[str, Any]:
+        """Возвращает independently validated-ready polygon_solution v1 текущего состояния."""
+
+        return json.loads(self._native.snapshot_solution(dict(provenance)))
+
+    @property
+    def action_count(self) -> int:
+        """Возвращает размер каталога, действительного только на текущем шаге."""
+
+        return len(self._native.actions())
+
+    @property
+    def is_complete(self) -> bool:
+        """Сообщает, размещены ли все обязательные экземпляры."""
+
+        return self._native.is_complete
+
+    @property
+    def is_terminal(self) -> bool:
+        """Сообщает о полноте либо отсутствии следующих допустимых действий."""
+
+        return self._native.is_terminal
+
+    @property
+    def problem_id(self) -> str:
+        """Возвращает идентификатор исходной полигональной задачи."""
+
+        return self._native.problem_id

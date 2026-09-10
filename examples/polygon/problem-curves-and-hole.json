@@ -1,0 +1,46 @@
+{
+  "format": "aipackaging.polygon_problem",
+  "version": 1,
+  "problemId": "polygon-curves-and-hole",
+  "sheet": {"width": 100.0, "height": 70.0, "unit": "mm"},
+  "manufacturing": {"sheetMargin": 2.0, "partSpacing": 1.0, "kerf": 0.2, "curveTolerance": 0.05},
+  "parts": [
+    {
+      "id": "ring",
+      "quantity": 1,
+      "outer": {
+        "start": {"x": 0.0, "y": 15.0},
+        "segments": [
+          {"type": "arc", "end": {"x": 30.0, "y": 15.0}, "center": {"x": 15.0, "y": 15.0}, "clockwise": false},
+          {"type": "arc", "end": {"x": 0.0, "y": 15.0}, "center": {"x": 15.0, "y": 15.0}, "clockwise": false}
+        ]
+      },
+      "holes": [{
+        "start": {"x": 10.0, "y": 10.0},
+        "segments": [
+          {"type": "line", "end": {"x": 20.0, "y": 10.0}},
+          {"type": "line", "end": {"x": 20.0, "y": 20.0}},
+          {"type": "line", "end": {"x": 10.0, "y": 20.0}},
+          {"type": "line", "end": {"x": 10.0, "y": 10.0}}
+        ]
+      }],
+      "allowedRotations": [0]
+    },
+    {
+      "id": "bezier-cap",
+      "quantity": 1,
+      "outer": {
+        "start": {"x": 0.0, "y": 0.0},
+        "segments": [
+          {"type": "line", "end": {"x": 24.0, "y": 0.0}},
+          {"type": "line", "end": {"x": 24.0, "y": 10.0}},
+          {"type": "cubic_bezier", "end": {"x": 0.0, "y": 10.0}, "control1": {"x": 18.0, "y": 20.0}, "control2": {"x": 6.0, "y": 20.0}},
+          {"type": "line", "end": {"x": 0.0, "y": 0.0}}
+        ]
+      },
+      "holes": [],
+      "allowedRotations": [0, 90]
+    }
+  ],
+  "objective": {"type": "valuable_right_remnant", "version": 1}
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aipackaging.local/schemas/polygon-dataset-v1.schema.json",
+  "title": "AIPackaging polygon dataset v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "problemContractVersion", "trajectoryContractVersion", "observationVersion", "masterSeed", "revision", "generator", "solverBudgets", "shards", "expertTrajectoryId"],
+  "properties": {
+    "format": {"const": "aipackaging.polygon_dataset"},
+    "version": {"const": 1},
+    "problemContractVersion": {"const": 1},
+    "trajectoryContractVersion": {"const": 1},
+    "observationVersion": {"const": 1},
+    "masterSeed": {"type": "integer", "minimum": 0},
+    "revision": {"type": "string", "minLength": 1},
+    "generator": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "version", "splitSizes"],
+      "properties": {
+        "name": {"const": "deterministic-polygon-smoke"},
+        "version": {"const": 1},
+        "splitSizes": {
+          "type": "object", "additionalProperties": false,
+          "required": ["train", "validation", "test"],
+          "properties": {
+            "train": {"type": "integer", "minimum": 0},
+            "validation": {"type": "integer", "minimum": 0},
+            "test": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+    "solverBudgets": {
+      "type": "object", "additionalProperties": false,
+      "required": ["timeoutMs", "randomIterations", "beamWidth", "maxExpandedStates"],
+      "properties": {
+        "timeoutMs": {"const": 0},
+        "randomIterations": {"type": "integer", "minimum": 1},
+        "beamWidth": {"type": "integer", "minimum": 1},
+        "maxExpandedStates": {"type": "integer", "minimum": 1}
+      }
+    },
+    "shards": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["split", "kind", "path", "records", "sha256"],
+        "properties": {
+          "split": {"enum": ["train", "validation", "test"]},
+          "kind": {"enum": ["problems", "trajectories"]},
+          "path": {"type": "string", "minLength": 1},
+          "records": {"type": "integer", "minimum": 0},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "expertTrajectoryId": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1}}
+  }
+}

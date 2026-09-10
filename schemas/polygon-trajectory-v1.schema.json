@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aipackaging.local/schemas/polygon-trajectory-v1.schema.json",
+  "title": "AIPackaging polygon trajectory v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "trajectoryId", "problemId", "solver", "actionIndices", "steps", "finalSolution"],
+  "properties": {
+    "format": {"const": "aipackaging.polygon_trajectory"},
+    "version": {"const": 1},
+    "trajectoryId": {"type": "string", "minLength": 1},
+    "problemId": {"type": "string", "minLength": 1},
+    "solver": {"$ref": "polygon-solution-v1.schema.json#/properties/solver"},
+    "actionIndices": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+    "steps": {"type": "array", "items": {"$ref": "#/$defs/step"}},
+    "finalSolution": {"$ref": "polygon-solution-v1.schema.json"}
+  },
+  "$defs": {
+    "action": {
+      "type": "object", "additionalProperties": false,
+      "required": ["partId", "instanceIndex", "xMicrometers", "yMicrometers", "rotationDegrees"],
+      "properties": {
+        "partId": {"type": "string", "minLength": 1},
+        "instanceIndex": {"type": "integer", "minimum": 0},
+        "xMicrometers": {"type": "integer"},
+        "yMicrometers": {"type": "integer"},
+        "rotationDegrees": {"enum": [0, 90, 180, 270]}
+      }
+    },
+    "info": {
+      "type": "object", "additionalProperties": false,
+      "required": ["complete", "deadEnd"],
+      "properties": {"complete": {"type": "boolean"}, "deadEnd": {"type": "boolean"}}
+    },
+    "step": {
+      "type": "object", "additionalProperties": false,
+      "required": ["actionIndex", "action", "reward", "terminated", "truncated", "info"],
+      "properties": {
+        "actionIndex": {"type": "integer", "minimum": 0},
+        "action": {"$ref": "#/$defs/action"},
+        "reward": {"type": "number"},
+        "terminated": {"type": "boolean"},
+        "truncated": {"const": false},
+        "info": {"$ref": "#/$defs/info"}
+      }
+    }
+  }
+}

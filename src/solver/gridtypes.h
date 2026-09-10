@@ -88,6 +88,7 @@ enum class SolveStatus : std::uint8_t
   NoSolutionFound,
   BudgetExhausted,
   TimedOut,
+  UnsupportedEnvironment,
   InvalidProblem
 };
 

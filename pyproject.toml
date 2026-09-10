@@ -8,8 +8,8 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "aipackaging-ml"
-version = "0.3.0"
-description = "Обучаемая клеточная среда и нейросетевая политика AIPackaging"
+version = "0.4.0"
+description = "Клеточная и полигональная обучаемая среда AIPackaging"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = ["numpy==2.5.3"]

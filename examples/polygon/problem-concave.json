@@ -1,0 +1,25 @@
+{
+  "format": "aipackaging.polygon_problem",
+  "version": 1,
+  "problemId": "polygon-concave",
+  "sheet": {"width": 80.0, "height": 60.0, "unit": "mm"},
+  "manufacturing": {"sheetMargin": 1.0, "partSpacing": 0.5, "kerf": 0.2, "curveTolerance": 0.05},
+  "parts": [{
+    "id": "l-shape",
+    "quantity": 2,
+    "outer": {
+      "start": {"x": 0.0, "y": 0.0},
+      "segments": [
+        {"type": "line", "end": {"x": 24.0, "y": 0.0}},
+        {"type": "line", "end": {"x": 24.0, "y": 8.0}},
+        {"type": "line", "end": {"x": 10.0, "y": 8.0}},
+        {"type": "line", "end": {"x": 10.0, "y": 24.0}},
+        {"type": "line", "end": {"x": 0.0, "y": 24.0}},
+        {"type": "line", "end": {"x": 0.0, "y": 0.0}}
+      ]
+    },
+    "holes": [],
+    "allowedRotations": [0, 90, 180, 270]
+  }],
+  "objective": {"type": "valuable_right_remnant", "version": 1}
+}

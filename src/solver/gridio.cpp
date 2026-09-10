@@ -339,7 +339,7 @@ GridSolutionLoadResult loadGridSolutionFromText(const std::string & text)
   if (!readString(root, "format", format) || format != "aipackaging.grid_solution" || !readInt(root, "version", version) ||
       (version != 1 && version != 2) || !readString(root, "problemId", solution.problemId) ||
       !readString(root, "status", status) || !parseSolveStatus(status, solution.status) ||
-      !readString(root, "errorMessage", solution.errorMessage))
+      solution.status == SolveStatus::UnsupportedEnvironment || !readString(root, "errorMessage", solution.errorMessage))
   {
     return solutionFailure("unsupported grid solution format, version, or status");
   }

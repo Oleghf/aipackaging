@@ -347,6 +347,8 @@ std::string toString(SolveStatus status)
       return "budget_exhausted";
     case SolveStatus::TimedOut:
       return "timed_out";
+    case SolveStatus::UnsupportedEnvironment:
+      return "unsupported_environment";
     case SolveStatus::InvalidProblem:
       return "invalid_problem";
   }
@@ -390,8 +392,8 @@ std::string toString(SolverFamily family)
 /// Ищет статус по всем допустимым строковым значениям schema v1.
 bool parseSolveStatus(const std::string & value, SolveStatus & status)
 {
-  constexpr SolveStatus VALUES[] = {SolveStatus::Solved, SolveStatus::NoSolutionFound, SolveStatus::BudgetExhausted,
-                                    SolveStatus::TimedOut, SolveStatus::InvalidProblem};
+  constexpr SolveStatus VALUES[] = {SolveStatus::Solved,   SolveStatus::NoSolutionFound,        SolveStatus::BudgetExhausted,
+                                    SolveStatus::TimedOut, SolveStatus::UnsupportedEnvironment, SolveStatus::InvalidProblem};
   for (const SolveStatus candidate : VALUES)
   {
     if (toString(candidate) == value)

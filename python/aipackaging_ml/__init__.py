@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["GridNestingEnv"]
-__version__ = "0.3.0"
+__all__ = ["GridNestingEnv", "PolygonNestingEnv"]
+__version__ = "0.4.0"
 
 
 def __getattr__(name: str) -> Any:
     """Загружает нативную среду только при фактическом обращении к её классу."""
 
-    if name == "GridNestingEnv":
-        from .environment import GridNestingEnv
+    if name in {"GridNestingEnv", "PolygonNestingEnv"}:
+        from .environment import GridNestingEnv, PolygonNestingEnv
 
-        return GridNestingEnv
+        return {"GridNestingEnv": GridNestingEnv, "PolygonNestingEnv": PolygonNestingEnv}[name]
     raise AttributeError(name)

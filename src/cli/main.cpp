@@ -1,13 +1,18 @@
 #include <charconv>
 #include <cstdint>
 #include <exception>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <string>
 #include <string_view>
 
+#include <gridenvironment.h>
 #include <gridio.h>
 #include <gridsolver.h>
+#include <polygonenvironment.h>
+#include <polygonio.h>
+#include <polygonsolver.h>
 
 namespace
 {
@@ -19,7 +24,8 @@ void printUsage()
   std::cerr << "Usage: AIPackaging_Cli solve --input <problem.json> --output <solution.json>\n"
                "       [--solver input-first-fit|area-left-bottom|max-side-left-bottom|random-left-bottom|beam]\n"
                "       [--seed N] [--random-iterations N] [--beam-width N]\n"
-               "       [--max-expanded-states N] [--timeout-ms N]\n";
+               "       [--max-expanded-states N] [--timeout-ms N]\n"
+               "       AIPackaging_Cli validate --problem <problem.json> --solution <solution.json>\n";
 }
 
 /// Строго разбирает неотрицательное десятичное число без пробелов и суффиксов.
@@ -54,6 +60,72 @@ bool readSizeOption(int argc, char ** argv, int & index, std::size_t & value)
   value = static_cast<std::size_t>(parsed);
   return true;
 }
+
+/// Читает файл целиком для безопасного определения wire-формата до parsing.
+bool readTextFile(const std::string & path, std::string & text)
+{
+  std::ifstream input(path, std::ios::binary);
+  if (!input)
+    return false;
+  text.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+  return static_cast<bool>(input) || input.eof();
+}
+
+/// Проверяет согласованную пару grid или polygon problem/solution.
+int validateCommand(int argc, char ** argv)
+{
+  std::string problemPath;
+  std::string solutionPath;
+  for (int index = 2; index < argc; ++index)
+  {
+    const std::string_view option = argv[index];
+    if (option == "--problem")
+    {
+      if (!readValue(argc, argv, index, problemPath))
+        return 1;
+    }
+    else if (option == "--solution")
+    {
+      if (!readValue(argc, argv, index, solutionPath))
+        return 1;
+    }
+    else
+      return 1;
+  }
+  std::string problemText;
+  std::string solutionText;
+  if (problemPath.empty() || solutionPath.empty() || !readTextFile(problemPath, problemText) ||
+      !readTextFile(solutionPath, solutionText))
+  {
+    std::cerr << "Unable to read validation input\n";
+    return 1;
+  }
+  const std::string format = detectJsonFormat(problemText);
+  if (format == "aipackaging.grid_problem")
+  {
+    const GridProblemLoadResult problem = loadGridProblemFromText(problemText);
+    const GridSolutionLoadResult solution = loadGridSolutionFromText(solutionText);
+    const ValidationResult result = problem.success && solution.success
+                                    ? validateGridSolution(problem.problem, solution.solution)
+                                    : ValidationResult{false, problem.success ? solution.error : problem.error};
+    if (!result.success)
+      std::cerr << result.error << '\n';
+    return result.success ? 0 : 3;
+  }
+  if (format == "aipackaging.polygon_problem")
+  {
+    const PolygonProblemLoadResult problem = loadPolygonProblemFromText(problemText);
+    const PolygonSolutionLoadResult solution = loadPolygonSolutionFromText(solutionText);
+    const ValidationResult result = problem.success && solution.success
+                                    ? validatePolygonSolution(problem.problem, solution.solution)
+                                    : ValidationResult{false, problem.success ? solution.error : problem.error};
+    if (!result.success)
+      std::cerr << result.error << '\n';
+    return result.success ? 0 : 3;
+  }
+  std::cerr << "Unsupported problem format\n";
+  return 3;
+}
 } // namespace
 
 /// Разбирает команду, загружает задачу, запускает solver и записывает решение с договорённым exit code.
@@ -62,6 +134,8 @@ int main(int argc, char ** argv)
   using namespace aipackaging::solver;
   try
   {
+    if (argc >= 2 && std::string_view(argv[1]) == "validate")
+      return validateCommand(argc, argv);
     if (argc < 2 || std::string_view(argv[1]) != "solve")
     {
       printUsage();
@@ -134,25 +208,47 @@ int main(int argc, char ** argv)
 
     // Невалидный вход не порождает псевдорешение: ошибка относится к контракту
     // задачи и возвращается отдельным кодом до запуска поиска.
-    const GridProblemLoadResult loaded = loadGridProblemFromFile(inputPath);
+    std::string inputText;
+    if (!readTextFile(inputPath, inputText))
+    {
+      std::cerr << "Unable to open problem input file\n";
+      return 1;
+    }
+    const std::string format = detectJsonFormat(inputText);
+    if (format == "aipackaging.polygon_problem")
+    {
+      const PolygonProblemLoadResult loaded = loadPolygonProblemFromText(inputText);
+      if (!loaded.success)
+      {
+        std::cerr << loaded.error << '\n';
+        return 3;
+      }
+      const PolygonSolution solution = solvePolygonProblem(loaded.problem, config);
+      std::string outputError;
+      if (!savePolygonSolutionToFile(outputPath, solution, outputError))
+      {
+        std::cerr << outputError << '\n';
+        return 1;
+      }
+      return solution.complete() ? 0 : 2;
+    }
+    if (format != "aipackaging.grid_problem")
+    {
+      std::cerr << "Unsupported or missing problem format\n";
+      return 3;
+    }
+    const GridProblemLoadResult loaded = loadGridProblemFromText(inputText);
     if (!loaded.success)
     {
       std::cerr << loaded.error << '\n';
       return 3;
     }
-
     const GridSolution solution = solveGridProblem(loaded.problem, config);
     std::string outputError;
-    // Для любого валидного входа сохраняется и полный, и диагностический partial.
     if (!saveGridSolutionToFile(outputPath, solution, outputError))
     {
       std::cerr << outputError << '\n';
       return 1;
-    }
-    if (solution.status == SolveStatus::InvalidProblem)
-    {
-      std::cerr << solution.errorMessage << '\n';
-      return 3;
     }
     return solution.complete() ? 0 : 2;
   }

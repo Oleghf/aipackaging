@@ -1,0 +1,37 @@
+{
+  "format": "aipackaging.polygon_problem",
+  "version": 1,
+  "problemId": "polygon-small",
+  "sheet": {
+    "width": 100.0,
+    "height": 60.0,
+    "unit": "mm"
+  },
+  "manufacturing": {
+    "sheetMargin": 2.0,
+    "partSpacing": 1.0,
+    "kerf": 0.2,
+    "curveTolerance": 0.05
+  },
+  "parts": [
+    {
+      "id": "rectangle",
+      "quantity": 2,
+      "outer": {
+        "start": {"x": 0.0, "y": 0.0},
+        "segments": [
+          {"type": "line", "end": {"x": 30.0, "y": 0.0}},
+          {"type": "line", "end": {"x": 30.0, "y": 20.0}},
+          {"type": "line", "end": {"x": 0.0, "y": 20.0}},
+          {"type": "line", "end": {"x": 0.0, "y": 0.0}}
+        ]
+      },
+      "holes": [],
+      "allowedRotations": [0, 90]
+    }
+  ],
+  "objective": {
+    "type": "valuable_right_remnant",
+    "version": 1
+  }
+}
