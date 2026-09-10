@@ -130,6 +130,21 @@ M2 сохраняют совместимый формат v1.
 Qt отвечает за редактирование, визуализацию и проверку пользователем. GUI зависит
 от прикладного интерфейса решателя и не содержит collision или ML-логику.
 
+M5 сохраняет клеточный экран и добавляет отдельный read-only полигональный
+workspace:
+
+```text
+PolygonWorkspaceWidget
+  -> PolygonWorkspaceController
+    -> IPolygonSolverBackend
+      -> PolygonEnvironment + PolygonSolutionValidator
+```
+
+Контроллер владеет `std::jthread`; progress и completion возвращаются в главный
+Qt-поток через queued dispatcher. Только независимо проверенный неотменённый
+результат разрешается сохранять. Presentation-модель уже содержит перенесённые
+кольца в миллиметрах, поэтому Qt выполняет только отрисовку.
+
 ## Предлагаемый доменный контракт
 
 ```text

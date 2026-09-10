@@ -10,6 +10,7 @@ target_sources(${app_static_lib_name} PRIVATE
 "autopackcommand.cpp"
 "maincontroller.cpp"
 "packingcontroller.cpp"
+"polygonworkspacecontroller.cpp"
 "packagingstate.cpp"
 "movecommand.cpp"
 
@@ -45,4 +46,5 @@ target_include_directories(${app_static_lib_name} PUBLIC
 target_link_libraries(${app_static_lib_name} PUBLIC
 AIPackaging_Domain
 AIPackaging_Contract
+AIPackaging_Solver
 )

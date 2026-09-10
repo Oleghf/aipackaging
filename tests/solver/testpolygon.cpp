@@ -275,6 +275,50 @@ TEST(PolygonSolver, ReportsBeamBudgetExhaustion)
   EXPECT_TRUE(validatePolygonSolution(problem(), solution).success);
 }
 
+/// Проверяет progress каждого baseline и отсутствие влияния callback на детерминированный результат.
+TEST(PolygonSolver, ReportsProgressWithoutChangingSolution)
+{
+  for (const SolverKind kind : {SolverKind::InputFirstFit, SolverKind::AreaLeftBottom, SolverKind::MaxSideLeftBottom,
+                                SolverKind::RandomLeftBottom, SolverKind::Beam})
+  {
+    SolverConfig config;
+    config.solver = kind;
+    config.randomIterations = 4;
+    config.beamWidth = 4;
+    config.maxExpandedStates = 100;
+    config.timeoutMs = 0;
+    std::vector<PolygonSolverProgress> progress;
+    PolygonExecutionControl control;
+    control.progress = [&progress](const PolygonSolverProgress & value)
+    {
+      progress.push_back(value);
+    };
+    const PolygonSolution reference = solvePolygonProblem(problem(), config);
+    const PolygonSolverExecutionResult controlled = runPolygonProblem(problem(), config, control);
+    ASSERT_FALSE(progress.empty()) << toString(kind);
+    EXPECT_FALSE(controlled.cancelled);
+    EXPECT_EQ(controlled.solution.placements, reference.placements);
+    EXPECT_EQ(controlled.solution.objective.usedLength, reference.objective.usedLength);
+    EXPECT_EQ(controlled.solution.metrics.expandedStates, reference.metrics.expandedStates);
+  }
+}
+
+/// Проверяет cooperative cancellation до первой мутации и валидность возвращённого partial.
+TEST(PolygonSolver, CancelsAtSafeBoundary)
+{
+  SolverConfig config;
+  config.timeoutMs = 0;
+  PolygonExecutionControl control;
+  control.cancellationRequested = []()
+  {
+    return true;
+  };
+  const PolygonSolverExecutionResult result = runPolygonProblem(problem(), config, control);
+  EXPECT_TRUE(result.cancelled);
+  EXPECT_TRUE(result.solution.placements.empty());
+  EXPECT_TRUE(validatePolygonSolution(problem(), result.solution).success);
+}
+
 /// Проверяет ограничения размера листа и числа обязательных экземпляров.
 TEST(PolygonEnvironment, RejectsContractComplexityLimits)
 {

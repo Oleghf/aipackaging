@@ -6,6 +6,7 @@
 - [План разработки](roadmap.md) — этапы и критерии завершения.
 - [Качество и оценка](quality.md) — baseline-алгоритмы, данные, метрики и тесты.
 - [Обучение M3](m3-training.md) — WSL2, smoke, BC/PPO, export и evaluation.
+- [ADR-0007](decisions/0007-polygon-desktop-workspace.md) — полигональная desktop-вкладка, потоки и отмена.
 - [CPU smoke-эксперимент M3](experiments/m3-smoke-2026-09-10.md) — проверенный
   инженерный прогон до канонического CUDA-обучения.
 - [ADR-0001: гибридный решатель](decisions/0001-hybrid-neural-solver.md) — граница

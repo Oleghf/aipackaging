@@ -1,0 +1,183 @@
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <QColor>
+#include <QMouseEvent>
+#include <QPainter>
+#include <QPainterPath>
+#include <QWheelEvent>
+
+#include <polygoncanvaswidget.h>
+
+namespace
+{
+constexpr double VIEW_PADDING = 24.0;
+
+/// Создаёт замкнутый QPainterPath из presentation-кольца.
+void appendRing(QPainterPath & path, const std::vector<PolygonViewPoint> & ring)
+{
+  if (ring.empty())
+    return;
+  path.moveTo(ring.front().x, ring.front().y);
+  for (std::size_t index = 1; index < ring.size(); ++index)
+    path.lineTo(ring[index].x, ring[index].y);
+  path.closeSubpath();
+}
+
+/// Возвращает стабильный контрастный цвет по индексу типа детали.
+QColor partColor(std::size_t index)
+{
+  constexpr std::array<const char *, 10> COLORS = {"#5B8FF9", "#61DDAA", "#65789B", "#F6BD16", "#7262FD",
+                                                   "#78D3F8", "#9661BC", "#F6903D", "#008685", "#F08BB4"};
+  return QColor(COLORS[index % COLORS.size()]);
+}
+} // namespace
+
+/// Настраивает фон, минимальный размер и обработку мыши.
+PolygonCanvasWidget::PolygonCanvasWidget(QWidget * parent)
+  : QWidget(parent)
+{
+  setMinimumSize(560, 420);
+  setMouseTracking(true);
+  setCursor(Qt::OpenHandCursor);
+  setAttribute(Qt::WA_OpaquePaintEvent);
+}
+
+/// Копирует неизменяемую presentation-модель; геометрия solver-а не вычисляется в GUI.
+void PolygonCanvasWidget::setSnapshot(const PolygonWorkspaceSnapshot & snapshot)
+{
+  snapshot_ = snapshot;
+  update();
+}
+
+/// Возвращает камеру к детерминированному автоматическому вписыванию листа.
+void PolygonCanvasWidget::fitToView()
+{
+  zoom_ = 1.0;
+  pan_ = {};
+  update();
+}
+
+/// Применяет Y-up transform и рисует кольца с odd-even заполнением отверстий.
+void PolygonCanvasWidget::paintEvent(QPaintEvent * event)
+{
+  QWidget::paintEvent(event);
+  QPainter painter(this);
+  painter.setRenderHint(QPainter::Antialiasing);
+  painter.fillRect(rect(), QColor("#F7FAFC"));
+
+  const PolygonSceneView & scene = snapshot_.scene;
+  if (scene.sheetWidth <= 0.0 || scene.sheetHeight <= 0.0)
+  {
+    painter.setPen(QColor("#718096"));
+    painter.drawText(rect(), Qt::AlignCenter, tr("Откройте polygon_problem v1"));
+    return;
+  }
+
+  const double availableWidth = std::max(1.0, width() - 2.0 * VIEW_PADDING);
+  const double availableHeight = std::max(1.0, height() - 2.0 * VIEW_PADDING);
+  const double fitScale = std::min(availableWidth / scene.sheetWidth, availableHeight / scene.sheetHeight);
+  const double scale = fitScale * zoom_;
+
+  // Центрируем лист, инвертируем экранную Y и затем применяем пользовательский pan.
+  painter.translate(width() / 2.0 + pan_.x(), height() / 2.0 + pan_.y());
+  painter.scale(scale, -scale);
+  painter.translate(-scene.sheetWidth / 2.0, -scene.sheetHeight / 2.0);
+
+  QPen sheetPen(QColor("#334155"));
+  sheetPen.setCosmetic(true);
+  sheetPen.setWidthF(2.0);
+  painter.setPen(sheetPen);
+  painter.setBrush(Qt::white);
+  painter.drawRect(QRectF(0.0, 0.0, scene.sheetWidth, scene.sheetHeight));
+
+  if (snapshot_.state == PolygonWorkspaceState::Completed || snapshot_.state == PolygonWorkspaceState::Cancelled)
+  {
+    const double remnantX = scene.sheetMargin + scene.usedLength;
+    const double remnantRight = scene.sheetWidth - scene.sheetMargin;
+    if (remnantRight > remnantX)
+    {
+      painter.setPen(Qt::NoPen);
+      painter.setBrush(QColor(72, 187, 120, 44));
+      painter.drawRect(QRectF(remnantX, scene.sheetMargin, remnantRight - remnantX, scene.sheetHeight - 2.0 * scene.sheetMargin));
+    }
+  }
+
+  if (scene.sheetMargin > 0.0)
+  {
+    QPen marginPen(QColor("#94A3B8"));
+    marginPen.setCosmetic(true);
+    marginPen.setStyle(Qt::DashLine);
+    painter.setPen(marginPen);
+    painter.setBrush(Qt::NoBrush);
+    painter.drawRect(QRectF(scene.sheetMargin, scene.sheetMargin, scene.sheetWidth - 2.0 * scene.sheetMargin,
+                            scene.sheetHeight - 2.0 * scene.sheetMargin));
+  }
+
+  for (const PolygonPlacedPartView & part : scene.placements)
+  {
+    QPainterPath path;
+    path.setFillRule(Qt::OddEvenFill);
+    appendRing(path, part.outer);
+    for (const auto & hole : part.holes)
+      appendRing(path, hole);
+    QColor fill = partColor(part.colorIndex);
+    fill.setAlpha(185);
+    QPen outline(fill.darker(155));
+    outline.setCosmetic(true);
+    outline.setWidthF(1.5);
+    painter.setPen(outline);
+    painter.setBrush(fill);
+    painter.drawPath(path);
+  }
+}
+
+/// Запоминает начало drag только для левой кнопки read-only полотна.
+void PolygonCanvasWidget::mousePressEvent(QMouseEvent * event)
+{
+  if (event->button() == Qt::LeftButton)
+  {
+    panning_ = true;
+    lastMousePosition_ = event->position();
+    setCursor(Qt::ClosedHandCursor);
+    event->accept();
+    return;
+  }
+  QWidget::mousePressEvent(event);
+}
+
+/// Добавляет экранное смещение без изменения координат presentation-модели.
+void PolygonCanvasWidget::mouseMoveEvent(QMouseEvent * event)
+{
+  if (panning_)
+  {
+    pan_ += event->position() - lastMousePosition_;
+    lastMousePosition_ = event->position();
+    update();
+    event->accept();
+    return;
+  }
+  QWidget::mouseMoveEvent(event);
+}
+
+/// Завершает drag и восстанавливает курсор открытой ладони.
+void PolygonCanvasWidget::mouseReleaseEvent(QMouseEvent * event)
+{
+  if (event->button() == Qt::LeftButton && panning_)
+  {
+    panning_ = false;
+    setCursor(Qt::OpenHandCursor);
+    event->accept();
+    return;
+  }
+  QWidget::mouseReleaseEvent(event);
+}
+
+/// Умножает zoom на ограниченный экспоненциальный коэффициент wheel delta.
+void PolygonCanvasWidget::wheelEvent(QWheelEvent * event)
+{
+  const double factor = std::pow(1.0015, event->angleDelta().y());
+  zoom_ = std::clamp(zoom_ * factor, 0.2, 20.0);
+  update();
+  event->accept();
+}

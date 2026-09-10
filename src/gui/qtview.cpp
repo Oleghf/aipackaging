@@ -7,6 +7,7 @@
 #include <QPaintDevice>
 #include <QPainter>
 #include <QResizeEvent>
+#include <QTabWidget>
 #include <QWheelEvent>
 #include <QWidget>
 
@@ -17,6 +18,7 @@
 #include <openscenefileevent.h>
 #include <packagingwidget.h>
 #include <painter.h>
+#include <polygonworkspacewidget.h>
 #include <qtadapters.h>
 #include <qtview.h>
 #include <redoevent.h>
@@ -44,6 +46,8 @@ constexpr int TOAST_DURATION_MS = 3000;
 QtView::QtView()
   : QMainWindow(nullptr)
   , packaging_(new PackagingWidget(this))
+  , polygonWorkspace_(new PolygonWorkspaceWidget(this))
+  , workspaceTabs_(new QTabWidget(this))
   , zoomFactor_(1)
 {
   QMenu * file = menuBar()->addMenu(tr("Файл"));
@@ -65,7 +69,10 @@ QtView::QtView()
   undo_->setShortcut(QKeySequence::Undo);
   redo_->setShortcut(QKeySequence::Redo);
 
-  setCentralWidget(packaging_);
+  workspaceTabs_->setObjectName("workspaceTabs");
+  workspaceTabs_->addTab(packaging_, tr("Клеточный прототип"));
+  workspaceTabs_->addTab(polygonWorkspace_, tr("Полигональный раскрой"));
+  setCentralWidget(workspaceTabs_);
 
   connect(packaging_->mainScene(), &SceneWidget::sceneQPainterCreated, this, &QtView::sendMainSceneQPainter);
   connect(packaging_->generateScene(), &SceneWidget::sceneQPainterCreated, this, &QtView::sendGenerateSceneQPainter);
@@ -85,6 +92,37 @@ QtView::QtView()
   connect(undo_, &QAction::triggered, this, &QtView::generateUndoEvent);
   connect(redo_, &QAction::triggered, this, &QtView::generateRedoEvent);
   connect(changeMode_, &QAction::triggered, this, &QtView::generateChangeStateEvent);
+  connect(polygonWorkspace_, &PolygonWorkspaceWidget::requestOpenProblem, this,
+          [this]()
+          {
+            if (!polygonActions_.openProblem)
+              return;
+            const std::string path = openLoadFileDialog("Откройте полигональную задачу", "", "JSON (*.json);;All Files (*)");
+            if (!path.empty())
+              polygonActions_.openProblem(path);
+          });
+  connect(polygonWorkspace_, &PolygonWorkspaceWidget::requestSaveSolution, this,
+          [this]()
+          {
+            if (!polygonActions_.saveSolution)
+              return;
+            const std::string path =
+              openSaveFileDialog("Сохраните полигональное решение", "polygon-solution.json", "JSON (*.json);;All Files (*)");
+            if (!path.empty())
+              polygonActions_.saveSolution(path);
+          });
+  connect(polygonWorkspace_, &PolygonWorkspaceWidget::requestStart, this,
+          [this]()
+          {
+            if (polygonActions_.start)
+              polygonActions_.start(polygonWorkspace_->solverConfig());
+          });
+  connect(polygonWorkspace_, &PolygonWorkspaceWidget::requestCancel, this,
+          [this]()
+          {
+            if (polygonActions_.cancel)
+              polygonActions_.cancel();
+          });
 }
 
 
@@ -272,6 +310,27 @@ void QtView::statisticChangeCountAllCells(unsigned int allCells)
 void QtView::statisticChangeCountOccupiedCells(unsigned int occupiedCells)
 {
   packaging_->changeCountOccupiedCells(occupiedCells);
+}
+
+
+/// Сохраняет application callbacks; Qt-слоты вызывают их только после проверки наличия.
+void QtView::setPolygonWorkspaceActions(PolygonWorkspaceActions actions)
+{
+  polygonActions_ = std::move(actions);
+}
+
+
+/// Делегирует единый snapshot полигональному виджету главного окна.
+void QtView::presentPolygonWorkspace(const PolygonWorkspaceSnapshot & snapshot)
+{
+  polygonWorkspace_->present(snapshot);
+}
+
+
+/// Использует queued invoke, чтобы worker никогда не менял QWidget напрямую.
+void QtView::postToPolygonUi(std::function<void()> callback)
+{
+  QMetaObject::invokeMethod(this, std::move(callback), Qt::QueuedConnection);
 }
 
 

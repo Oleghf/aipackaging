@@ -6,10 +6,13 @@
 #include <vector>
 
 #include <iview.h>
+#include <polygonworkspaceview.h>
 
 
 struct Point2D;
 class PackagingWidget;
+class PolygonWorkspaceWidget;
+class QTabWidget;
 class Event;
 class QResizeEvent;
 class ToastNotification;
@@ -21,7 +24,8 @@ class ToastNotification;
 */
 ////////////////////////////////////////////////////////////////////////////////
 class QtView : public QMainWindow,
-               public IView
+               public IView,
+               public IPolygonWorkspaceView
 {
   Q_OBJECT
 public:
@@ -49,6 +53,13 @@ public:
 
   void statisticChangeCountAllCells(unsigned int allCells) override;
   void statisticChangeCountOccupiedCells(unsigned int occupiedCells) override;
+
+  /// Устанавливает обработчики действий полигональной вкладки.
+  void setPolygonWorkspaceActions(PolygonWorkspaceActions actions) override;
+  /// Передаёт presentation-снимок полигональному виджету.
+  void presentPolygonWorkspace(const PolygonWorkspaceSnapshot & snapshot) override;
+  /// Ставит callback в очередь главного Qt-потока.
+  void postToPolygonUi(std::function<void()> callback) override;
 
 private slots:
   // Получает объект рисования с основной сцены
@@ -81,6 +92,9 @@ private:
   std::vector<std::shared_ptr<EventListener>> listeners_;
 
   PackagingWidget * packaging_;
+  PolygonWorkspaceWidget * polygonWorkspace_;
+  QTabWidget * workspaceTabs_;
+  PolygonWorkspaceActions polygonActions_;
 
   // Действия в редакторе
   QAction * open_;

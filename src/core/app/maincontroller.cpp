@@ -16,6 +16,7 @@
 #include <maincontroller.h>
 #include <openscenefileevent.h>
 #include <packingcontroller.h>
+#include <polygonworkspacecontroller.h>
 #include <primitiveview.h>
 #include <scenepaintevent.h>
 #include <scenewheelevent.h>
@@ -37,10 +38,17 @@ MainController::MainController(std::shared_ptr<IView> view)
   fileDialogView_ = std::shared_ptr<IFileDialogView>(view, static_cast<IFileDialogView *>(view.get()));
   redrawView_ = std::shared_ptr<IRedrawView>(view, static_cast<IRedrawView *>(view.get()));
   statisticsView_ = std::shared_ptr<IStatisticsView>(view, static_cast<IStatisticsView *>(view.get()));
+  if (auto * polygonView = dynamic_cast<IPolygonWorkspaceView *>(view.get()))
+    polygonWorkspaceView_ = std::shared_ptr<IPolygonWorkspaceView>(view, polygonView);
 
   drawController_ = std::make_shared<DrawController>(redrawView_, selection_, mainBoard_, genBoard_);
   packingController_ = std::make_shared<PackingController>(statisticsView_, selection_, mainBoard_, genBoard_);
   stateSession_ = ApplicationStateService::create(packingController_);
+  if (polygonWorkspaceView_)
+  {
+    polygonWorkspaceController_ = std::make_shared<PolygonWorkspaceController>(polygonWorkspaceView_);
+    polygonWorkspaceController_->bindActions();
+  }
 
   statisticsView_->statisticChangeCountAllCells(mainBoard_->countColumns() * mainBoard_->countRows());
   statisticsView_->statisticChangeCountOccupiedCells(0);

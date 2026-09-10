@@ -35,13 +35,30 @@ struct PolygonSearchContext
 {
   const PolygonEnvironment & environment;
   const SolverConfig & config;
+  const PolygonExecutionControl & control;
   Clock::time_point started = Clock::now();
   Clock::duration generation{};
   Clock::duration validation{};
   SolverMetrics metrics;
+  bool cancellationObserved = false;
 
   /// Проверяет аварийный timeout, не влияющий на детерминированный quality budget.
   bool timedOut() const { return config.timeoutMs > 0 && Clock::now() - started >= std::chrono::milliseconds(config.timeoutMs); }
+
+  /// Опрашивает внешний источник отмены только на безопасных границах поиска.
+  bool cancelled()
+  {
+    if (control.cancellationRequested && control.cancellationRequested())
+      cancellationObserved = true;
+    return cancellationObserved;
+  }
+
+  /// Передаёт вызывающему коду компактный снимок прогресса.
+  void report(PolygonProgressStage stage, std::uint64_t completed, std::uint64_t total, const PolygonState & best) const
+  {
+    if (control.progress)
+      control.progress({stage, completed, total, best.placements.size(), environment.instances().size(), metrics.expandedStates});
+  }
 
   /// Получает динамические кандидаты и учитывает стоимость генерации.
   std::vector<PolygonAction> candidates(const PolygonState & state, std::size_t instance)
@@ -132,15 +149,18 @@ std::vector<std::size_t> orderedInstances(const PolygonEnvironment & environment
 }
 
 /// Последовательно выбирает первый уже отсортированный допустимый NFP-кандидат.
-PolygonState runOrder(PolygonSearchContext & context, const std::vector<std::size_t> & order)
+PolygonState runOrder(PolygonSearchContext & context, const std::vector<std::size_t> & order, bool reportInstances = true)
 {
   PolygonState state = context.environment.initialState();
-  for (std::size_t instance : order)
+  for (std::size_t orderIndex = 0; orderIndex < order.size(); ++orderIndex)
   {
-    if (context.timedOut())
+    if (context.timedOut() || context.cancelled())
       break;
+    const std::size_t instance = order[orderIndex];
     for (const PolygonAction & action : context.candidates(state, instance))
     {
+      if (context.cancelled())
+        break;
       if (context.valid(state, action))
       {
         context.environment.apply(state, action);
@@ -148,6 +168,8 @@ PolygonState runOrder(PolygonSearchContext & context, const std::vector<std::siz
         break;
       }
     }
+    if (reportInstances)
+      context.report(PolygonProgressStage::Instances, orderIndex + 1, order.size(), state);
   }
   return state;
 }
@@ -160,15 +182,18 @@ PolygonState runRandom(PolygonSearchContext & context, SolveStatus & status)
   std::mt19937_64 random(context.config.seed);
   for (std::size_t iteration = 0; iteration < context.config.randomIterations; ++iteration)
   {
+    if (context.cancelled())
+      return best;
     if (context.timedOut())
     {
       status = SolveStatus::TimedOut;
       return best;
     }
     std::shuffle(order.begin(), order.end(), random);
-    PolygonState candidate = runOrder(context, order);
+    PolygonState candidate = runOrder(context, order, false);
     if (betterState(context.environment, candidate, best))
       best = std::move(candidate);
+    context.report(PolygonProgressStage::RandomIterations, iteration + 1, context.config.randomIterations, best);
   }
   status = best.placements.size() == context.environment.instances().size() ? SolveStatus::Solved : SolveStatus::BudgetExhausted;
   return best;
@@ -181,6 +206,8 @@ PolygonState runBeam(PolygonSearchContext & context, SolveStatus & status)
   std::vector<PolygonState> beam{best};
   while (!beam.empty() && best.placements.size() < context.environment.instances().size())
   {
+    if (context.cancelled())
+      return best;
     std::vector<PolygonState> children;
     bool budget = false;
     for (const PolygonState & state : beam)
@@ -198,6 +225,8 @@ PolygonState runBeam(PolygonSearchContext & context, SolveStatus & status)
           continue;
         for (const PolygonAction & action : context.candidates(state, instance))
         {
+          if (context.cancelled())
+            return best;
           if (context.timedOut())
           {
             status = SolveStatus::TimedOut;
@@ -216,6 +245,8 @@ PolygonState runBeam(PolygonSearchContext & context, SolveStatus & status)
           if (betterState(context.environment, child, best))
             best = child;
           children.push_back(std::move(child));
+          context.report(PolygonProgressStage::ExpandedStates, context.metrics.expandedStates, context.config.maxExpandedStates,
+                         best);
         }
         if (budget)
           break;
@@ -275,7 +306,8 @@ bool isBetterPolygonSolution(const PolygonSolution & candidate, const PolygonSol
 }
 
 /// Валидирует задачу, запускает алгоритм и независимо проверяет собранный результат.
-PolygonSolution solvePolygonProblem(const PolygonProblem & problem, const SolverConfig & config)
+PolygonSolverExecutionResult runPolygonProblem(const PolygonProblem & problem, const SolverConfig & config,
+                                               const PolygonExecutionControl & control)
 {
   PolygonSolution solution;
   solution.problemId = problem.problemId;
@@ -286,9 +318,9 @@ PolygonSolution solvePolygonProblem(const PolygonProblem & problem, const Solver
   {
     solution.status = SolveStatus::InvalidProblem;
     solution.errorMessage = error;
-    return solution;
+    return {std::move(solution), false};
   }
-  PolygonSearchContext context{*environment, config};
+  PolygonSearchContext context{*environment, config, control};
   SolveStatus status = SolveStatus::NoSolutionFound;
   PolygonState state = environment->initialState();
   try
@@ -334,6 +366,12 @@ PolygonSolution solvePolygonProblem(const PolygonProblem & problem, const Solver
     solution.status = SolveStatus::InvalidProblem;
     solution.errorMessage = "internal polygon solution validation failed: " + validation.error;
   }
-  return solution;
+  return {std::move(solution), context.cancellationObserved};
+}
+
+/// Делегирует обычный синхронный запуск управляемому API без внешнего control.
+PolygonSolution solvePolygonProblem(const PolygonProblem & problem, const SolverConfig & config)
+{
+  return runPolygonProblem(problem, config).solution;
 }
 } // namespace aipackaging::solver

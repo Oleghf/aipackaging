@@ -13,6 +13,7 @@ add_executable(AIPackaging_Tests
 "core/app/testpackingscenesaver.cpp"
 "core/app/testdrawcontroller.cpp"
 "core/app/testfigurescenegeometry.cpp"
+"core/app/testpolygonworkspacecontroller.cpp"
 "solver/testgridenvironment.cpp"
 "solver/testgridlearning.cpp"
 "solver/testgridsolver.cpp"
@@ -49,7 +50,7 @@ AIPackaging_Solver
 )
 
 if (BUILD_DESKTOP)
-  target_sources(AIPackaging_Tests PRIVATE "gui/testqtadapters.cpp")
+  target_sources(AIPackaging_Tests PRIVATE "gui/testqtadapters.cpp" "gui/testpolygonworkspacewidget.cpp")
   target_include_directories(AIPackaging_Tests PUBLIC "${CMAKE_SOURCE_DIR}/src/gui")
   target_link_libraries(AIPackaging_Tests PUBLIC AIPackaging_GUI)
 endif()
@@ -93,21 +94,31 @@ if (BUILD_SOLVER_CLI)
       -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/assert_cli_exit.cmake"
   )
 
-  add_test(
-    NAME PolygonCli_Solve
-    COMMAND $<TARGET_FILE:AIPackaging_Cli> solve
-      --input "${CMAKE_SOURCE_DIR}/examples/polygon/problem-small.json"
-      --output "$<TARGET_FILE_DIR:AIPackaging_Cli>/polygon-solution.json"
-      --solver area-left-bottom
-      --timeout-ms 0
-  )
-  add_test(
-    NAME PolygonCli_Validate
-    COMMAND $<TARGET_FILE:AIPackaging_Cli> validate
-      --problem "${CMAKE_SOURCE_DIR}/examples/polygon/problem-small.json"
-      --solution "$<TARGET_FILE_DIR:AIPackaging_Cli>/polygon-solution.json"
-  )
-  set_tests_properties(PolygonCli_Validate PROPERTIES DEPENDS PolygonCli_Solve)
+  foreach(polygon_case IN ITEMS small concave curves-and-hole)
+    foreach(solver_name IN ITEMS input-first-fit area-left-bottom max-side-left-bottom random-left-bottom beam)
+      set(solve_test "PolygonCli_Solve_${polygon_case}_${solver_name}")
+      set(validate_test "PolygonCli_Validate_${polygon_case}_${solver_name}")
+      set(solution_file "$<TARGET_FILE_DIR:AIPackaging_Cli>/polygon-${polygon_case}-${solver_name}.json")
+      add_test(
+        NAME "${solve_test}"
+        COMMAND $<TARGET_FILE:AIPackaging_Cli> solve
+          --input "${CMAKE_SOURCE_DIR}/examples/polygon/problem-${polygon_case}.json"
+          --output "${solution_file}"
+          --solver "${solver_name}"
+          --random-iterations 8
+          --beam-width 8
+          --max-expanded-states 5000
+          --timeout-ms 0
+      )
+      add_test(
+        NAME "${validate_test}"
+        COMMAND $<TARGET_FILE:AIPackaging_Cli> validate
+          --problem "${CMAKE_SOURCE_DIR}/examples/polygon/problem-${polygon_case}.json"
+          --solution "${solution_file}"
+      )
+      set_tests_properties("${validate_test}" PROPERTIES DEPENDS "${solve_test}")
+    endforeach()
+  endforeach()
 endif()
 
 copy_target_dll(AIPackaging_Tests AIPackaging_Math)
