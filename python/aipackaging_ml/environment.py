@@ -22,6 +22,7 @@ class GridNestingEnv:
         """Сохраняет уже проверенный нативный эпизод; используйте фабрики ``from_*``."""
 
         self._native = native_environment
+        self._static_observation = native_environment.static_observation()
 
     @classmethod
     def from_file(
@@ -53,15 +54,48 @@ class GridNestingEnv:
             "rankUpperBound": self.rank_upper_bound,
         }
 
+    def reset_compact(self, seed: int | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Сбрасывает эпизод без повторного копирования постоянного каталога действий."""
+
+        observation = self._native.reset_compact()
+        return observation, {
+            "seed": seed,
+            "problemId": self.problem_id,
+            "rank": self.rank,
+            "rankUpperBound": self.rank_upper_bound,
+        }
+
     def step(self, action_index: int) -> tuple[dict[str, Any], float, bool, bool, dict[str, Any]]:
         """Применяет допустимый индекс и возвращает gym-like результат перехода."""
 
         return self._native.step(action_index)
 
+    def step_compact(self, action_index: int) -> tuple[dict[str, Any], float, bool, bool, dict[str, Any]]:
+        """Применяет индекс и возвращает только динамические массивы observation v1."""
+
+        return self._native.step_compact(action_index)
+
     def observation(self) -> dict[str, Any]:
         """Возвращает независимый read-only снимок текущего observation v1."""
 
         return self._native.observation()
+
+    def static_observation(self) -> dict[str, Any]:
+        """Возвращает кэшированную неизменную часть observation текущей задачи."""
+
+        return dict(self._static_observation)
+
+    def dynamic_observation(self) -> dict[str, Any]:
+        """Возвращает независимый снимок изменяемой части observation текущего состояния."""
+
+        return self._native.dynamic_observation()
+
+    def snapshot_solution(
+        self, provenance: Mapping[str, Any], *, incomplete_status: str = "budget_exhausted"
+    ) -> dict[str, Any]:
+        """Формирует grid_solution v2 из уже применённых действий и заданного provenance."""
+
+        return json.loads(self._native.snapshot_solution(dict(provenance), incomplete_status))
 
     def action(self, index: int) -> dict[str, Any]:
         """Возвращает аудируемое размещение по стабильному индексу каталога."""

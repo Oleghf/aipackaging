@@ -71,3 +71,10 @@ Model evaluation проверяет совместимость схем, seeded 
 action mask, fallback и точную post-validation. Каждый отчёт эксперимента
 содержит revision кода, версии данных и среды, конфигурацию, seed, оборудование,
 время обучения, бюджет оценки и per-instance результаты.
+
+Для M3 checkpoint выбирается только по validation. После этого test split из 64
+small и 64 medium задач оценивается один раз. Публикуются пять замороженных M1
+baseline, neural greedy, neural best-of-16 и hybrid. Research gate требует 128
+полных валидных hybrid-решений, отсутствие проигрышей `random-left-bottom/64`,
+не менее шести строгих лексикографических выигрышей и хотя бы одно уменьшение
+`usedLength`. Wall-clock публикуется диагностически и не заменяет quality gate.

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <fstream>
 #include <initializer_list>
@@ -28,6 +29,13 @@ bool onlyKeys(const Json & value, std::initializer_list<std::string_view> keys)
       return false;
   }
   return true;
+}
+
+/// Проверяет каноническую 64-символьную hex-запись SHA-256 из provenance модели.
+bool validSha256(const std::string & value)
+{
+  return value.size() == 64 &&
+         std::all_of(value.begin(), value.end(), [](unsigned char character) { return std::isxdigit(character) != 0; });
 }
 
 /// Читает обязательное строковое поле без неявных преобразований типов.
@@ -142,39 +150,64 @@ Json solutionJson(const GridSolution & solution)
   const ObjectiveComponents & objective = solution.objective;
   const SolverMetrics & metrics = solution.metrics;
   const SolverMetadata & solver = solution.solver;
-  return {{"format", "aipackaging.grid_solution"},
-          {"version", 1},
-          {"problemId", solution.problemId},
-          {"status", toString(solution.status)},
-          {"placements", std::move(placements)},
-          {"objective",
-           {{"usedLength", objective.usedLength},
-            {"primaryRemnantWidth", objective.primaryRemnantWidth},
-            {"largestExtraRectangleArea", objective.largestExtraRectangleArea},
-            {"fragmentationPenalty", objective.fragmentationPenalty},
-            {"placedParts", objective.placedParts},
-            {"totalParts", objective.totalParts},
-            {"placedCells", objective.placedCells},
-            {"totalPartCells", objective.totalPartCells},
-            {"materialUtilization", objective.materialUtilization}}},
-          {"metrics",
-           {{"candidatesGenerated", metrics.candidatesGenerated},
-            {"candidatesValidated", metrics.candidatesValidated},
-            {"expandedStates", metrics.expandedStates},
-            {"candidateGenerationTimeUs", metrics.candidateGenerationTimeUs},
-            {"validationTimeUs", metrics.validationTimeUs},
-            {"searchTimeUs", metrics.searchTimeUs},
-            {"totalTimeUs", metrics.totalTimeUs}}},
-          {"solver",
-           {{"name", solver.name},
-            {"projectVersion", solver.projectVersion},
-            {"revision", solver.revision},
-            {"seed", solver.seed},
-            {"randomIterations", solver.randomIterations},
-            {"beamWidth", solver.beamWidth},
-            {"maxExpandedStates", solver.maxExpandedStates},
-            {"timeoutMs", solver.timeoutMs}}},
-          {"errorMessage", solution.errorMessage}};
+  Json root = {{"format", "aipackaging.grid_solution"},
+               {"version", solution.wireVersion},
+               {"problemId", solution.problemId},
+               {"status", toString(solution.status)},
+               {"placements", std::move(placements)},
+               {"objective",
+                {{"usedLength", objective.usedLength},
+                 {"primaryRemnantWidth", objective.primaryRemnantWidth},
+                 {"largestExtraRectangleArea", objective.largestExtraRectangleArea},
+                 {"fragmentationPenalty", objective.fragmentationPenalty},
+                 {"placedParts", objective.placedParts},
+                 {"totalParts", objective.totalParts},
+                 {"placedCells", objective.placedCells},
+                 {"totalPartCells", objective.totalPartCells},
+                 {"materialUtilization", objective.materialUtilization}}},
+               {"metrics",
+                {{"candidatesGenerated", metrics.candidatesGenerated},
+                 {"candidatesValidated", metrics.candidatesValidated},
+                 {"expandedStates", metrics.expandedStates},
+                 {"candidateGenerationTimeUs", metrics.candidateGenerationTimeUs},
+                 {"validationTimeUs", metrics.validationTimeUs},
+                 {"searchTimeUs", metrics.searchTimeUs},
+                 {"totalTimeUs", metrics.totalTimeUs}}},
+               {"errorMessage", solution.errorMessage}};
+
+  if (solution.wireVersion == 1)
+  {
+    root["solver"] = {{"name", solver.name},
+                      {"projectVersion", solver.projectVersion},
+                      {"revision", solver.revision},
+                      {"seed", solver.seed},
+                      {"randomIterations", solver.randomIterations},
+                      {"beamWidth", solver.beamWidth},
+                      {"maxExpandedStates", solver.maxExpandedStates},
+                      {"timeoutMs", solver.timeoutMs}};
+    return root;
+  }
+
+  Json baseline = nullptr;
+  if (solver.family != SolverFamily::Neural)
+  {
+    baseline = {{"randomIterations", solver.randomIterations},
+                {"beamWidth", solver.beamWidth},
+                {"maxExpandedStates", solver.maxExpandedStates},
+                {"timeoutMs", solver.timeoutMs}};
+  }
+  Json policy = nullptr;
+  if (solver.family != SolverFamily::Baseline)
+  {
+    policy = {{"modelId", solver.modelId},
+              {"modelSha256", solver.modelSha256},
+              {"rollouts", solver.rollouts},
+              {"selectionMode", solver.selectionMode}};
+  }
+  root["solver"] = {{"family", toString(solver.family)}, {"name", solver.name}, {"projectVersion", solver.projectVersion},
+                    {"revision", solver.revision},       {"seed", solver.seed}, {"baseline", std::move(baseline)},
+                    {"policy", std::move(policy)}};
+  return root;
 }
 } // namespace
 
@@ -281,7 +314,7 @@ std::string saveGridProblemToText(const GridProblem & problem)
   return problemJson(problem).dump(2) + '\n';
 }
 
-/// Разбирает grid_solution v1 и проверяет его структуру без знания исходной задачи.
+/// Разбирает grid_solution v1/v2 и проверяет его структуру без знания исходной задачи.
 GridSolutionLoadResult loadGridSolutionFromText(const std::string & text)
 {
   Json root;
@@ -304,11 +337,13 @@ GridSolutionLoadResult loadGridSolutionFromText(const std::string & text)
   std::string status;
   int version = 0;
   if (!readString(root, "format", format) || format != "aipackaging.grid_solution" || !readInt(root, "version", version) ||
-      version != 1 || !readString(root, "problemId", solution.problemId) || !readString(root, "status", status) ||
-      !parseSolveStatus(status, solution.status) || !readString(root, "errorMessage", solution.errorMessage))
+      (version != 1 && version != 2) || !readString(root, "problemId", solution.problemId) ||
+      !readString(root, "status", status) || !parseSolveStatus(status, solution.status) ||
+      !readString(root, "errorMessage", solution.errorMessage))
   {
     return solutionFailure("unsupported grid solution format, version, or status");
   }
+  solution.wireVersion = version;
 
   if (!root.contains("placements") || !root.at("placements").is_array())
     return solutionFailure("placements must be an array");
@@ -374,29 +409,77 @@ GridSolutionLoadResult loadGridSolutionFromText(const std::string & text)
     return solutionFailure("invalid metrics values");
   }
 
-  if (!root.contains("solver") || !onlyKeys(root.at("solver"), {"name", "projectVersion", "revision", "seed", "randomIterations",
-                                                                "beamWidth", "maxExpandedStates", "timeoutMs"}))
-  {
+  if (!root.contains("solver"))
     return solutionFailure("invalid solver fields");
-  }
   Json solver = root.at("solver");
-  std::size_t randomIterations = 0;
-  std::size_t beamWidth = 0;
-  std::size_t maxExpandedStates = 0;
-  if (!readString(solver, "name", solution.solver.name) ||
-      !readString(solver, "projectVersion", solution.solver.projectVersion) ||
-      !readString(solver, "revision", solution.solver.revision) || !readUint64(solver, "seed", solution.solver.seed) ||
-      !readSize(solver, "randomIterations", randomIterations) || !readSize(solver, "beamWidth", beamWidth) ||
-      !readSize(solver, "maxExpandedStates", maxExpandedStates) || !readUint64(solver, "timeoutMs", solution.solver.timeoutMs))
+
+  if (version == 1)
   {
-    return solutionFailure("invalid solver values");
+    if (!onlyKeys(solver, {"name", "projectVersion", "revision", "seed", "randomIterations", "beamWidth", "maxExpandedStates",
+                           "timeoutMs"}))
+      return solutionFailure("invalid solver fields");
+    std::size_t randomIterations = 0;
+    std::size_t beamWidth = 0;
+    std::size_t maxExpandedStates = 0;
+    if (!readString(solver, "name", solution.solver.name) ||
+        !readString(solver, "projectVersion", solution.solver.projectVersion) ||
+        !readString(solver, "revision", solution.solver.revision) || !readUint64(solver, "seed", solution.solver.seed) ||
+        !readSize(solver, "randomIterations", randomIterations) || !readSize(solver, "beamWidth", beamWidth) ||
+        !readSize(solver, "maxExpandedStates", maxExpandedStates) || !readUint64(solver, "timeoutMs", solution.solver.timeoutMs))
+      return solutionFailure("invalid solver values");
+    SolverKind solverKind;
+    if (!parseSolverKind(solution.solver.name, solverKind))
+      return solutionFailure("unknown solver name");
+    solution.solver.family = SolverFamily::Baseline;
+    solution.solver.randomIterations = randomIterations;
+    solution.solver.beamWidth = beamWidth;
+    solution.solver.maxExpandedStates = maxExpandedStates;
+    return {true, std::move(solution), {}};
   }
-  SolverKind solverKind;
-  if (!parseSolverKind(solution.solver.name, solverKind))
-    return solutionFailure("unknown solver name");
-  solution.solver.randomIterations = randomIterations;
-  solution.solver.beamWidth = beamWidth;
-  solution.solver.maxExpandedStates = maxExpandedStates;
+
+  if (!onlyKeys(solver, {"family", "name", "projectVersion", "revision", "seed", "baseline", "policy"}))
+    return solutionFailure("invalid solution v2 solver fields");
+  std::string family;
+  if (!readString(solver, "family", family) || !parseSolverFamily(family, solution.solver.family) ||
+      !readString(solver, "name", solution.solver.name) || solution.solver.name.empty() ||
+      !readString(solver, "projectVersion", solution.solver.projectVersion) ||
+      !readString(solver, "revision", solution.solver.revision) || !readUint64(solver, "seed", solution.solver.seed))
+    return solutionFailure("invalid solution v2 solver values");
+
+  const bool requiresBaseline = solution.solver.family != SolverFamily::Neural;
+  const bool requiresPolicy = solution.solver.family != SolverFamily::Baseline;
+  if (!solver.contains("baseline") || (requiresBaseline != solver.at("baseline").is_object()) ||
+      (!requiresBaseline && !solver.at("baseline").is_null()))
+    return solutionFailure("solution v2 baseline provenance mismatch");
+  if (!solver.contains("policy") || (requiresPolicy != solver.at("policy").is_object()) ||
+      (!requiresPolicy && !solver.at("policy").is_null()))
+    return solutionFailure("solution v2 policy provenance mismatch");
+
+  if (requiresBaseline)
+  {
+    const Json & baseline = solver.at("baseline");
+    if (!onlyKeys(baseline, {"randomIterations", "beamWidth", "maxExpandedStates", "timeoutMs"}) ||
+        !readSize(baseline, "randomIterations", solution.solver.randomIterations) ||
+        !readSize(baseline, "beamWidth", solution.solver.beamWidth) ||
+        !readSize(baseline, "maxExpandedStates", solution.solver.maxExpandedStates) ||
+        !readUint64(baseline, "timeoutMs", solution.solver.timeoutMs))
+      return solutionFailure("invalid solution v2 baseline provenance");
+  }
+  if (requiresPolicy)
+  {
+    const Json & policy = solver.at("policy");
+    if (!onlyKeys(policy, {"modelId", "modelSha256", "rollouts", "selectionMode"}) ||
+        !readString(policy, "modelId", solution.solver.modelId) || solution.solver.modelId.empty() ||
+        !readString(policy, "modelSha256", solution.solver.modelSha256) || !validSha256(solution.solver.modelSha256) ||
+        !readSize(policy, "rollouts", solution.solver.rollouts) || solution.solver.rollouts == 0 ||
+        !readString(policy, "selectionMode", solution.solver.selectionMode) ||
+        (solution.solver.selectionMode != "greedy" && solution.solver.selectionMode != "sampled-best-of" &&
+         solution.solver.selectionMode != "hybrid-best-of"))
+      return solutionFailure("invalid solution v2 policy provenance");
+    const bool hybridSelection = solution.solver.selectionMode == "hybrid-best-of";
+    if ((solution.solver.family == SolverFamily::Hybrid) != hybridSelection)
+      return solutionFailure("solution v2 family and policy selection mode mismatch");
+  }
   return {true, std::move(solution), {}};
 }
 

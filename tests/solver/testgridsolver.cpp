@@ -157,3 +157,18 @@ TEST(GridSolver, EmergencyTimeoutReturnsTimedOutStatus)
   const GridSolution solution = solveGridProblem(problem, config);
   EXPECT_EQ(solution.status, SolveStatus::TimedOut);
 }
+
+TEST(GridSolver, PublicComparatorUsesTheSameLexicographicObjective)
+{
+  GridSolution reference;
+  reference.status = SolveStatus::Solved;
+  reference.objective = {.usedLength = 4, .largestExtraRectangleArea = 3, .fragmentationPenalty = 2};
+  GridSolution better = reference;
+  better.objective.usedLength = 3;
+  EXPECT_TRUE(isBetterGridSolution(better, reference));
+  EXPECT_FALSE(isBetterGridSolution(reference, better));
+
+  better = reference;
+  better.objective.largestExtraRectangleArea = 4;
+  EXPECT_TRUE(isBetterGridSolution(better, reference));
+}

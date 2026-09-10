@@ -101,6 +101,14 @@ enum class SolverKind : std::uint8_t
   Beam
 };
 
+/// Определяет происхождение решения без привязки к конкретному алгоритму.
+enum class SolverFamily : std::uint8_t
+{
+  Baseline,
+  Neural,
+  Hybrid
+};
+
 /// Воспроизводимые настройки выбранного решателя и его ограничений.
 struct SolverConfig
 {
@@ -127,6 +135,7 @@ struct SolverMetrics
 /// Настройки и версия кода, которыми было получено решение.
 struct SolverMetadata
 {
+  SolverFamily family = SolverFamily::Baseline;
   std::string name;
   std::string projectVersion;
   std::string revision;
@@ -135,11 +144,16 @@ struct SolverMetadata
   std::size_t beamWidth = 32;
   std::size_t maxExpandedStates = 50000;
   std::uint64_t timeoutMs = 30000;
+  std::string modelId;
+  std::string modelSha256;
+  std::size_t rollouts = 0;
+  std::string selectionMode;
 };
 
 /// Сериализуемый результат решения, включая допустимый partial.
 struct GridSolution
 {
+  int wireVersion = 1;
   std::string problemId;
   SolveStatus status = SolveStatus::InvalidProblem;
   std::vector<GridPlacement> placements;
@@ -163,10 +177,14 @@ struct ValidationResult
 std::string toString(SolveStatus status);
 /// Возвращает стабильное строковое имя алгоритма для JSON и CLI.
 std::string toString(SolverKind solver);
+/// Возвращает стабильное строковое имя семейства решателя для solution v2.
+std::string toString(SolverFamily family);
 /// Преобразует публичное строковое имя в статус решения.
 bool parseSolveStatus(const std::string & value, SolveStatus & status);
 /// Преобразует публичное строковое имя в вид решателя.
 bool parseSolverKind(const std::string & value, SolverKind & solver);
+/// Преобразует публичное строковое имя в семейство решателя.
+bool parseSolverFamily(const std::string & value, SolverFamily & family);
 } // namespace aipackaging::solver
 
 #endif

@@ -320,10 +320,17 @@ GridState runBeam(SearchContext & context, SolveStatus & status)
 /// Формирует сериализуемые сведения об алгоритме, бюджете и ревизии сборки.
 SolverMetadata metadata(const SolverConfig & config)
 {
-  return {toString(config.solver),    AIPACKAGING_PROJECT_VERSION,
-          AIPACKAGING_BUILD_REVISION, config.seed,
-          config.randomIterations,    config.beamWidth,
-          config.maxExpandedStates,   config.timeoutMs};
+  SolverMetadata result;
+  result.family = SolverFamily::Baseline;
+  result.name = toString(config.solver);
+  result.projectVersion = AIPACKAGING_PROJECT_VERSION;
+  result.revision = AIPACKAGING_BUILD_REVISION;
+  result.seed = config.seed;
+  result.randomIterations = config.randomIterations;
+  result.beamWidth = config.beamWidth;
+  result.maxExpandedStates = config.maxExpandedStates;
+  result.timeoutMs = config.timeoutMs;
+  return result;
 }
 } // namespace
 
@@ -365,6 +372,21 @@ std::string toString(SolverKind solver)
   return "area-left-bottom";
 }
 
+/// Преобразует семейство provenance в закреплённое schema v2 имя.
+std::string toString(SolverFamily family)
+{
+  switch (family)
+  {
+    case SolverFamily::Baseline:
+      return "baseline";
+    case SolverFamily::Neural:
+      return "neural";
+    case SolverFamily::Hybrid:
+      return "hybrid";
+  }
+  return "baseline";
+}
+
 /// Ищет статус по всем допустимым строковым значениям schema v1.
 bool parseSolveStatus(const std::string & value, SolveStatus & status)
 {
@@ -395,6 +417,42 @@ bool parseSolverKind(const std::string & value, SolverKind & solver)
     }
   }
   return false;
+}
+
+/// Ищет семейство по всем допустимым значениям solution v2.
+bool parseSolverFamily(const std::string & value, SolverFamily & family)
+{
+  constexpr SolverFamily VALUES[] = {SolverFamily::Baseline, SolverFamily::Neural, SolverFamily::Hybrid};
+  for (const SolverFamily candidate : VALUES)
+  {
+    if (toString(candidate) == value)
+    {
+      family = candidate;
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Сравнивает полноту, объём partial, остаток и стабильную последовательность placements.
+bool isBetterGridSolution(const GridSolution & candidate, const GridSolution & reference)
+{
+  const bool candidateComplete = candidate.complete();
+  const bool referenceComplete = reference.complete();
+  if (candidateComplete != referenceComplete)
+    return candidateComplete;
+  if (candidate.objective.placedParts != reference.objective.placedParts)
+    return candidate.objective.placedParts > reference.objective.placedParts;
+  if (candidate.objective.placedCells != reference.objective.placedCells)
+    return candidate.objective.placedCells > reference.objective.placedCells;
+  if (candidate.objective.usedLength != reference.objective.usedLength)
+    return candidate.objective.usedLength < reference.objective.usedLength;
+  if (candidate.objective.largestExtraRectangleArea != reference.objective.largestExtraRectangleArea)
+    return candidate.objective.largestExtraRectangleArea > reference.objective.largestExtraRectangleArea;
+  if (candidate.objective.fragmentationPenalty != reference.objective.fragmentationPenalty)
+    return candidate.objective.fragmentationPenalty < reference.objective.fragmentationPenalty;
+  return std::lexicographical_compare(candidate.placements.begin(), candidate.placements.end(), reference.placements.begin(),
+                                      reference.placements.end(), placementLess);
 }
 
 /// Проверяет вход, запускает выбранный алгоритм и собирает независимые метрики результата.

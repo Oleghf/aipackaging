@@ -69,31 +69,16 @@ def _require_keys(value: Mapping[str, Any], expected: set[str], label: str) -> N
         raise ValueError(f"{label} fields mismatch: expected {sorted(expected)}, got {sorted(actual)}")
 
 
-def _solution_key(solution: Mapping[str, Any]) -> tuple[Any, ...]:
-    """Кодирует общий M1-порядок полных и partial решений в Python tuple."""
+def _best_trajectory(trajectories: list[dict[str, Any]]) -> dict[str, Any]:
+    """Выбирает лучшую траекторию публичным C++-компаратором M1."""
 
-    objective = solution["objective"]
-    placements = tuple(
-        (item["partId"], item["instanceIndex"], item["rotationDegrees"], item["column"], item["row"])
-        for item in solution["placements"]
-    )
-    if solution["status"] == "solved":
-        return (
-            0,
-            objective["usedLength"],
-            -objective["largestExtraRectangleArea"],
-            objective["fragmentationPenalty"],
-            placements,
-        )
-    return (
-        1,
-        -objective["placedParts"],
-        -objective["placedCells"],
-        objective["usedLength"],
-        -objective["largestExtraRectangleArea"],
-        objective["fragmentationPenalty"],
-        placements,
-    )
+    best = trajectories[0]
+    for candidate in trajectories[1:]:
+        if _native.is_better_solution(
+            canonical_json(candidate["finalSolution"]), canonical_json(best["finalSolution"])
+        ):
+            best = candidate
+    return best
 
 
 def _rollout_task(task: tuple[dict[str, Any], int]) -> tuple[str, list[dict[str, Any]], str]:
@@ -150,7 +135,7 @@ def _rollout_task(task: tuple[dict[str, Any], int]) -> tuple[str, list[dict[str,
                 "finalSolution": solution,
             }
         )
-    expert = min(trajectories, key=lambda item: _solution_key(item["finalSolution"]))["trajectoryId"]
+    expert = _best_trajectory(trajectories)["trajectoryId"]
     return problem["problemId"], trajectories, expert
 
 
@@ -359,7 +344,7 @@ def verify_dataset(path: str | Path) -> dict[str, int]:
         candidates = [item for item in trajectory_records.values() if item["problemId"] == problem_id]
         if len(candidates) != len(SOLVERS) or {item["solver"]["name"] for item in candidates} != set(SOLVERS):
             raise ValueError(f"baseline trajectory set mismatch: {problem_id}")
-        actual = min(candidates, key=lambda item: _solution_key(item["finalSolution"]))["trajectoryId"]
+        actual = _best_trajectory(candidates)["trajectoryId"]
         if actual != expert_id:
             raise ValueError(f"wrong expertTrajectoryId: {problem_id}")
 

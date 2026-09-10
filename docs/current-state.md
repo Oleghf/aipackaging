@@ -1,6 +1,6 @@
 # Текущее состояние
 
-Проверено 2026-09-09.
+Проверено 2026-09-10.
 
 ## Baseline
 
@@ -17,11 +17,13 @@
 - `AIPackaging_Cli` читает `grid_problem` v1 и сохраняет `grid_solution` v1 с
   независимо проверяемыми placements, objective и метриками.
 - `GridLearningEnvironment` предоставляет постоянный каталог действий, mask,
-  observation v1 и точный reward v1.
+  observation v1, compact rollout API и точный reward v1.
 - Python-пакет `aipackaging-ml` предоставляет gym-like API, генератор профилей
   small/medium и verifier `grid_dataset`/`grid_trajectory` v1.
 - Канонический датасет содержит 768 задач и 3840 baseline-траекторий; он
   генерируется локально в игнорируемом `artifacts/datasets/grid-v1`.
+- Реализован M3 pipeline: иерархическая actor-critic policy, expert BC, PPO,
+  multiprocessing rollout, neural/hybrid runner, solution v2 и двухчастный ONNX.
 
 ## Инфраструктура проверки
 
@@ -50,6 +52,10 @@
 
 ## Ограничения ML
 
-Клеточная C++/Python-среда, reward и воспроизводимый датасет готовы. Пока нет
-обученной модели, experiment tracking, ONNX-экспорта и inference-модуля. Они
-входят в M3 и M5.
+Код обучения, локальный run manifest и ONNX-экспорт добавлены, но M3 ещё нельзя
+считать завершённым до канонического CUDA-запуска и прохождения test quality
+gate. Windows CPU-smoke и Python bindings проходят; включение эталонной WSL2
+среды требует административного PowerShell и перезагрузки. Smart App Control не
+отключается и на этом хосте блокирует запуск свежесобранного неподписанного MSVC
+CLI; тот же CLI и CTest проходят в headless MinGW-сборке. GUI не подключён к
+новой policy; C++ ONNX inference входит в M5.

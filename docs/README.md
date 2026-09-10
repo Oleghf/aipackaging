@@ -5,6 +5,9 @@
 - [Архитектура](architecture.md) — целевые компоненты, контракты и инварианты.
 - [План разработки](roadmap.md) — этапы и критерии завершения.
 - [Качество и оценка](quality.md) — baseline-алгоритмы, данные, метрики и тесты.
+- [Обучение M3](m3-training.md) — WSL2, smoke, BC/PPO, export и evaluation.
+- [CPU smoke-эксперимент M3](experiments/m3-smoke-2026-09-10.md) — проверенный
+  инженерный прогон до канонического CUDA-обучения.
 - [ADR-0001: гибридный решатель](decisions/0001-hybrid-neural-solver.md) — граница
   между нейросетью и детерминированной геометрией.
 - [ADR-0002: ценность остатка](decisions/0002-valuable-remnant-objective.md) —
@@ -13,6 +16,8 @@
   форматы M1, baseline-алгоритмы, метрики и статусы поиска.
 - [ADR-0004: обучаемая среда и датасет](decisions/0004-learning-environment-and-dataset.md) —
   observation/action/reward M2 и воспроизводимый формат данных.
+- [ADR-0005: иерархическая политика](decisions/0005-hierarchical-grid-policy.md) —
+  BC/PPO, masked hierarchy, ONNX bundle и quality gate M3.
 
 Документы явно разделяют текущее и целевое состояние. Планируемую возможность
 нельзя выдавать за уже реализованную.

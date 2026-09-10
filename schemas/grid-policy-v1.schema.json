@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aipackaging.local/schemas/grid-policy-v1.schema.json",
+  "title": "AIPackaging grid policy metadata v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "modelId", "projectVersion", "architecture", "opset", "contracts", "limits", "normalization", "selection", "dynamicAxes", "datasetManifestSha256", "trainingConfigSha256", "checkpointSha256", "files", "modelSha256"],
+  "properties": {
+    "format": { "const": "aipackaging.grid_policy" }, "version": { "const": 1 },
+    "modelId": { "type": "string", "minLength": 1 }, "projectVersion": { "type": "string" },
+    "architecture": { "const": "hierarchical-grid-policy-v1" }, "opset": { "type": "integer", "minimum": 7 },
+    "contracts": { "type": "object", "additionalProperties": false, "required": ["problem", "solution", "observation", "action", "reward"], "properties": {
+      "problem": { "const": 1 }, "solution": { "const": 2 }, "observation": { "const": 1 }, "action": { "const": 1 }, "reward": { "const": 1 }
+    } },
+    "limits": { "type": "object", "additionalProperties": false, "required": ["maxRows", "maxColumns", "maxInstances", "maxPartExtent", "maxActions"], "properties": {
+      "maxRows": { "type": "integer", "minimum": 1 }, "maxColumns": { "type": "integer", "minimum": 1 },
+      "maxInstances": { "type": "integer", "minimum": 1 }, "maxPartExtent": { "type": "integer", "minimum": 1 }, "maxActions": { "type": "integer", "minimum": 1 }
+    } },
+    "normalization": { "const": "observation-v1" },
+    "selection": { "type": "object", "additionalProperties": false, "required": ["hierarchy", "tieBreak"], "properties": {
+      "hierarchy": { "const": ["instance", "rotation", "position"] }, "tieBreak": { "const": "lowest-stable-action-index" }
+    } },
+    "dynamicAxes": { "const": ["rows", "columns", "instances", "part_rows", "part_columns", "candidates"] },
+    "datasetManifestSha256": { "$ref": "#/$defs/sha" }, "trainingConfigSha256": { "$ref": "#/$defs/sha" },
+    "checkpointSha256": { "$ref": "#/$defs/sha" }, "modelSha256": { "$ref": "#/$defs/sha" },
+    "files": { "type": "object", "additionalProperties": false, "required": ["encoder.onnx", "placement-head.onnx"], "properties": {
+      "encoder.onnx": { "$ref": "#/$defs/sha" }, "placement-head.onnx": { "$ref": "#/$defs/sha" }
+    } }
+  },
+  "$defs": { "sha": { "type": "string", "pattern": "^[0-9a-f]{64}$" } }
+}

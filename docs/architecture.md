@@ -72,6 +72,11 @@ Python-код не может изменить C++ value-state через общ
 действия, reward-аудит и итоговый `grid_solution`, а loader воспроизводит
 наблюдения повторным проигрыванием.
 
+Для rollout M3 среда отдельно возвращает статические признаки и компактную
+динамическую часть. Каталог, признаки кандидатов и маски фигур копируются в
+Python один раз на эпизод; `stepCompact` обновляет только occupancy, remaining,
+action mask и objective.
+
 ### Генератор кандидатов
 
 В MVP сеть не ищет неограниченные вещественные координаты. Генератор возвращает
@@ -84,6 +89,19 @@ Python-код не может изменить C++ value-state через общ
 выбирает деталь и поворот, оценивает допустимые позиции и выбирает действие.
 Обучение выполняется в Python, deployment планируется через версионированный ONNX
 без зависимости desktop-приложения от Python.
+
+```text
+occupancy + parts + objective -> encoder -> instance -> rotation
+                                      |                    |
+                                    critic        legal positions only
+                                                           |
+                                                   placement head
+```
+
+Маски каждого уровня выводятся из C++ `actionMask`, а не предсказываются сетью.
+Для deployment encoder и placement head экспортируются отдельными ONNX-графами.
+Neural/hybrid provenance записывается в `grid_solution` v2; baseline и датасет
+M2 сохраняют совместимый формат v1.
 
 ### Desktop-приложение
 

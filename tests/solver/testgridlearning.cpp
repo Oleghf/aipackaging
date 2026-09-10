@@ -74,6 +74,51 @@ TEST(GridLearning, StepUpdatesOnlyDynamicStateAndTerminatesOnCompletion)
   EXPECT_THROW(environment->step(0), std::runtime_error);
 }
 
+TEST(GridLearning, CompactObservationMatchesFullDynamicFields)
+{
+  std::unique_ptr<GridLearningEnvironment> environment = createEnvironment(learningProblem());
+  ASSERT_NE(environment, nullptr);
+  const GridLearningStaticObservation fixed = environment->staticObservation();
+  const GridLearningDynamicObservation compact = environment->resetCompact();
+  const GridLearningObservation full = environment->observation();
+
+  EXPECT_EQ(fixed.candidateFeatures, full.candidateFeatures);
+  EXPECT_EQ(fixed.partMasks, full.partMasks);
+  EXPECT_EQ(compact.occupancy, full.occupancy);
+  EXPECT_EQ(compact.remaining, full.remaining);
+  EXPECT_EQ(compact.actionMask, full.actionMask);
+  EXPECT_EQ(compact.objective, full.objective);
+
+  const std::size_t action = environment->findAction({"domino", 0, 0, 0, 0});
+  const GridLearningCompactStepResult step = environment->stepCompact(action);
+  EXPECT_EQ(step.observation.occupancy, environment->observation().occupancy);
+  EXPECT_EQ(step.observation.actionMask, environment->observation().actionMask);
+}
+
+TEST(GridLearning, SnapshotProducesValidatedNeuralSolutionV2)
+{
+  const GridProblem problem = learningProblem();
+  std::unique_ptr<GridLearningEnvironment> environment = createEnvironment(problem);
+  ASSERT_NE(environment, nullptr);
+  environment->stepCompact(environment->findAction({"domino", 0, 0, 0, 0}));
+
+  SolverMetadata metadata;
+  metadata.family = SolverFamily::Neural;
+  metadata.name = "grid-policy-v1";
+  metadata.projectVersion = "test";
+  metadata.revision = "test";
+  metadata.modelId = "fixture";
+  metadata.modelSha256 = std::string(64, 'a');
+  metadata.rollouts = 1;
+  metadata.selectionMode = "greedy";
+  const GridSolution solution = environment->snapshotSolution(metadata);
+
+  EXPECT_EQ(solution.wireVersion, 2);
+  EXPECT_EQ(solution.status, SolveStatus::BudgetExhausted);
+  EXPECT_EQ(solution.placements.size(), 1U);
+  EXPECT_TRUE(validateGridSolution(problem, solution).success);
+}
+
 TEST(GridLearning, InvalidActionsDoNotChangeState)
 {
   std::unique_ptr<GridLearningEnvironment> environment = createEnvironment(learningProblem());

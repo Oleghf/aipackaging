@@ -127,37 +127,86 @@ GridLearningEnvironment::GridLearningEnvironment(std::unique_ptr<GridEnvironment
 /// Обнуляет occupancy и размещения, после чего обновляет терминальные признаки.
 GridLearningObservation GridLearningEnvironment::reset()
 {
-  state_ = environment_->initialState();
-  const std::vector<std::uint8_t> mask = buildActionMask();
-  updateTerminal(mask);
-  return observation();
+  GridLearningDynamicObservation dynamic = resetCompact();
+  GridLearningObservation result = staticObservation_;
+  result.occupancy = std::move(dynamic.occupancy);
+  result.remaining = std::move(dynamic.remaining);
+  result.actionMask = std::move(dynamic.actionMask);
+  result.objective = std::move(dynamic.objective);
+  return result;
 }
 
-/// Объединяет кэшированные статические признаки с текущим occupancy, mask и objective.
-GridLearningObservation GridLearningEnvironment::observation() const
+/// Сбрасывает value-state и возвращает только поля, меняющиеся в ходе эпизода.
+GridLearningDynamicObservation GridLearningEnvironment::resetCompact()
 {
-  GridLearningObservation result = staticObservation_;
+  state_ = environment_->initialState();
+  std::vector<std::uint8_t> mask = buildActionMask();
+  updateTerminal(mask);
+  return buildDynamicObservation(std::move(mask));
+}
+
+/// Копирует только постоянные поля уже построенного observation-кэша.
+GridLearningStaticObservation GridLearningEnvironment::staticObservation() const
+{
+  GridLearningStaticObservation result;
+  result.rows = staticObservation_.rows;
+  result.columns = staticObservation_.columns;
+  result.maxPartRows = staticObservation_.maxPartRows;
+  result.maxPartColumns = staticObservation_.maxPartColumns;
+  result.instanceCount = staticObservation_.instanceCount;
+  result.actionCount = staticObservation_.actionCount;
+  result.partMasks = staticObservation_.partMasks;
+  result.orientationMask = staticObservation_.orientationMask;
+  result.partFeatures = staticObservation_.partFeatures;
+  result.candidateInstance = staticObservation_.candidateInstance;
+  result.candidateRotation = staticObservation_.candidateRotation;
+  result.candidateFeatures = staticObservation_.candidateFeatures;
+  return result;
+}
+
+/// Собирает только поля, зависящие от текущего value-state среды.
+GridLearningDynamicObservation GridLearningEnvironment::dynamicObservation() const
+{
+  return buildDynamicObservation(buildActionMask());
+}
+
+/// Объединяет value-state, objective и переданную mask без повторной геометрической проверки.
+GridLearningDynamicObservation GridLearningEnvironment::buildDynamicObservation(std::vector<std::uint8_t> actionMask) const
+{
+  GridLearningDynamicObservation result;
   result.occupancy = state_.occupancy;
   result.remaining.resize(environment_->instances().size(), 1);
   for (std::size_t index = 0; index < state_.placedInstances.size(); ++index)
     result.remaining[index] = state_.placedInstances[index] ? 0 : 1;
-  result.actionMask = buildActionMask();
+  result.actionMask = std::move(actionMask);
 
   const ObjectiveComponents objective = environment_->evaluate(state_);
-  const std::size_t sheetArea = static_cast<std::size_t>(result.rows) * result.columns;
+  const std::size_t sheetArea = static_cast<std::size_t>(staticObservation_.rows) * staticObservation_.columns;
   result.objective = {
     normalized(objective.placedParts, objective.totalParts),
     normalized(objective.placedCells, sheetArea),
-    normalized(static_cast<std::size_t>(objective.usedLength), static_cast<std::size_t>(result.columns)),
-    normalized(static_cast<std::size_t>(objective.primaryRemnantWidth), static_cast<std::size_t>(result.columns)),
+    normalized(static_cast<std::size_t>(objective.usedLength), static_cast<std::size_t>(staticObservation_.columns)),
+    normalized(static_cast<std::size_t>(objective.primaryRemnantWidth), static_cast<std::size_t>(staticObservation_.columns)),
     normalized(objective.largestExtraRectangleArea, sheetArea),
     normalized(objective.fragmentationPenalty, sheetArea),
     static_cast<float>(objective.materialUtilization)};
   return result;
 }
 
-/// Проверяет индекс и mask до изменения state, затем применяет действие и вычисляет дельту rank.
-GridLearningStepResult GridLearningEnvironment::step(std::size_t actionIndex)
+/// Объединяет кэшированные статические признаки с текущим occupancy, mask и objective.
+GridLearningObservation GridLearningEnvironment::observation() const
+{
+  GridLearningObservation result = staticObservation_;
+  GridLearningDynamicObservation dynamic = dynamicObservation();
+  result.occupancy = std::move(dynamic.occupancy);
+  result.remaining = std::move(dynamic.remaining);
+  result.actionMask = std::move(dynamic.actionMask);
+  result.objective = std::move(dynamic.objective);
+  return result;
+}
+
+/// Проверяет индекс и mask, применяет действие и собирает общую компактную часть результата.
+GridLearningCompactStepResult GridLearningEnvironment::applyStep(std::size_t actionIndex)
 {
   if (terminal_)
     throw std::runtime_error("cannot step a terminated grid learning episode");
@@ -172,11 +221,11 @@ GridLearningStepResult GridLearningEnvironment::step(std::size_t actionIndex)
     throw std::logic_error("validated grid learning action could not be applied");
   const ObjectiveComponents after = environment_->evaluate(state_);
   const std::uint64_t rankAfter = calculateRank(after);
-  const std::vector<std::uint8_t> mask = buildActionMask();
+  std::vector<std::uint8_t> mask = buildActionMask();
   updateTerminal(mask);
 
-  GridLearningStepResult result;
-  result.observation = observation();
+  GridLearningCompactStepResult result;
+  result.observation = buildDynamicObservation(std::move(mask));
   result.reward = static_cast<double>(rankAfter - rankBefore) / static_cast<double>(rankUpperBound_);
   result.terminated = terminal_;
   result.complete = complete_;
@@ -188,6 +237,46 @@ GridLearningStepResult GridLearningEnvironment::step(std::size_t actionIndex)
                              after.usedLength - before.usedLength,
                              signedDelta(after.largestExtraRectangleArea, before.largestExtraRectangleArea),
                              signedDelta(after.fragmentationPenalty, before.fragmentationPenalty)};
+  return result;
+}
+
+/// Делегирует изменение состояния общему compact-пути и добавляет постоянные массивы observation v1.
+GridLearningStepResult GridLearningEnvironment::step(std::size_t actionIndex)
+{
+  GridLearningCompactStepResult compact = applyStep(actionIndex);
+  GridLearningStepResult result;
+  result.observation = staticObservation_;
+  result.observation.occupancy = std::move(compact.observation.occupancy);
+  result.observation.remaining = std::move(compact.observation.remaining);
+  result.observation.actionMask = std::move(compact.observation.actionMask);
+  result.observation.objective = std::move(compact.observation.objective);
+  result.reward = compact.reward;
+  result.terminated = compact.terminated;
+  result.complete = compact.complete;
+  result.deadEnd = compact.deadEnd;
+  result.rewardComponents = compact.rewardComponents;
+  return result;
+}
+
+/// Возвращает результат общего пути без дорогостоящего копирования каталога действий.
+GridLearningCompactStepResult GridLearningEnvironment::stepCompact(std::size_t actionIndex)
+{
+  return applyStep(actionIndex);
+}
+
+/// Копирует текущие placements и вычисляет objective тем же кодом, что использует валидатор.
+GridSolution GridLearningEnvironment::snapshotSolution(const SolverMetadata & solver, SolveStatus incompleteStatus) const
+{
+  if (incompleteStatus == SolveStatus::Solved || incompleteStatus == SolveStatus::InvalidProblem)
+    throw std::invalid_argument("snapshot incomplete status must describe a valid partial search result");
+
+  GridSolution result;
+  result.wireVersion = solver.family == SolverFamily::Baseline ? 1 : 2;
+  result.problemId = environment_->problem().problemId;
+  result.status = complete_ ? SolveStatus::Solved : incompleteStatus;
+  result.placements = state_.placements;
+  result.objective = environment_->evaluate(state_);
+  result.solver = solver;
   return result;
 }
 

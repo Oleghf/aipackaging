@@ -39,6 +39,32 @@ struct GridLearningObservation
   std::vector<float> objective;
 };
 
+/// Неизменная часть observation v1, которую достаточно передать Python один раз за эпизод.
+struct GridLearningStaticObservation
+{
+  int rows = 0;
+  int columns = 0;
+  int maxPartRows = 0;
+  int maxPartColumns = 0;
+  std::size_t instanceCount = 0;
+  std::size_t actionCount = 0;
+  std::vector<std::uint8_t> partMasks;
+  std::vector<std::uint8_t> orientationMask;
+  std::vector<float> partFeatures;
+  std::vector<std::int32_t> candidateInstance;
+  std::vector<std::uint8_t> candidateRotation;
+  std::vector<float> candidateFeatures;
+};
+
+/// Изменяемая часть observation v1 после reset или одного допустимого действия.
+struct GridLearningDynamicObservation
+{
+  std::vector<std::uint8_t> occupancy;
+  std::vector<std::uint8_t> remaining;
+  std::vector<std::uint8_t> actionMask;
+  std::vector<float> objective;
+};
+
 /// Аудируемые изменения ранга и objective после одного допустимого действия.
 struct GridRewardComponents
 {
@@ -62,6 +88,17 @@ struct GridLearningStepResult
   GridRewardComponents rewardComponents;
 };
 
+/// Результат шага без повторного копирования неизменного каталога действий.
+struct GridLearningCompactStepResult
+{
+  GridLearningDynamicObservation observation;
+  double reward = 0.0;
+  bool terminated = false;
+  bool complete = false;
+  bool deadEnd = false;
+  GridRewardComponents rewardComponents;
+};
+
 /// Детерминированный эпизод с постоянным action space для обучения и replay.
 class GridLearningEnvironment
 {
@@ -72,15 +109,29 @@ public:
 
   /// Возвращает среду в исходное состояние и формирует первое наблюдение.
   GridLearningObservation reset();
+  /// Возвращает среду в исходное состояние и формирует только динамическое наблюдение.
+  GridLearningDynamicObservation resetCompact();
+  /// Возвращает неизменные признаки задачи и постоянного каталога действий.
+  GridLearningStaticObservation staticObservation() const;
+  /// Возвращает occupancy, remaining, action mask и objective текущего состояния.
+  GridLearningDynamicObservation dynamicObservation() const;
   /// Возвращает независимый снимок текущего наблюдения.
   GridLearningObservation observation() const;
   /// Применяет действие по стабильному индексу и возвращает результат перехода.
   GridLearningStepResult step(std::size_t actionIndex);
+  /// Применяет действие и возвращает только изменяемую часть observation.
+  GridLearningCompactStepResult stepCompact(std::size_t actionIndex);
+  /// Формирует независимо проверяемое решение из текущих размещений и provenance вызывающего кода.
+  GridSolution snapshotSolution(const SolverMetadata & solver, SolveStatus incompleteStatus = SolveStatus::BudgetExhausted) const;
 
   /// Возвращает действие стабильного каталога по индексу.
   const GridAction & action(std::size_t actionIndex) const;
   /// Возвращает число действий в неизменном каталоге эпизода.
   std::size_t actionCount() const { return actions_.size(); }
+  /// Возвращает число строк листа текущей задачи.
+  int rows() const { return staticObservation_.rows; }
+  /// Возвращает число столбцов листа текущей задачи.
+  int columns() const { return staticObservation_.columns; }
   /// Находит индекс точного публичного действия либо возвращает actionCount().
   std::size_t findAction(const GridAction & action) const;
   /// Сообщает, размещены ли все обязательные экземпляры.
@@ -109,6 +160,10 @@ private:
   std::uint64_t calculateRank(const ObjectiveComponents & objective) const;
   /// Создаёт неизменную часть наблюдения: маски фигур и признаки каталога.
   GridLearningObservation buildStaticObservation() const;
+  /// Собирает динамическое наблюдение с уже вычисленной маской действий.
+  GridLearningDynamicObservation buildDynamicObservation(std::vector<std::uint8_t> actionMask) const;
+  /// Проверяет и применяет действие, возвращая общие для полного и compact API данные перехода.
+  GridLearningCompactStepResult applyStep(std::size_t actionIndex);
 
   std::unique_ptr<GridEnvironment> environment_;
   GridLearningLimits limits_;

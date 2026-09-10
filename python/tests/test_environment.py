@@ -76,3 +76,46 @@ def test_from_dict_is_strict_and_limits_are_separate_from_geometry() -> None:
     problem.pop("unknown")
     with pytest.raises(ValueError, match="action catalog"):
         GridNestingEnv.from_dict(problem, max_actions=1)
+
+
+def test_compact_observation_and_neural_snapshot_v2() -> None:
+    """Compact API сохраняет динамические поля и формирует валидный solution v2."""
+
+    environment = _environment()
+    fixed = environment.static_observation()
+    dynamic, _ = environment.reset_compact(seed=42)
+    assert set(fixed) == {
+        "rows",
+        "columns",
+        "max_part_rows",
+        "max_part_columns",
+        "part_masks",
+        "orientation_mask",
+        "part_features",
+        "candidate_instance",
+        "candidate_rotation",
+        "candidate_features",
+    }
+    assert set(dynamic) == {"occupancy", "remaining", "action_mask", "objective"}
+    action = int(np.flatnonzero(dynamic["action_mask"])[0])
+    dynamic, _, _, _, _ = environment.step_compact(action)
+    assert dynamic["remaining"].sum() == 1
+
+    provenance = {
+        "family": "neural",
+        "name": "grid-policy-v1",
+        "projectVersion": "test",
+        "revision": "test",
+        "seed": 42,
+        "randomIterations": 64,
+        "beamWidth": 32,
+        "maxExpandedStates": 50000,
+        "timeoutMs": 0,
+        "modelId": "fixture",
+        "modelSha256": "a" * 64,
+        "rollouts": 1,
+        "selectionMode": "greedy",
+    }
+    solution = environment.snapshot_solution(provenance)
+    assert solution["version"] == 2
+    assert solution["solver"]["family"] == "neural"

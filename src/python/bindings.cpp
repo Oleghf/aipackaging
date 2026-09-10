@@ -91,8 +91,40 @@ py::dict observationToDict(const GridLearningObservation & observation)
   return result;
 }
 
+/// Преобразует постоянную часть observation в владеющие read-only NumPy-массивы.
+py::dict staticObservationToDict(const GridLearningStaticObservation & observation)
+{
+  const py::ssize_t instances = static_cast<py::ssize_t>(observation.instanceCount);
+  const py::ssize_t actions = static_cast<py::ssize_t>(observation.actionCount);
+  py::dict result;
+  result["rows"] = observation.rows;
+  result["columns"] = observation.columns;
+  result["max_part_rows"] = observation.maxPartRows;
+  result["max_part_columns"] = observation.maxPartColumns;
+  result["part_masks"] =
+    readonlyArray(observation.partMasks, {instances, 4, observation.maxPartRows, observation.maxPartColumns});
+  result["orientation_mask"] = readonlyBoolArray(observation.orientationMask, {instances, 4});
+  result["part_features"] = readonlyArray(observation.partFeatures, {instances, 7});
+  result["candidate_instance"] = readonlyArray(observation.candidateInstance, {actions});
+  result["candidate_rotation"] = readonlyArray(observation.candidateRotation, {actions});
+  result["candidate_features"] = readonlyArray(observation.candidateFeatures, {actions, 7});
+  return result;
+}
+
+/// Преобразует динамическую часть observation в владеющие read-only NumPy-массивы.
+py::dict dynamicObservationToDict(const GridLearningDynamicObservation & observation, int rows, int columns)
+{
+  py::dict result;
+  result["occupancy"] = readonlyArray(observation.occupancy, {rows, columns});
+  result["remaining"] = readonlyBoolArray(observation.remaining, {static_cast<py::ssize_t>(observation.remaining.size())});
+  result["action_mask"] = readonlyBoolArray(observation.actionMask, {static_cast<py::ssize_t>(observation.actionMask.size())});
+  result["objective"] = readonlyArray(observation.objective, {7});
+  return result;
+}
+
 /// Формирует аудируемый info одного перехода с рангами и дельтами objective.
-py::dict stepInfo(const GridLearningEnvironment & environment, const GridLearningStepResult & step)
+template<typename StepResult>
+py::dict stepInfo(const GridLearningEnvironment & environment, const StepResult & step)
 {
   py::dict deltas;
   deltas["placedParts"] = step.rewardComponents.placedPartsDelta;
@@ -108,6 +140,39 @@ py::dict stepInfo(const GridLearningEnvironment & environment, const GridLearnin
   result["deltas"] = std::move(deltas);
   result["complete"] = step.complete;
   result["deadEnd"] = step.deadEnd;
+  return result;
+}
+
+/// Строго преобразует Python provenance в публичную C++ metadata solution v2.
+SolverMetadata metadataFromDict(const py::dict & value)
+{
+  static const std::vector<std::string> required = {"family",           "name",      "projectVersion",    "revision",  "seed",
+                                                    "randomIterations", "beamWidth", "maxExpandedStates", "timeoutMs", "modelId",
+                                                    "modelSha256",      "rollouts",  "selectionMode"};
+  for (const std::string & field : required)
+  {
+    if (!value.contains(py::str(field)))
+      throw py::value_error("solver provenance is missing required field: " + field);
+  }
+  if (value.size() != required.size())
+    throw py::value_error("solver provenance contains unknown fields");
+
+  SolverMetadata result;
+  const std::string family = value["family"].cast<std::string>();
+  if (!parseSolverFamily(family, result.family))
+    throw py::value_error("unknown solver family: " + family);
+  result.name = value["name"].cast<std::string>();
+  result.projectVersion = value["projectVersion"].cast<std::string>();
+  result.revision = value["revision"].cast<std::string>();
+  result.seed = value["seed"].cast<std::uint64_t>();
+  result.randomIterations = value["randomIterations"].cast<std::size_t>();
+  result.beamWidth = value["beamWidth"].cast<std::size_t>();
+  result.maxExpandedStates = value["maxExpandedStates"].cast<std::size_t>();
+  result.timeoutMs = value["timeoutMs"].cast<std::uint64_t>();
+  result.modelId = value["modelId"].cast<std::string>();
+  result.modelSha256 = value["modelSha256"].cast<std::string>();
+  result.rollouts = value["rollouts"].cast<std::size_t>();
+  result.selectionMode = value["selectionMode"].cast<std::string>();
   return result;
 }
 
@@ -172,6 +237,20 @@ std::string validateSolution(const std::string & problemJson, const std::string 
   const ValidationResult result = validateGridSolution(problem, loaded.solution);
   return result.success ? std::string{} : result.error;
 }
+
+/// Сравнивает два wire-решения общим C++ objective-компаратором.
+bool isBetterSolution(const std::string & candidateJson, const std::string & referenceJson)
+{
+  const GridSolutionLoadResult candidate = loadGridSolutionFromText(candidateJson);
+  if (!candidate.success)
+    throw py::value_error("invalid candidate solution: " + candidate.error);
+  const GridSolutionLoadResult reference = loadGridSolutionFromText(referenceJson);
+  if (!reference.success)
+    throw py::value_error("invalid reference solution: " + reference.error);
+  if (candidate.solution.problemId != reference.solution.problemId)
+    throw py::value_error("solutions belong to different problems");
+  return isBetterGridSolution(candidate.solution, reference.solution);
+}
 } // namespace
 
 /// Регистрирует низкоуровневый модуль, оставляя удобный gym-like API Python-обёртке.
@@ -182,6 +261,12 @@ PYBIND11_MODULE(_aipackaging_solver, module)
 
   py::class_<GridLearningEnvironment>(module, "GridLearningEnvironment")
     .def("reset", [](GridLearningEnvironment & environment) { return observationToDict(environment.reset()); })
+    .def("reset_compact", [](GridLearningEnvironment & environment)
+         { return dynamicObservationToDict(environment.resetCompact(), environment.rows(), environment.columns()); })
+    .def("static_observation",
+         [](const GridLearningEnvironment & environment) { return staticObservationToDict(environment.staticObservation()); })
+    .def("dynamic_observation", [](const GridLearningEnvironment & environment)
+         { return dynamicObservationToDict(environment.dynamicObservation(), environment.rows(), environment.columns()); })
     .def("observation", [](const GridLearningEnvironment & environment) { return observationToDict(environment.observation()); })
     .def("step",
          [](GridLearningEnvironment & environment, std::size_t index)
@@ -190,6 +275,23 @@ PYBIND11_MODULE(_aipackaging_solver, module)
            return py::make_tuple(observationToDict(result.observation), result.reward, result.terminated, false,
                                  stepInfo(environment, result));
          })
+    .def("step_compact",
+         [](GridLearningEnvironment & environment, std::size_t index)
+         {
+           const GridLearningCompactStepResult result = environment.stepCompact(index);
+           return py::make_tuple(dynamicObservationToDict(result.observation, environment.rows(), environment.columns()),
+                                 result.reward, result.terminated, false, stepInfo(environment, result));
+         })
+    .def(
+      "snapshot_solution",
+      [](const GridLearningEnvironment & environment, const py::dict & provenance, const std::string & incompleteStatus)
+      {
+        SolveStatus status;
+        if (!parseSolveStatus(incompleteStatus, status))
+          throw py::value_error("unknown incomplete solution status: " + incompleteStatus);
+        return saveGridSolutionToText(environment.snapshotSolution(metadataFromDict(provenance), status));
+      },
+      py::arg("provenance"), py::arg("incomplete_status") = "budget_exhausted")
     .def("action",
          [](const GridLearningEnvironment & environment, std::size_t index) { return actionToDict(environment.action(index)); })
     .def("find_action",
@@ -214,4 +316,5 @@ PYBIND11_MODULE(_aipackaging_solver, module)
              py::arg("seed") = 42, py::arg("random_iterations") = 64, py::arg("beam_width") = 32,
              py::arg("max_expanded_states") = 50000, py::arg("timeout_ms") = 0);
   module.def("validate_solution", &validateSolution, py::arg("problem_json"), py::arg("solution_json"));
+  module.def("is_better_solution", &isBetterSolution, py::arg("candidate_json"), py::arg("reference_json"));
 }

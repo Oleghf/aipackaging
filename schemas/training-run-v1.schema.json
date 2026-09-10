@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aipackaging.local/schemas/training-run-v1.schema.json",
+  "title": "AIPackaging training run v1",
+  "type": "object", "additionalProperties": false,
+  "required": ["format", "version", "status", "seed", "device", "datasetManifestSha256", "configSha256", "bcCheckpoint", "ppoCheckpoint", "metrics", "software"],
+  "properties": {
+    "format": { "const": "aipackaging.training_run" }, "version": { "const": 1 },
+    "status": { "enum": ["complete", "budget_exhausted", "failed"] }, "seed": { "type": "integer", "minimum": 0 },
+    "device": { "type": "string" }, "datasetManifestSha256": { "$ref": "#/$defs/sha" }, "configSha256": { "$ref": "#/$defs/sha" },
+    "bcCheckpoint": { "$ref": "#/$defs/file" }, "ppoCheckpoint": { "$ref": "#/$defs/file" }, "metrics": { "$ref": "#/$defs/file" },
+    "software": { "type": "object", "additionalProperties": false, "required": ["python", "torch", "cuda"], "properties": {
+      "python": { "type": "string" }, "torch": { "type": "string" }, "cuda": { "type": "string" }
+    } }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "file": { "type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": { "path": { "type": "string" }, "sha256": { "$ref": "#/$defs/sha" } } }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "format": "aipackaging.training_config",
+  "version": 1,
+  "seed": 42,
+  "datasetManifestSha256": "7aa6ad9ef4e100da855194b30ea1baa0bd4dd8467e45049e296f254ab6ee1cc6",
+  "model": {
+    "architecture": "hierarchical-grid-policy-v1",
+    "hiddenSize": 128,
+    "maxRows": 24,
+    "maxColumns": 24,
+    "maxInstances": 30,
+    "maxPartExtent": 12,
+    "maxActions": 65536
+  },
+  "behavioralCloning": {
+    "learningRate": 0.0003,
+    "weightDecay": 0.0001,
+    "maxEpochs": 100,
+    "gradientAccumulation": 16,
+    "earlyStoppingPatience": 10
+  },
+  "ppo": {
+    "learningRate": 0.0001,
+    "updates": 122,
+    "transitionsPerUpdate": 4096,
+    "epochsPerUpdate": 4,
+    "workers": 4,
+    "gamma": 1.0,
+    "gaeLambda": 0.95,
+    "clipRatio": 0.2,
+    "entropyStart": 0.01,
+    "entropyEnd": 0.001,
+    "valueCoefficient": 0.5,
+    "maxGradientNorm": 0.5,
+    "maxWallTimeSeconds": 28800
+  },
+  "evaluation": {
+    "neuralRollouts": 16,
+    "baselineRandomIterations": 64,
+    "requiredLexicographicWins": 6,
+    "requiredUsedLengthWins": 1
+  },
+  "export": {
+    "opset": 23,
+    "logitTolerance": 0.00001
+  }
+}

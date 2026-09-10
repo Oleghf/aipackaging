@@ -5,6 +5,9 @@
 
 namespace aipackaging::solver
 {
+/// Сравнивает два результата по единому полному/partial objective-порядку M1.
+bool isBetterGridSolution(const GridSolution & candidate, const GridSolution & reference);
+
 /// Запускает выбранный baseline над общей средой и возвращает полный или лучший частичный результат.
 GridSolution solveGridProblem(const GridProblem & problem, const SolverConfig & config = {});
 } // namespace aipackaging::solver

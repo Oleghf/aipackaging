@@ -8,14 +8,20 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "aipackaging-ml"
-version = "0.2.0"
-description = "Обучаемая клеточная среда и воспроизводимые датасеты AIPackaging"
+version = "0.3.0"
+description = "Обучаемая клеточная среда и нейросетевая политика AIPackaging"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = ["numpy==2.5.3"]
 
 [project.optional-dependencies]
 dev = ["pytest==9.1.1"]
+train = [
+  "torch==2.14.0",
+  "onnx==1.22.0",
+  "onnxscript==0.7.2",
+  "onnxruntime==1.29.0",
+]
 
 [tool.scikit-build]
 build-dir = "build/python/{wheel_tag}"

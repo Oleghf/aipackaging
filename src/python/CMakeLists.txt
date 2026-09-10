@@ -3,7 +3,10 @@ find_package(pybind11 3.1 CONFIG REQUIRED)
 
 pybind11_add_module(_aipackaging_solver MODULE bindings.cpp)
 target_link_libraries(_aipackaging_solver PRIVATE AIPackaging_Solver)
-target_compile_definitions(_aipackaging_solver PRIVATE AIPACKAGING_PYTHON_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(_aipackaging_solver PRIVATE
+  AIPACKAGING_PYTHON_VERSION="${PROJECT_VERSION}"
+  AIPACKAGING_BUILD_REVISION="${AIPACKAGING_BUILD_REVISION}"
+)
 if (MINGW)
   # Editable-сборка может выбрать MinGW из PATH. Статическое подключение его
   # runtime сохраняет wheel самодостаточным и не влияет на сборку MSVC/Linux.

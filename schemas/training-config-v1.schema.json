@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aipackaging.local/schemas/training-config-v1.schema.json",
+  "title": "AIPackaging training config v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "seed", "datasetManifestSha256", "model", "behavioralCloning", "ppo", "evaluation", "export"],
+  "properties": {
+    "format": { "const": "aipackaging.training_config" }, "version": { "const": 1 },
+    "seed": { "type": "integer", "minimum": 0 }, "datasetManifestSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "model": { "$ref": "#/$defs/model" }, "behavioralCloning": { "$ref": "#/$defs/bc" },
+    "ppo": { "$ref": "#/$defs/ppo" }, "evaluation": { "$ref": "#/$defs/evaluation" }, "export": { "$ref": "#/$defs/export" }
+  },
+  "$defs": {
+    "model": { "type": "object", "additionalProperties": false, "required": ["architecture", "hiddenSize", "maxRows", "maxColumns", "maxInstances", "maxPartExtent", "maxActions"], "properties": {
+      "architecture": { "const": "hierarchical-grid-policy-v1" }, "hiddenSize": { "type": "integer", "minimum": 16, "multipleOf": 2 },
+      "maxRows": { "type": "integer", "minimum": 1 }, "maxColumns": { "type": "integer", "minimum": 1 },
+      "maxInstances": { "type": "integer", "minimum": 1 }, "maxPartExtent": { "type": "integer", "minimum": 1 },
+      "maxActions": { "type": "integer", "minimum": 1 }
+    } },
+    "bc": { "type": "object", "additionalProperties": false, "required": ["learningRate", "weightDecay", "maxEpochs", "gradientAccumulation", "earlyStoppingPatience"], "properties": {
+      "learningRate": { "type": "number", "exclusiveMinimum": 0 }, "weightDecay": { "type": "number", "minimum": 0 },
+      "maxEpochs": { "type": "integer", "minimum": 1 }, "gradientAccumulation": { "type": "integer", "minimum": 1 },
+      "earlyStoppingPatience": { "type": "integer", "minimum": 1 }
+    } },
+    "ppo": { "type": "object", "additionalProperties": false, "required": ["learningRate", "updates", "transitionsPerUpdate", "epochsPerUpdate", "workers", "gamma", "gaeLambda", "clipRatio", "entropyStart", "entropyEnd", "valueCoefficient", "maxGradientNorm", "maxWallTimeSeconds"], "properties": {
+      "learningRate": { "type": "number", "exclusiveMinimum": 0 }, "updates": { "type": "integer", "minimum": 1 },
+      "transitionsPerUpdate": { "type": "integer", "minimum": 1 }, "epochsPerUpdate": { "type": "integer", "minimum": 1 },
+      "workers": { "type": "integer", "minimum": 1 }, "gamma": { "type": "number", "minimum": 0, "maximum": 1 },
+      "gaeLambda": { "type": "number", "minimum": 0, "maximum": 1 }, "clipRatio": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+      "entropyStart": { "type": "number", "minimum": 0 }, "entropyEnd": { "type": "number", "minimum": 0 },
+      "valueCoefficient": { "type": "number", "minimum": 0 }, "maxGradientNorm": { "type": "number", "exclusiveMinimum": 0 },
+      "maxWallTimeSeconds": { "type": "integer", "minimum": 1 }
+    } },
+    "evaluation": { "type": "object", "additionalProperties": false, "required": ["neuralRollouts", "baselineRandomIterations", "requiredLexicographicWins", "requiredUsedLengthWins"], "properties": {
+      "neuralRollouts": { "type": "integer", "minimum": 1 }, "baselineRandomIterations": { "type": "integer", "minimum": 1 },
+      "requiredLexicographicWins": { "type": "integer", "minimum": 1 }, "requiredUsedLengthWins": { "type": "integer", "minimum": 1 }
+    } },
+    "export": { "type": "object", "additionalProperties": false, "required": ["opset", "logitTolerance"], "properties": {
+      "opset": { "type": "integer", "minimum": 7 }, "logitTolerance": { "type": "number", "exclusiveMinimum": 0 }
+    } }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aipackaging.local/schemas/evaluation-report-v1.schema.json",
+  "title": "AIPackaging evaluation report v1",
+  "type": "object", "additionalProperties": false,
+  "required": ["format", "version", "split", "seed", "datasetManifestSha256", "checkpointSha256", "rollouts", "summaries", "hybridVsRandom", "qualityGatePassed", "comparisons"],
+  "properties": {
+    "format": { "const": "aipackaging.evaluation_report" }, "version": { "const": 1 },
+    "split": { "enum": ["validation", "test"] }, "seed": { "type": "integer", "minimum": 0 },
+    "datasetManifestSha256": { "$ref": "#/$defs/sha" }, "checkpointSha256": { "$ref": "#/$defs/sha" },
+    "rollouts": { "type": "integer", "minimum": 1 },
+    "summaries": { "type": "object", "additionalProperties": false,
+      "required": ["input-first-fit", "area-left-bottom", "max-side-left-bottom", "random-left-bottom", "beam", "neural-greedy", "neural-best-of", "hybrid"],
+      "properties": {
+        "input-first-fit": { "$ref": "#/$defs/summary" }, "area-left-bottom": { "$ref": "#/$defs/summary" },
+        "max-side-left-bottom": { "$ref": "#/$defs/summary" }, "random-left-bottom": { "$ref": "#/$defs/summary" },
+        "beam": { "$ref": "#/$defs/summary" }, "neural-greedy": { "$ref": "#/$defs/summary" },
+        "neural-best-of": { "$ref": "#/$defs/summary" }, "hybrid": { "$ref": "#/$defs/summary" }
+      }
+    },
+    "hybridVsRandom": { "type": "object", "additionalProperties": false, "required": ["wins", "ties", "losses", "usedLengthWins"], "properties": {
+      "wins": { "type": "integer", "minimum": 0 }, "ties": { "type": "integer", "minimum": 0 },
+      "losses": { "type": "integer", "minimum": 0 }, "usedLengthWins": { "type": "integer", "minimum": 0 }
+    } },
+    "qualityGatePassed": { "type": "boolean" },
+    "comparisons": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["problemId", "result", "usedLengthDelta"], "properties": {
+      "problemId": { "type": "string" }, "result": { "enum": ["win", "tie", "loss"] }, "usedLengthDelta": { "type": "integer" }
+    } } }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "summary": { "type": "object", "additionalProperties": false,
+      "required": ["tasks", "solved", "meanUsedLength", "meanPrimaryRemnantWidth", "meanLargestExtraRectangleArea", "meanFragmentationPenalty"],
+      "properties": {
+        "tasks": { "type": "integer", "minimum": 0 }, "solved": { "type": "integer", "minimum": 0 },
+        "meanUsedLength": { "type": "number", "minimum": 0 }, "meanPrimaryRemnantWidth": { "type": "number", "minimum": 0 },
+        "meanLargestExtraRectangleArea": { "type": "number", "minimum": 0 }, "meanFragmentationPenalty": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -127,6 +127,18 @@
             "cacheVariables": {
                 "BUILD_TESTS": "ON"
             }
+        },
+        {
+            "name": "linux-headless-tests",
+            "displayName": "Linux Headless Solver Tests",
+            "inherits": "linux-base",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "BUILD_DESKTOP": "OFF",
+                "BUILD_SOLVER_CLI": "ON",
+                "BUILD_TESTS": "ON",
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
         }
     ],
     "buildPresets": [
@@ -233,6 +245,17 @@
             "name": "build-linux-tests",
             "configurePreset": "linux-tests",
             "displayName": "Build Linux Tests",
+            "configuration": "Debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "build-linux-headless-tests",
+            "configurePreset": "linux-headless-tests",
+            "displayName": "Build Linux Headless Solver Tests",
             "configuration": "Debug",
             "condition": {
                 "type": "equals",

@@ -15,7 +15,7 @@ struct GridProblemLoadResult
   std::string error;
 };
 
-/// Результат строгой загрузки grid_solution v1.
+/// Результат строгой загрузки совместимого grid_solution v1 или v2.
 struct GridSolutionLoadResult
 {
   bool success = false;
@@ -34,9 +34,9 @@ std::string saveGridProblemToText(const GridProblem & problem);
 GridSolutionLoadResult loadGridSolutionFromText(const std::string & text);
 /// Загружает структуру решения из JSON-файла без привязки к конкретной задаче.
 GridSolutionLoadResult loadGridSolutionFromFile(const std::string & filePath);
-/// Сериализует результат в канонический JSON grid_solution v1.
+/// Сериализует результат в канонический JSON выбранной wire-версии.
 std::string saveGridSolutionToText(const GridSolution & solution);
-/// Записывает grid_solution v1 в файл либо возвращает диагностическое сообщение.
+/// Записывает grid_solution v1/v2 в файл либо возвращает диагностическое сообщение.
 bool saveGridSolutionToFile(const std::string & filePath, const GridSolution & solution, std::string & error);
 } // namespace aipackaging::solver
 

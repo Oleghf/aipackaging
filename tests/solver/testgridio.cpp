@@ -76,3 +76,44 @@ TEST(GridSolutionIo, RejectsUnknownSolverAndMismatchedMetrics)
   ++solution.objective.usedLength;
   EXPECT_FALSE(validateGridSolution(problem, solution).success);
 }
+
+TEST(GridSolutionIo, RoundTripsStrictNeuralSolutionV2)
+{
+  GridSolution solution = solveGridProblem(sampleProblem(), SolverConfig{});
+  solution.wireVersion = 2;
+  solution.solver.family = SolverFamily::Neural;
+  solution.solver.name = "grid-policy-v1";
+  solution.solver.modelId = "fixture-policy";
+  solution.solver.modelSha256 = std::string(64, 'b');
+  solution.solver.rollouts = 16;
+  solution.solver.selectionMode = "sampled-best-of";
+
+  const GridSolutionLoadResult loaded = loadGridSolutionFromText(saveGridSolutionToText(solution));
+  ASSERT_TRUE(loaded.success) << loaded.error;
+  EXPECT_EQ(loaded.solution.wireVersion, 2);
+  EXPECT_EQ(loaded.solution.solver.family, SolverFamily::Neural);
+  EXPECT_EQ(loaded.solution.solver.modelId, "fixture-policy");
+  EXPECT_EQ(loaded.solution.solver.rollouts, 16U);
+  EXPECT_TRUE(validateGridSolution(sampleProblem(), loaded.solution).success);
+}
+
+TEST(GridSolutionIo, RejectsInconsistentSolutionV2Provenance)
+{
+  GridSolution solution = solveGridProblem(sampleProblem(), SolverConfig{});
+  solution.wireVersion = 2;
+  solution.solver.family = SolverFamily::Neural;
+  solution.solver.name = "grid-policy-v1";
+  solution.solver.modelId = "fixture-policy";
+  solution.solver.modelSha256 = std::string(64, 'c');
+  solution.solver.rollouts = 1;
+  solution.solver.selectionMode = "greedy";
+  std::string json = saveGridSolutionToText(solution);
+  const std::size_t hash = json.find(std::string(64, 'c'));
+  ASSERT_NE(hash, std::string::npos);
+  json.replace(hash, 64, "not-a-hash");
+  EXPECT_FALSE(loadGridSolutionFromText(json).success);
+
+  solution.solver.modelSha256 = std::string(64, 'c');
+  solution.solver.selectionMode = "hybrid-best-of";
+  EXPECT_FALSE(loadGridSolutionFromText(saveGridSolutionToText(solution)).success);
+}
