@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "layers": {
+    "contract": "src/core/contract",
+    "domain": "src/core/domain",
+    "app": "src/core/app",
+    "solver": "src/solver",
+    "gui": "src/gui",
+    "cli": "src/cli",
+    "python_binding": "src/python"
+  },
+  "allowedInternalDependencies": {
+    "contract": ["contract"],
+    "domain": ["domain", "contract"],
+    "app": ["app", "domain", "contract"],
+    "solver": ["solver"],
+    "gui": ["gui", "app", "contract"],
+    "cli": ["cli", "solver"],
+    "python_binding": ["python_binding", "solver"]
+  },
+  "includeExceptions": [
+    {
+      "source": "src/core/app/polygonworkspacecontroller.h",
+      "include": "polygonenvironment.h",
+      "target": "solver",
+      "reason": "Контроллер M5 пока напрямую владеет полигональной средой.",
+      "removeBy": "A6"
+    },
+    {
+      "source": "src/core/app/polygonworkspacecontroller.cpp",
+      "include": "polygonio.h",
+      "target": "solver",
+      "reason": "Контроллер M5 пока напрямую использует JSON-адаптер solver.",
+      "removeBy": "A6"
+    },
+    {
+      "source": "src/core/app/polygonworkspacecontroller.cpp",
+      "include": "polygonsolver.h",
+      "target": "solver",
+      "reason": "Контроллер M5 пока напрямую запускает baseline solver.",
+      "removeBy": "A6"
+    },
+    {
+      "source": "src/core/app/polygonworkspaceview.h",
+      "include": "gridtypes.h",
+      "target": "solver",
+      "reason": "Presentation API M5 повторно использует общие статусы solver.",
+      "removeBy": "A6"
+    },
+    {
+      "source": "src/core/app/polygonworkspaceview.h",
+      "include": "polygonsolver.h",
+      "target": "solver",
+      "reason": "Presentation API M5 публикует progress конкретного solver.",
+      "removeBy": "A6"
+    },
+    {
+      "source": "src/core/app/polygonworkspaceview.h",
+      "include": "polygontypes.h",
+      "target": "solver",
+      "reason": "Presentation API M5 публикует wire/domain типы solver.",
+      "removeBy": "A6"
+    },
+    {
+      "source": "src/gui/polygonworkspacewidget.h",
+      "include": "gridtypes.h",
+      "target": "solver",
+      "reason": "Qt-виджет M5 отображает общий статус solver.",
+      "removeBy": "A6"
+    }
+  ],
+  "externalIncludes": {
+    "qtPrefixes": ["Q", "Qt"],
+    "qtAllowedLayers": ["gui"],
+    "nlohmannAllowedFiles": [
+      "src/solver/gridio.cpp",
+      "src/solver/polygonio.cpp"
+    ],
+    "clipperAllowedFiles": [
+      "src/solver/polygonenvironment.cpp"
+    ]
+  },
+  "python": {
+    "roots": ["python/aipackaging_ml"],
+    "moduleGroups": {
+      "base": ["__init__", "contracts", "dataset", "environment", "generator", "polygon_dataset"],
+      "model": ["model", "model_bundle", "onnx_policy", "policy", "rl", "training_data"],
+      "training": ["rollout", "training"],
+      "evaluation": ["evaluation", "exporting"],
+      "cli": ["__main__"]
+    },
+    "allowedInternalDependencies": {
+      "base": ["base"],
+      "model": ["base", "model"],
+      "training": ["base", "model", "training"],
+      "evaluation": ["base", "model", "training", "evaluation"],
+      "cli": ["base", "model", "training", "evaluation", "cli"]
+    },
+    "torchAllowedFiles": [
+      "python/aipackaging_ml/evaluation.py",
+      "python/aipackaging_ml/exporting.py",
+      "python/aipackaging_ml/model.py",
+      "python/aipackaging_ml/policy.py",
+      "python/aipackaging_ml/training.py"
+    ]
+  },
+  "ignoredDirectories": [
+    ".git",
+    ".venv",
+    "artifacts",
+    "build",
+    "generated",
+    "_deps"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "format": "aipackaging.grid_problem",
+  "version": 1,
+  "problemId": "contract-grid",
+  "sheet": {"columns": "2", "rows": 2, "unit": "cell"},
+  "parts": [{"id": "cell", "quantity": 1, "cells": [{"column": 0, "row": 0}], "allowedRotations": [0]}],
+  "objective": {"type": "valuable_right_remnant", "version": 1}
+}

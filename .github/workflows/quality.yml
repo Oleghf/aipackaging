@@ -1,0 +1,51 @@
+name: Quality
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-headless:
+    name: Linux headless
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Architecture checks
+        run: python3 tools/run_checks.py architecture
+      - name: Configure, build and test
+        run: python3 tools/run_checks.py headless
+
+  windows-headless:
+    name: Windows MSVC headless
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Architecture checks
+        run: py -3 tools/run_checks.py architecture
+      - name: Configure, build and test
+        run: py -3 tools/run_checks.py headless
+
+  python:
+    name: Python 3.13
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install package and test dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Architecture checks
+        run: python tools/run_checks.py architecture
+      - name: Python tests
+        run: python tools/run_checks.py python

@@ -45,7 +45,17 @@
 - Qt runtime разворачивается рядом с приложением и тестовым executable для
   соответствующей Debug или Release конфигурации.
 - Исходные C++-файлы нормализованы по корневому `.clang-format`.
-- CI отсутствует.
+- В ветке A1 добавлен GitHub Actions workflow для Linux/Windows headless и
+  Python 3.13; Qt desktop пока проверяется локально.
+- `tools/run_checks.py` предоставляет единые команды `architecture`, `headless`,
+  `python`, `desktop` и `all` без установки или очистки зависимостей.
+- C++ tests разделены на Solver, App, LegacyGeometry и условный Gui target;
+  локально пройдены 40/40 CTest в headless и 41/41 в MSVC+Qt desktop.
+- Общий grid/polygon contract corpus классифицируется C++ parser/validator,
+  Python native binding и JSON Schema Draft 2020-12.
+- Allow-list автоматически запрещает новые Core → Qt, недопустимые внутренние
+  include/import и CMake target edges; legacy-исключения ограничены известными
+  файлами и должны быть удалены в A6.
 - clang-format и clang-tidy доступны через LLVM из Visual Studio, но ещё не
   подключены как CMake/CI targets.
 

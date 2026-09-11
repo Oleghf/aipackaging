@@ -1,0 +1,11 @@
+{
+  "format": "aipackaging.polygon_solution",
+  "version": 1,
+  "problemId": "contract-polygon",
+  "status": "solved",
+  "placements": [{"partId": "square", "instanceIndex": 0, "xMicrometers": 15000, "yMicrometers": 0, "rotationDegrees": 0}],
+  "objective": {"usedLengthMicrometers": 10000, "primaryRemnantWidthMicrometers": 10000, "largestExtraRectangleSquareMicrometers": 98437500, "fragmentationPenaltySquareMicrometers": 0, "placedParts": 1, "totalParts": 1, "placedAreaSquareMicrometers": 100000000, "totalPartAreaSquareMicrometers": 100000000, "materialUtilization": 0.25, "rasterColumns": 128, "rasterRows": 128},
+  "metrics": {"candidatesGenerated": 0, "candidatesValidated": 0, "expandedStates": 0, "candidateGenerationTimeUs": 0, "validationTimeUs": 0, "searchTimeUs": 0, "totalTimeUs": 0},
+  "solver": {"name": "area-left-bottom", "projectVersion": "fixture", "revision": "fixture", "seed": 42, "randomIterations": 64, "beamWidth": 32, "maxExpandedStates": 50000, "timeoutMs": 0},
+  "errorMessage": ""
+}

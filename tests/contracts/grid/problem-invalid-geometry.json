@@ -1,0 +1,13 @@
+{
+  "format": "aipackaging.grid_problem",
+  "version": 1,
+  "problemId": "contract-grid-invalid-geometry",
+  "sheet": {"columns": 4, "rows": 4, "unit": "cell"},
+  "parts": [{
+    "id": "disconnected",
+    "quantity": 1,
+    "cells": [{"column": 0, "row": 0}, {"column": 2, "row": 0}],
+    "allowedRotations": [0]
+  }],
+  "objective": {"type": "valuable_right_remnant", "version": 1}
+}

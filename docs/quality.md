@@ -89,3 +89,30 @@ baseline, neural greedy, neural best-of-16 и hybrid. Research gate требуе
 полных валидных hybrid-решений, отсутствие проигрышей `random-left-bottom/64`,
 не менее шести строгих лексикографических выигрышей и хотя бы одно уменьшение
 `usedLength`. Wall-clock публикуется диагностически и не заменяет quality gate.
+
+## Архитектурная страховка A1
+
+Единая точка запуска локальных проверок не устанавливает зависимости и не
+удаляет существующие build-каталоги:
+
+```powershell
+python tools/run_checks.py architecture
+python tools/run_checks.py headless
+python tools/run_checks.py python
+python tools/run_checks.py desktop --qt-dir "<путь-к-Qt6Config>"
+python tools/run_checks.py all --qt-dir "<путь-к-Qt6Config>"
+```
+
+Проверка `architecture` сопоставляет C++ include и Python imports с
+`tools/architecture/architecture-rules.json`, проверяет production target graph
+в CMake и проигрывает отрицательные self-tests. Временные App/GUI → Solver
+исключения перечислены по конкретным файлам, имеют причину и срок удаления A6.
+
+C++ regression suite разделён на `solver;contract`, `app`, `legacy` и `gui`.
+CLI-сценарии имеют метки `cli;grid` и `cli;polygon`. Общий corpus из
+`tests/contracts/manifest.json` проверяется strict C++ parsers/validators,
+Python binding и JSON Schema Draft 2020-12.
+
+Workflow `quality.yml` запускает Linux headless, Windows MSVC headless и Python
+3.13. Qt desktop остаётся обязательной локальной проверкой до отдельного решения
+об установке Qt на hosted runner.

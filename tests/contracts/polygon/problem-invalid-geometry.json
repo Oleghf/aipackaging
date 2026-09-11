@@ -1,0 +1,23 @@
+{
+  "format": "aipackaging.polygon_problem",
+  "version": 1,
+  "problemId": "contract-polygon-invalid-geometry",
+  "sheet": {"width": 20.0, "height": 20.0, "unit": "mm"},
+  "manufacturing": {"sheetMargin": 0.0, "partSpacing": 0.0, "kerf": 0.0, "curveTolerance": 0.05},
+  "parts": [{
+    "id": "self-intersecting",
+    "quantity": 1,
+    "outer": {
+      "start": {"x": 0.0, "y": 0.0},
+      "segments": [
+        {"type": "line", "end": {"x": 10.0, "y": 10.0}},
+        {"type": "line", "end": {"x": 0.0, "y": 10.0}},
+        {"type": "line", "end": {"x": 10.0, "y": 0.0}},
+        {"type": "line", "end": {"x": 0.0, "y": 0.0}}
+      ]
+    },
+    "holes": [],
+    "allowedRotations": [0]
+  }],
+  "objective": {"type": "valuable_right_remnant", "version": 1}
+}

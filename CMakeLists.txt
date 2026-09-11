@@ -22,6 +22,7 @@ if (MSVC)
 endif()
 
 include("${CMAKE_SOURCE_DIR}/cmake/helpers.cmake")
+include("${CMAKE_SOURCE_DIR}/cmake/architecture_checks.cmake")
 include(FetchContent)
 
 FetchContent_Declare(
@@ -58,6 +59,7 @@ option(BUILD_PYTHON_BINDINGS "Build the optional Python ML bindings" OFF)
 option(BUILD_TESTS "Build tests" OFF)
 
 add_subdirectory("src/")
+aipackaging_check_production_target_graph()
 
 if (BUILD_TESTS)
     include(CTest)
