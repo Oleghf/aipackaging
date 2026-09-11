@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -111,6 +112,11 @@ TEST(PolygonSolver, ReportsProgressWithoutChangingSolution)
     const PolygonSolution reference = solvePolygonProblem(problem(), config);
     const PolygonSolverExecutionResult controlled = runPolygonProblem(problem(), config, control);
     ASSERT_FALSE(progress.empty()) << toString(kind);
+    const SearchProgressStage expectedStage = kind == SolverKind::RandomLeftBottom ? SearchProgressStage::RandomIterations
+                                            : kind == SolverKind::Beam             ? SearchProgressStage::ExpandedStates
+                                                                                   : SearchProgressStage::Instances;
+    EXPECT_TRUE(std::all_of(progress.begin(), progress.end(), [expectedStage](const SearchProgress & value)
+                            { return value.stage == expectedStage && value.completed <= value.total; }));
     EXPECT_FALSE(controlled.cancelled);
     EXPECT_EQ(controlled.solution.placements, reference.placements);
     EXPECT_EQ(controlled.solution.objective.usedLength, reference.objective.usedLength);
@@ -121,15 +127,43 @@ TEST(PolygonSolver, ReportsProgressWithoutChangingSolution)
 /// Проверяет cooperative cancellation до первой мутации и валидность возвращённого partial.
 TEST(PolygonSolver, CancelsAtSafeBoundary)
 {
+  for (const SolverKind kind : {SolverKind::InputFirstFit, SolverKind::AreaLeftBottom, SolverKind::MaxSideLeftBottom,
+                                SolverKind::RandomLeftBottom, SolverKind::Beam})
+  {
+    SolverConfig config;
+    config.solver = kind;
+    config.timeoutMs = 0;
+    PolygonExecutionControl control;
+    control.cancellationRequested = []()
+    {
+      return true;
+    };
+    const PolygonSolverExecutionResult result = runPolygonProblem(problem(), config, control);
+    EXPECT_TRUE(result.cancelled) << toString(kind);
+    EXPECT_TRUE(result.solution.placements.empty()) << toString(kind);
+    EXPECT_TRUE(validatePolygonSolution(problem(), result.solution).success) << toString(kind);
+  }
+}
+
+/// Проверяет возврат лучшего independently validated partial после отмены между экземплярами.
+TEST(PolygonSolver, ReturnsBestPartialWhenCancelledAfterProgress)
+{
   SolverConfig config;
   config.timeoutMs = 0;
-  PolygonExecutionControl control;
-  control.cancellationRequested = []()
+  bool cancel = false;
+  SearchExecutionControl control;
+  control.cancellationRequested = [&cancel]()
   {
-    return true;
+    return cancel;
   };
+  control.progress = [&cancel](const SearchProgress &)
+  {
+    cancel = true;
+  };
+
   const PolygonSolverExecutionResult result = runPolygonProblem(problem(), config, control);
+
   EXPECT_TRUE(result.cancelled);
-  EXPECT_TRUE(result.solution.placements.empty());
+  EXPECT_EQ(result.solution.placements.size(), 1);
   EXPECT_TRUE(validatePolygonSolution(problem(), result.solution).success);
 }

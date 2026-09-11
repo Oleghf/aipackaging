@@ -1,97 +1,29 @@
 #include <algorithm>
-#include <chrono>
-#include <numeric>
-#include <random>
 #include <tuple>
 #include <utility>
 
 #include <aipackaging/nesting/grid_environment.h>
 #include <aipackaging/nesting/grid_solver.h>
 
-#ifndef AIPACKAGING_PROJECT_VERSION
-#define AIPACKAGING_PROJECT_VERSION "unknown"
-#endif
-
-#ifndef AIPACKAGING_BUILD_REVISION
-#define AIPACKAGING_BUILD_REVISION "unknown"
-#endif
+#include "searchalgorithms.h"
 
 namespace aipackaging::solver
 {
 namespace
 {
-using Clock = std::chrono::steady_clock;
+using detail::PartOrdering;
+using detail::PlacementPolicy;
+using detail::SearchRuntime;
+using detail::SearchStopReason;
 
-/// Независимая стратегия определения последовательности экземпляров.
-enum class PartOrdering : std::uint8_t
-{
-  Input,
-  AreaDescending,
-  MaxSideDescending
-};
-
-/// Независимая стратегия выбора размещения для уже выбранного экземпляра.
-enum class PlacementPolicy : std::uint8_t
-{
-  FirstFit,
-  LeftBottom
-};
-
-/// Приводит длительность steady_clock к целым микросекундам для метрик.
-std::uint64_t microseconds(Clock::duration value)
-{
-  return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(value).count());
-}
-
-/// Накопитель общих счётчиков, таймеров и timeout одного запуска поиска.
-struct SearchContext
-{
-  const GridEnvironment & environment;
-  const SolverConfig & config;
-  Clock::time_point start = Clock::now();
-  Clock::duration generationTime{};
-  Clock::duration validationTime{};
-  SolverMetrics metrics;
-
-  /// Проверяет только аварийный wall-clock timeout; ноль отключает его.
-  bool timedOut() const { return config.timeoutMs > 0 && Clock::now() - start >= std::chrono::milliseconds(config.timeoutMs); }
-
-  /// Получает кандидаты среды и учитывает время и количество генерации.
-  std::vector<GridAction> candidates(const GridState & state, std::size_t instancePosition)
-  {
-    const Clock::time_point before = Clock::now();
-    std::vector<GridAction> result = environment.enumerateCandidates(state, instancePosition);
-    generationTime += Clock::now() - before;
-    metrics.candidatesGenerated += result.size();
-    return result;
-  }
-
-  /// Делегирует точную проверку среде и учитывает validation-метрики.
-  bool valid(const GridState & state, const GridAction & action)
-  {
-    const Clock::time_point before = Clock::now();
-    const bool result = environment.canApply(state, action);
-    validationTime += Clock::now() - before;
-    ++metrics.candidatesValidated;
-    return result;
-  }
-};
-
-/// Задаёт стабильный tie-break двух действий независимо от порядка в памяти.
+/// Задаёт стабильный tie-break двух grid-размещений независимо от порядка в памяти.
 bool placementLess(const GridPlacement & lhs, const GridPlacement & rhs)
 {
   return std::tie(lhs.partId, lhs.instanceIndex, lhs.rotationDegrees, lhs.column, lhs.row) <
          std::tie(rhs.partId, rhs.instanceIndex, rhs.rotationDegrees, rhs.column, rhs.row);
 }
 
-/// Лексикографически сравнивает полные последовательности действий.
-bool actionSequenceLess(const GridState & lhs, const GridState & rhs)
-{
-  return std::lexicographical_compare(lhs.placements.begin(), lhs.placements.end(), rhs.placements.begin(), rhs.placements.end(),
-                                      placementLess);
-}
-
-/// Сравнивает состояния: полнота, объём partial, целевой остаток и стабильный tie-break.
+/// Сравнивает grid-состояния по полноте, объёму partial, objective и последовательности действий.
 bool betterState(const GridEnvironment & environment, const GridState & lhs, const GridState & rhs)
 {
   const ObjectiveComponents left = environment.evaluate(lhs);
@@ -110,38 +42,11 @@ bool betterState(const GridEnvironment & environment, const GridState & lhs, con
     return left.largestExtraRectangleArea > right.largestExtraRectangleArea;
   if (left.fragmentationPenalty != right.fragmentationPenalty)
     return left.fragmentationPenalty < right.fragmentationPenalty;
-  return actionSequenceLess(lhs, rhs);
+  return std::lexicographical_compare(lhs.placements.begin(), lhs.placements.end(), rhs.placements.begin(), rhs.placements.end(),
+                                      placementLess);
 }
 
-/// Строит стабильную последовательность экземпляров согласно отдельной стратегии ordering.
-std::vector<std::size_t> orderedInstances(const GridEnvironment & environment, PartOrdering ordering)
-{
-  std::vector<std::size_t> result(environment.instances().size());
-  std::iota(result.begin(), result.end(), 0);
-  if (ordering == PartOrdering::Input)
-    return result;
-
-  std::stable_sort(result.begin(), result.end(),
-                   [&environment, ordering](std::size_t lhs, std::size_t rhs)
-                   {
-                     const GridPartInstance & left = environment.instances()[lhs];
-                     const GridPartInstance & right = environment.instances()[rhs];
-                     const GridPart & leftPart = environment.problem().parts[left.partIndex];
-                     const GridPart & rightPart = environment.problem().parts[right.partIndex];
-                     if (ordering == PartOrdering::AreaDescending && left.area != right.area)
-                       return left.area > right.area;
-                     if (left.maxDimension != right.maxDimension)
-                       return left.maxDimension > right.maxDimension;
-                     if (ordering == PartOrdering::MaxSideDescending && left.area != right.area)
-                       return left.area > right.area;
-                     if (leftPart.id != rightPart.id)
-                       return leftPart.id < rightPart.id;
-                     return left.instanceIndex < right.instanceIndex;
-                   });
-  return result;
-}
-
-/// Сравнивает два допустимых размещения по правилу valuable-remnant left-bottom.
+/// Сравнивает допустимые grid-кандидаты по valuable-remnant left-bottom.
 bool leftBottomLess(const GridEnvironment & environment, const GridState & state, std::size_t instancePosition,
                     const GridAction & lhs, const GridAction & rhs)
 {
@@ -164,173 +69,108 @@ bool leftBottomLess(const GridEnvironment & environment, const GridState & state
   return placementLess(lhs, rhs);
 }
 
-/// Применяет к одному экземпляру отдельную политику выбора среди допустимых кандидатов.
-bool placeOne(SearchContext & context, GridState & state, std::size_t instancePosition, PlacementPolicy policy)
+/// Адаптирует GridEnvironment к общему lifecycle без переноса grid-геометрии в runtime.
+class GridSearchAdapter
 {
-  std::vector<GridAction> candidates = context.candidates(state, instancePosition);
-  bool found = false;
-  GridAction best;
-  for (const GridAction & candidate : candidates)
-  {
-    if (context.timedOut())
-      return false;
-    if (!context.valid(state, candidate))
-      continue;
-    if (policy == PlacementPolicy::FirstFit)
-    {
-      context.environment.apply(state, candidate);
-      ++context.metrics.expandedStates;
-      return true;
-    }
-    if (!found || leftBottomLess(context.environment, state, instancePosition, candidate, best))
-    {
-      best = candidate;
-      found = true;
-    }
-  }
-  if (found)
-  {
-    context.environment.apply(state, best);
-    ++context.metrics.expandedStates;
-  }
-  return found;
-}
+public:
+  using State = GridState;
+  using Action = GridAction;
 
-/// Последовательно применяет placement policy ко всем экземплярам, пропуская неразмещаемые.
-GridState runOrdered(SearchContext & context, const std::vector<std::size_t> & order, PlacementPolicy policy)
-{
-  GridState state = context.environment.initialState();
-  for (const std::size_t instancePosition : order)
+  /// Создаёт адаптер над средой, принадлежащей внешнему фасаду запуска.
+  explicit GridSearchAdapter(const GridEnvironment & environment)
+    : environment_(environment)
   {
-    if (context.timedOut())
-      break;
-    // Занятость только увеличивается, поэтому не поместившийся сейчас экземпляр
-    // не станет допустимым позже. Остальные детали всё равно нужно проверить,
-    // чтобы сохранить действительно лучший достижимый partial этого порядка.
-    placeOne(context, state, instancePosition, policy);
   }
-  return state;
-}
 
-/// Проверяет фиксированное число seeded-перестановок и сохраняет лучший partial или complete.
-GridState runRandom(SearchContext & context, SolveStatus & status)
-{
-  GridState best = context.environment.initialState();
-  std::vector<std::size_t> order = orderedInstances(context.environment, PartOrdering::Input);
-  std::mt19937_64 random(context.config.seed);
-  for (std::size_t iteration = 0; iteration < context.config.randomIterations; ++iteration)
+  /// Возвращает пустое состояние grid-среды.
+  State initialState() const { return environment_.initialState(); }
+  /// Возвращает число обязательных экземпляров задачи.
+  std::size_t instanceCount() const { return environment_.instances().size(); }
+  /// Возвращает площадь экземпляра в клетках для общего ordering.
+  std::size_t instanceArea(std::size_t index) const { return environment_.instances()[index].area; }
+  /// Возвращает максимальный габарит экземпляра для общего ordering.
+  int instanceMaxDimension(std::size_t index) const { return environment_.instances()[index].maxDimension; }
+  /// Возвращает стабильный ID типа детали для общего ordering.
+  const std::string & instancePartId(std::size_t index) const
   {
-    if (context.timedOut())
-    {
-      status = SolveStatus::TimedOut;
-      return best;
-    }
-    // Один генератор последовательно создаёт воспроизводимую серию перестановок;
-    // временные измерения не влияют на выбор действий.
-    std::shuffle(order.begin(), order.end(), random);
-    GridState candidate = runOrdered(context, order, PlacementPolicy::LeftBottom);
-    if (betterState(context.environment, candidate, best))
-      best = std::move(candidate);
+    return environment_.problem().parts[environment_.instances()[index].partIndex].id;
   }
-  status = best.placements.size() == context.environment.instances().size() ? SolveStatus::Solved : SolveStatus::BudgetExhausted;
-  return best;
-}
-
-/// Расширяет общий action space слоями, оставляя beamWidth лучших состояний.
-GridState runBeam(SearchContext & context, SolveStatus & status)
-{
-  GridState best = context.environment.initialState();
-  std::vector<GridState> beam{best};
-
-  while (!beam.empty() && best.placements.size() < context.environment.instances().size())
+  /// Возвращает публичный индекс экземпляра внутри типа детали.
+  std::uint32_t instanceIndex(std::size_t index) const { return environment_.instances()[index].instanceIndex; }
+  /// Сообщает, размещён ли экземпляр в переданном value-state.
+  bool isPlaced(const State & state, std::size_t index) const { return state.placedInstances[index] != 0; }
+  /// Сообщает, принадлежат ли два экземпляра одному типу детали.
+  bool samePart(std::size_t lhs, std::size_t rhs) const
   {
-    std::vector<GridState> children;
-    bool stoppedByBudget = false;
-    for (const GridState & state : beam)
+    return environment_.instances()[lhs].partIndex == environment_.instances()[rhs].partIndex;
+  }
+  /// Возвращает количество размещений текущего состояния.
+  std::size_t placedCount(const State & state) const { return state.placements.size(); }
+  /// Сообщает, содержит ли состояние все обязательные экземпляры.
+  bool complete(const State & state) const { return state.placements.size() == instanceCount(); }
+  /// Возвращает детерминированный каталог кандидатов выбранного экземпляра.
+  std::vector<Action> candidates(const State & state, std::size_t instance) const
+  {
+    return environment_.enumerateCandidates(state, instance);
+  }
+  /// Проверяет один grid-кандидат точными правилами среды.
+  bool valid(const State & state, const Action & action) const { return environment_.canApply(state, action); }
+  /// Применяет уже проверенный grid-кандидат к копии состояния.
+  void apply(State & state, const Action & action) const { environment_.apply(state, action); }
+  /// Сравнивает два состояния по принятому grid objective.
+  bool better(const State & candidate, const State & reference) const { return betterState(environment_, candidate, reference); }
+  /// Сохраняет прежнюю grid-семантику проверки beam budget после validation.
+  bool budgetBeforeValidation() const { return false; }
+
+  /// Выбирает и применяет first-fit либо лучший left-bottom кандидат одного экземпляра.
+  bool placeOrdered(SearchRuntime & runtime, State & state, std::size_t instance, PlacementPolicy policy) const
+  {
+    const auto generationStarted = runtime.now();
+    const std::vector<Action> actions = candidates(state, instance);
+    runtime.recordCandidateGeneration(generationStarted, actions.size());
+    bool found = false;
+    Action best;
+    for (const Action & action : actions)
     {
-      for (std::size_t instancePosition = 0; instancePosition < context.environment.instances().size(); ++instancePosition)
+      if (runtime.pollStop())
+        return false;
+      const auto validationStarted = runtime.now();
+      const bool applicable = valid(state, action);
+      runtime.recordValidation(validationStarted);
+      if (!applicable)
+        continue;
+      if (policy == PlacementPolicy::FirstFit)
       {
-        if (state.placedInstances[instancePosition])
-          continue;
-        const GridPartInstance & instance = context.environment.instances()[instancePosition];
-        // Экземпляры одного part взаимозаменяемы. Расширяем только минимальный
-        // ещё не размещённый instanceIndex, чтобы не создавать перестановочные дубли.
-        bool earlierEquivalentUnplaced = false;
-        for (std::size_t earlier = 0; earlier < instancePosition; ++earlier)
-        {
-          const GridPartInstance & previous = context.environment.instances()[earlier];
-          if (previous.partIndex == instance.partIndex && !state.placedInstances[earlier])
-          {
-            earlierEquivalentUnplaced = true;
-            break;
-          }
-        }
-        if (earlierEquivalentUnplaced)
-          continue;
-
-        const std::vector<GridAction> candidates = context.candidates(state, instancePosition);
-        for (const GridAction & action : candidates)
-        {
-          if (context.timedOut())
-          {
-            status = SolveStatus::TimedOut;
-            return best;
-          }
-          if (!context.valid(state, action))
-            continue;
-          if (context.metrics.expandedStates >= context.config.maxExpandedStates)
-          {
-            stoppedByBudget = true;
-            break;
-          }
-          GridState child = state;
-          context.environment.apply(child, action);
-          ++context.metrics.expandedStates;
-          if (betterState(context.environment, child, best))
-            best = child;
-          children.push_back(std::move(child));
-        }
-        if (stoppedByBudget)
-          break;
+        apply(state, action);
+        runtime.recordExpansion();
+        return true;
       }
-      if (stoppedByBudget)
-        break;
+      if (!found || leftBottomLess(environment_, state, instance, action, best))
+      {
+        best = action;
+        found = true;
+      }
     }
-
-    if (stoppedByBudget)
+    if (found)
     {
-      status =
-        best.placements.size() == context.environment.instances().size() ? SolveStatus::Solved : SolveStatus::BudgetExhausted;
-      return best;
+      apply(state, best);
+      runtime.recordExpansion();
     }
-    if (children.empty())
-      break;
-    // Стабильная сортировка вместе с action tie-break делает усечение beam
-    // одинаковым на разных запусках и стандартных библиотеках.
-    std::stable_sort(children.begin(), children.end(), [&context](const GridState & lhs, const GridState & rhs)
-                     { return betterState(context.environment, lhs, rhs); });
-    if (children.size() > context.config.beamWidth)
-      children.resize(context.config.beamWidth);
-    beam = std::move(children);
+    return found;
   }
-  status = best.placements.size() == context.environment.instances().size() ? SolveStatus::Solved : SolveStatus::NoSolutionFound;
-  return best;
-}
 
-/// Формирует сериализуемые сведения об алгоритме, бюджете и ревизии сборки.
-SolverMetadata metadata(const SolverConfig & config)
+private:
+  const GridEnvironment & environment_;
+};
+
+/// Преобразует SolverKind в общий ordering и placement policy последовательного поиска.
+std::pair<PartOrdering, PlacementPolicy> orderedPolicy(SolverKind solver)
 {
-  SolverMetadata result;
-  result.family = SolverFamily::Baseline;
-  result.name = toString(config.solver);
-  result.projectVersion = AIPACKAGING_PROJECT_VERSION;
-  result.revision = AIPACKAGING_BUILD_REVISION;
-  result.seed = config.seed;
-  result.randomIterations = config.randomIterations;
-  result.beamWidth = config.beamWidth;
-  result.maxExpandedStates = config.maxExpandedStates;
-  result.timeoutMs = config.timeoutMs;
-  return result;
+  if (solver == SolverKind::InputFirstFit)
+    return {PartOrdering::Input, PlacementPolicy::FirstFit};
+  if (solver == SolverKind::AreaLeftBottom)
+    return {PartOrdering::AreaDescending, PlacementPolicy::LeftBottom};
+  return {PartOrdering::MaxSideDescending, PlacementPolicy::LeftBottom};
 }
 } // namespace
 
@@ -355,18 +195,19 @@ bool isBetterGridSolution(const GridSolution & candidate, const GridSolution & r
                                       reference.placements.end(), placementLess);
 }
 
-/// Проверяет вход, запускает выбранный алгоритм и собирает независимые метрики результата.
-GridSolution solveGridProblem(const GridProblem & problem, const SolverConfig & config)
+/// Проверяет задачу, запускает общий lifecycle через grid-адаптер и собирает проверенный результат.
+GridSolverExecutionResult runGridProblem(const GridProblem & problem, const SolverConfig & config,
+                                         const SearchExecutionControl & control)
 {
   GridSolution solution;
   solution.problemId = problem.problemId;
-  solution.solver = metadata(config);
+  solution.solver = detail::makeBaselineMetadata(config);
 
   if ((config.solver == SolverKind::RandomLeftBottom && config.randomIterations == 0) ||
       (config.solver == SolverKind::Beam && (config.beamWidth == 0 || config.maxExpandedStates == 0)))
   {
     solution.errorMessage = "solver budgets must be positive";
-    return solution;
+    return {std::move(solution), false};
   }
 
   std::string error;
@@ -374,55 +215,47 @@ GridSolution solveGridProblem(const GridProblem & problem, const SolverConfig & 
   if (!environment)
   {
     solution.errorMessage = error;
-    return solution;
+    return {std::move(solution), false};
   }
 
-  SearchContext context{*environment, config};
+  SearchRuntime runtime(config, control);
+  const GridSearchAdapter adapter(*environment);
   SolveStatus status = SolveStatus::NoSolutionFound;
   GridState state;
-  switch (config.solver)
+  if (config.solver == SolverKind::RandomLeftBottom)
+    state = detail::runRandom(runtime, adapter, status);
+  else if (config.solver == SolverKind::Beam)
+    state = detail::runBeam(runtime, adapter, status);
+  else
   {
-    case SolverKind::InputFirstFit:
-      state = runOrdered(context, orderedInstances(*environment, PartOrdering::Input), PlacementPolicy::FirstFit);
-      status = context.timedOut()                                         ? SolveStatus::TimedOut
-             : state.placements.size() == environment->instances().size() ? SolveStatus::Solved
-                                                                          : SolveStatus::NoSolutionFound;
-      break;
-    case SolverKind::AreaLeftBottom:
-      state = runOrdered(context, orderedInstances(*environment, PartOrdering::AreaDescending), PlacementPolicy::LeftBottom);
-      status = context.timedOut()                                         ? SolveStatus::TimedOut
-             : state.placements.size() == environment->instances().size() ? SolveStatus::Solved
-                                                                          : SolveStatus::NoSolutionFound;
-      break;
-    case SolverKind::MaxSideLeftBottom:
-      state = runOrdered(context, orderedInstances(*environment, PartOrdering::MaxSideDescending), PlacementPolicy::LeftBottom);
-      status = context.timedOut()                                         ? SolveStatus::TimedOut
-             : state.placements.size() == environment->instances().size() ? SolveStatus::Solved
-                                                                          : SolveStatus::NoSolutionFound;
-      break;
-    case SolverKind::RandomLeftBottom:
-      state = runRandom(context, status);
-      break;
-    case SolverKind::Beam:
-      state = runBeam(context, status);
-      break;
+    const auto [ordering, policy] = orderedPolicy(config.solver);
+    state = detail::runOrdered(runtime, adapter, detail::orderedInstances(adapter, ordering), policy);
+    status = runtime.stopReason() == SearchStopReason::TimedOut
+             ? SolveStatus::TimedOut
+             : (adapter.complete(state) ? SolveStatus::Solved : SolveStatus::NoSolutionFound);
   }
-
-  // Search time хранится отдельно от явно измеренных генерации и валидации.
-  // Небольшая погрешность округления вниз безопасно ограничивается нулём.
-  const Clock::duration total = Clock::now() - context.start;
-  context.metrics.candidateGenerationTimeUs = microseconds(context.generationTime);
-  context.metrics.validationTimeUs = microseconds(context.validationTime);
-  context.metrics.totalTimeUs = microseconds(total);
-  const std::uint64_t measured = context.metrics.candidateGenerationTimeUs + context.metrics.validationTimeUs;
-  context.metrics.searchTimeUs = context.metrics.totalTimeUs > measured ? context.metrics.totalTimeUs - measured : 0;
 
   solution.status = status;
   solution.objective = environment->evaluate(state);
   solution.placements = std::move(state.placements);
-  solution.metrics = context.metrics;
+  solution.metrics = runtime.finalizedMetrics();
   if (!solution.complete())
     solution.errorMessage = toString(status);
-  return solution;
+
+  // Публичный результат повторно проходит независимый валидатор, поэтому
+  // ошибка сборки solution не может выйти за границу Search.
+  const ValidationResult validation = validateGridSolution(problem, solution);
+  if (!validation.success)
+  {
+    solution.status = SolveStatus::InvalidProblem;
+    solution.errorMessage = "internal grid solution validation failed: " + validation.error;
+  }
+  return {std::move(solution), runtime.cancellationObserved()};
+}
+
+/// Делегирует обычный синхронный запуск управляемому API без внешних callback.
+GridSolution solveGridProblem(const GridProblem & problem, const SolverConfig & config)
+{
+  return runGridProblem(problem, config).solution;
 }
 } // namespace aipackaging::solver

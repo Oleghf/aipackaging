@@ -26,7 +26,8 @@ JSON -> GridCore / PolygonCore -> Search -> independently validated solution
 результатом валидации. `GridCore` и `PolygonCore` владеют состояниями,
 допустимостью, кандидатами и objective; `Search` — baseline, `Json` —
 wire-адаптерами, а `Learning` — пошаговыми средами. `SearchContracts` отделяет
-конфигурацию алгоритма от его реализации. `AIPackaging_SolverImpl` и старое имя
+конфигурацию, progress и execution-control алгоритма от его реализации.
+`AIPackaging_SolverImpl` и старое имя
 `AIPackaging_Solver` остаются только INTERFACE compatibility targets до миграции
 App/GUI в A6. Контур не использует `Board/Figure`. CLI сохраняет полный либо
 лучший частичный результат вместе с конфигурацией и метриками.
@@ -205,3 +206,22 @@ JSON или Python. Clipper2 доступен только реализации 
 а nlohmann/json — только `Json`. CLI напрямую использует `Search` и `Json`,
 pybind11-модуль — `Search`, `Json` и `Learning`. При `BUILD_DESKTOP=OFF` и
 `BUILD_LEGACY_TESTS=OFF` CMake не создаёт Math, Domain, Contract и App targets.
+
+Внутри `Search` после A4 общий runtime управляет `steady_clock`, cooperative
+cancellation, progress, счётчиками, metadata и lifecycle ordered/random/beam.
+Grid/polygon adapters сохраняют собственные state/action, генерацию кандидатов,
+left-bottom/NFP ranking, objective и post-validation:
+
+```text
+SearchExecutionControl
+          |
+     SearchRuntime
+      /        \
+ Grid adapter  Polygon adapter
+      |             |
+   GridCore      PolygonCore
+```
+
+Runtime синхронный и не владеет потоками. Прежние polygon execution-типы
+являются совместимыми aliases, а `runGridProblem` предоставляет тот же контракт
+grid-потребителям.

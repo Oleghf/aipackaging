@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <array>
+#include <vector>
 
 #include <aipackaging/nesting/grid_environment.h>
 #include <aipackaging/nesting/grid_solver.h>
@@ -156,6 +158,107 @@ TEST(GridSolver, EmergencyTimeoutReturnsTimedOutStatus)
   config.timeoutMs = 1;
   const GridSolution solution = solveGridProblem(problem, config);
   EXPECT_EQ(solution.status, SolveStatus::TimedOut);
+}
+
+TEST(GridSolver, ReportsProgressWithoutChangingAnyBaselineResult)
+{
+  constexpr std::array SOLVERS = {SolverKind::InputFirstFit, SolverKind::AreaLeftBottom, SolverKind::MaxSideLeftBottom,
+                                  SolverKind::RandomLeftBottom, SolverKind::Beam};
+  for (const SolverKind solver : SOLVERS)
+  {
+    SolverConfig config;
+    config.solver = solver;
+    config.timeoutMs = 0;
+    config.randomIterations = 8;
+    config.beamWidth = 8;
+    config.maxExpandedStates = 5000;
+    std::vector<SearchProgress> progress;
+    SearchExecutionControl control;
+    control.progress = [&progress](const SearchProgress & value)
+    {
+      progress.push_back(value);
+    };
+
+    const GridSolution reference = solveGridProblem(commonProblem(), config);
+    const GridSolverExecutionResult controlled = runGridProblem(commonProblem(), config, control);
+
+    ASSERT_FALSE(progress.empty()) << toString(solver);
+    const SearchProgressStage expectedStage = solver == SolverKind::RandomLeftBottom ? SearchProgressStage::RandomIterations
+                                            : solver == SolverKind::Beam             ? SearchProgressStage::ExpandedStates
+                                                                                     : SearchProgressStage::Instances;
+    EXPECT_TRUE(std::all_of(progress.begin(), progress.end(), [expectedStage](const SearchProgress & value)
+                            { return value.stage == expectedStage && value.completed <= value.total; }));
+    EXPECT_FALSE(controlled.cancelled);
+    EXPECT_EQ(controlled.solution.status, reference.status);
+    EXPECT_EQ(controlled.solution.placements, reference.placements);
+    EXPECT_EQ(controlled.solution.objective.usedLength, reference.objective.usedLength);
+    EXPECT_EQ(controlled.solution.metrics.candidatesGenerated, reference.metrics.candidatesGenerated);
+    EXPECT_EQ(controlled.solution.metrics.candidatesValidated, reference.metrics.candidatesValidated);
+    EXPECT_EQ(controlled.solution.metrics.expandedStates, reference.metrics.expandedStates);
+  }
+}
+
+TEST(GridSolver, CancellationInsideCandidateLoopDoesNotMutateState)
+{
+  SolverConfig config;
+  config.timeoutMs = 0;
+  int polls = 0;
+  SearchExecutionControl control;
+  control.cancellationRequested = [&polls]()
+  {
+    return ++polls == 2;
+  };
+
+  const GridSolverExecutionResult result = runGridProblem(commonProblem(), config, control);
+
+  EXPECT_TRUE(result.cancelled);
+  EXPECT_TRUE(result.solution.placements.empty());
+  EXPECT_TRUE(validateGridSolution(commonProblem(), result.solution).success);
+}
+
+TEST(GridSolver, ReturnsBestPartialWhenCancelledAfterProgress)
+{
+  SolverConfig config;
+  config.timeoutMs = 0;
+  bool cancel = false;
+  SearchExecutionControl control;
+  control.cancellationRequested = [&cancel]()
+  {
+    return cancel;
+  };
+  control.progress = [&cancel](const SearchProgress &)
+  {
+    cancel = true;
+  };
+
+  const GridSolverExecutionResult result = runGridProblem(commonProblem(), config, control);
+
+  EXPECT_TRUE(result.cancelled);
+  EXPECT_EQ(result.solution.placements.size(), 1);
+  EXPECT_TRUE(validateGridSolution(commonProblem(), result.solution).success);
+}
+
+TEST(GridSolver, CancelsEveryBaselineBeforeFirstMutation)
+{
+  constexpr std::array SOLVERS = {SolverKind::InputFirstFit, SolverKind::AreaLeftBottom, SolverKind::MaxSideLeftBottom,
+                                  SolverKind::RandomLeftBottom, SolverKind::Beam};
+  for (const SolverKind solver : SOLVERS)
+  {
+    SolverConfig config;
+    config.solver = solver;
+    config.timeoutMs = 0;
+    SearchExecutionControl control;
+    control.cancellationRequested = []()
+    {
+      return true;
+    };
+
+    const GridSolverExecutionResult result = runGridProblem(commonProblem(), config, control);
+
+    EXPECT_TRUE(result.cancelled) << toString(solver);
+    EXPECT_TRUE(result.solution.placements.empty()) << toString(solver);
+    EXPECT_TRUE(validateGridSolution(commonProblem(), result.solution).success) << toString(solver);
+  }
 }
 
 TEST(GridSolver, PublicComparatorUsesTheSameLexicographicObjective)

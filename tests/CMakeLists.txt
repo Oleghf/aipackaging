@@ -34,7 +34,9 @@ set_tests_properties(AIPackaging_PolygonCoreTests PROPERTIES LABELS "solver;envi
 aipackaging_add_test_executable(AIPackaging_SearchTests
   "solver/testgridsolver.cpp"
   "solver/testpolygonsearch.cpp"
+  "solver/testsearchruntime.cpp"
 )
+target_include_directories(AIPackaging_SearchTests PRIVATE "${CMAKE_SOURCE_DIR}/src/solver/search")
 target_link_libraries(AIPackaging_SearchTests PRIVATE AIPackaging_Search AIPackaging_Json)
 set_tests_properties(AIPackaging_SearchTests PROPERTIES LABELS "solver;search")
 

@@ -118,6 +118,14 @@ compatibility, app, legacy и gui executables. CLI-сценарии имеют �
 strict C++ parsers/validators, Python binding и JSON Schema Draft 2020-12.
 После A3 ожидаются 44 clean nesting, 46 full headless и 47 desktop CTest entries.
 
+После A4 эти totals не меняются. `AIPackaging_SearchTests` дополнительно
+проверяет общий runtime с внедрёнными монотонными часами, приоритет отмены,
+progress всех пяти baseline, возврат валидного partial и отсутствие влияния
+пассивного callback на placements, objective и детерминированные счётчики.
+Semantic golden по-прежнему сравнивает 20 CLI-решений с baseline A1/A3. Локально
+пройдены clean nesting 44/44, полный headless 46/46, MSVC+Qt desktop 47/47 и
+Python 24/24.
+
 Workflow `quality.yml` запускает Linux clean nesting, Windows MSVC headless и
 Python 3.13. Qt desktop остаётся обязательной локальной проверкой до отдельного
 решения об установке Qt на hosted runner.

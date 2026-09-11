@@ -112,6 +112,14 @@ baseline; cancellation/progress проверяются для обоих кон�
 слой требует geometry-specific ветвлений, откатить только обобщение algorithms,
 сохранив общий runtime счётчиков и отмены.
 
+Статус реализации: подготовлено в ветке `codex/a4-search-runtime`.
+`SearchContracts` владеет общими progress/control типами, а закрытый runtime
+объединяет ordering, seeded random, beam, timeout, cancellation, метрики и
+metadata. Grid/polygon adapters сохраняют domain-specific выбор кандидатов,
+objective и валидацию. Локально пройдены clean nesting 44/44, полный Windows
+headless 46/46, MSVC+Qt desktop 47/47, Python 24/24 и semantic golden для 20
+CLI-решений; Linux/CI требуют публикации ветки.
+
 ## A5. Декомпозиция Python data pipeline
 
 Сложность: `M`. Обязателен до production M6.2 training.

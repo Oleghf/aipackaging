@@ -68,6 +68,26 @@ class DependencyCheckerTests(unittest.TestCase):
             self.assertEqual(1, len(violations))
             self.assertIn("learning не может включать json", violations[0].message)
 
+    def test_rejects_search_to_json_include(self) -> None:
+        """Search runtime не должен получать доступ к wire-сериализации."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "src/solver/search/example.cpp"
+            header = root / "src/solver/include/aipackaging/nesting/grid_io.h"
+            source.parent.mkdir(parents=True)
+            header.parent.mkdir(parents=True)
+            source.write_text("#include <aipackaging/nesting/grid_io.h>\n", encoding="utf-8")
+            header.write_text("#pragma once\n", encoding="utf-8")
+            rules = self._rules(
+                {"search": "src/solver/search"},
+                {"search": ["search"]},
+                {"src/solver/include/aipackaging/nesting/grid_io.h": "json"},
+            )
+            violations = self._check(root, rules)
+            self.assertEqual(1, len(violations))
+            self.assertIn("search не может включать json", violations[0].message)
+
     def test_rejects_external_libraries_outside_owner(self) -> None:
         """GridCore и PolygonCore не могут напрямую включать чужие внешние библиотеки."""
 

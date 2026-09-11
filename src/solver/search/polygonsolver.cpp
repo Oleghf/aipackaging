@@ -1,87 +1,23 @@
 #include <algorithm>
-#include <chrono>
-#include <numeric>
-#include <random>
 #include <stdexcept>
 #include <tuple>
+#include <utility>
 
 #include <aipackaging/nesting/polygon_environment.h>
 #include <aipackaging/nesting/polygon_solver.h>
 
-#ifndef AIPACKAGING_PROJECT_VERSION
-#define AIPACKAGING_PROJECT_VERSION "unknown"
-#endif
-
-#ifndef AIPACKAGING_BUILD_REVISION
-#define AIPACKAGING_BUILD_REVISION "unknown"
-#endif
+#include "searchalgorithms.h"
 
 namespace aipackaging::solver
 {
 namespace
 {
-using Clock = std::chrono::steady_clock;
+using detail::PartOrdering;
+using detail::PlacementPolicy;
+using detail::SearchRuntime;
+using detail::SearchStopReason;
 
-/// Стратегия стабильного порядка обязательных экземпляров.
-enum class PolygonOrdering : std::uint8_t
-{
-  Input,
-  Area,
-  MaxSide
-};
-
-/// Накопитель бюджетов, счётчиков и времени полигонального поиска.
-struct PolygonSearchContext
-{
-  const PolygonEnvironment & environment;
-  const SolverConfig & config;
-  const PolygonExecutionControl & control;
-  Clock::time_point started = Clock::now();
-  Clock::duration generation{};
-  Clock::duration validation{};
-  SolverMetrics metrics;
-  bool cancellationObserved = false;
-
-  /// Проверяет аварийный timeout, не влияющий на детерминированный quality budget.
-  bool timedOut() const { return config.timeoutMs > 0 && Clock::now() - started >= std::chrono::milliseconds(config.timeoutMs); }
-
-  /// Опрашивает внешний источник отмены только на безопасных границах поиска.
-  bool cancelled()
-  {
-    if (control.cancellationRequested && control.cancellationRequested())
-      cancellationObserved = true;
-    return cancellationObserved;
-  }
-
-  /// Передаёт вызывающему коду компактный снимок прогресса.
-  void report(PolygonProgressStage stage, std::uint64_t completed, std::uint64_t total, const PolygonState & best) const
-  {
-    if (control.progress)
-      control.progress({stage, completed, total, best.placements.size(), environment.instances().size(), metrics.expandedStates});
-  }
-
-  /// Получает динамические кандидаты и учитывает стоимость генерации.
-  std::vector<PolygonAction> candidates(const PolygonState & state, std::size_t instance)
-  {
-    const auto before = Clock::now();
-    std::vector<PolygonAction> result = environment.enumerateCandidates(state, instance);
-    generation += Clock::now() - before;
-    metrics.candidatesGenerated += result.size();
-    return result;
-  }
-
-  /// Повторно проверяет кандидата и учитывает стоимость validation.
-  bool valid(const PolygonState & state, const PolygonAction & action)
-  {
-    const auto before = Clock::now();
-    const bool result = environment.canApply(state, action);
-    validation += Clock::now() - before;
-    ++metrics.candidatesValidated;
-    return result;
-  }
-};
-
-/// Сравнивает действия для последнего воспроизводимого tie-break.
+/// Сравнивает polygon-размещения для последнего воспроизводимого tie-break.
 bool actionLess(const PolygonPlacement & lhs, const PolygonPlacement & rhs)
 {
   return std::tie(lhs.partId, lhs.instanceIndex, lhs.rotationDegrees, lhs.x, lhs.y) <
@@ -98,7 +34,7 @@ std::int64_t usedLength(const PolygonEnvironment & environment, const PolygonSta
   return state.placements.empty() ? 0 : right - environment.sheetMargin();
 }
 
-/// Сравнивает состояния через рассчитанный средой objective.
+/// Сравнивает polygon-состояния по полноте, partial-полезности, objective и placements.
 bool betterState(const PolygonEnvironment & environment, const PolygonState & lhs, const PolygonState & rhs)
 {
   const bool leftComplete = lhs.placements.size() == environment.instances().size();
@@ -123,166 +59,95 @@ bool betterState(const PolygonEnvironment & environment, const PolygonState & lh
                                       actionLess);
 }
 
-/// Строит input/area/max-side порядок с устойчивым ID tie-break.
-std::vector<std::size_t> orderedInstances(const PolygonEnvironment & environment, PolygonOrdering ordering)
+/// Адаптирует PolygonEnvironment к общему lifecycle, сохраняя динамический NFP action space.
+class PolygonSearchAdapter
 {
-  std::vector<std::size_t> result(environment.instances().size());
-  std::iota(result.begin(), result.end(), 0);
-  if (ordering == PolygonOrdering::Input)
-    return result;
-  std::stable_sort(result.begin(), result.end(),
-                   [&environment, ordering](std::size_t lhs, std::size_t rhs)
-                   {
-                     const auto & left = environment.instances()[lhs];
-                     const auto & right = environment.instances()[rhs];
-                     if (ordering == PolygonOrdering::Area && left.area != right.area)
-                       return left.area > right.area;
-                     if (left.maxDimension != right.maxDimension)
-                       return left.maxDimension > right.maxDimension;
-                     if (ordering == PolygonOrdering::MaxSide && left.area != right.area)
-                       return left.area > right.area;
-                     const std::string & leftId = environment.problem().parts[left.partIndex].id;
-                     const std::string & rightId = environment.problem().parts[right.partIndex].id;
-                     return std::tie(leftId, left.instanceIndex) < std::tie(rightId, right.instanceIndex);
-                   });
-  return result;
-}
+public:
+  using State = PolygonState;
+  using Action = PolygonAction;
 
-/// Последовательно выбирает первый уже отсортированный допустимый NFP-кандидат.
-PolygonState runOrder(PolygonSearchContext & context, const std::vector<std::size_t> & order, bool reportInstances = true)
-{
-  PolygonState state = context.environment.initialState();
-  for (std::size_t orderIndex = 0; orderIndex < order.size(); ++orderIndex)
+  /// Создаёт адаптер над нормализованной полигональной средой внешнего фасада.
+  explicit PolygonSearchAdapter(const PolygonEnvironment & environment)
+    : environment_(environment)
   {
-    if (context.timedOut() || context.cancelled())
-      break;
-    const std::size_t instance = order[orderIndex];
-    for (const PolygonAction & action : context.candidates(state, instance))
-    {
-      if (context.cancelled())
-        break;
-      if (context.valid(state, action))
-      {
-        context.environment.apply(state, action);
-        ++context.metrics.expandedStates;
-        break;
-      }
-    }
-    if (reportInstances)
-      context.report(PolygonProgressStage::Instances, orderIndex + 1, order.size(), state);
   }
-  return state;
-}
 
-/// Запускает seeded Fisher-Yates перестановки и сохраняет лучший результат.
-PolygonState runRandom(PolygonSearchContext & context, SolveStatus & status)
-{
-  PolygonState best = context.environment.initialState();
-  std::vector<std::size_t> order = orderedInstances(context.environment, PolygonOrdering::Input);
-  std::mt19937_64 random(context.config.seed);
-  for (std::size_t iteration = 0; iteration < context.config.randomIterations; ++iteration)
+  /// Возвращает пустое состояние polygon-среды.
+  State initialState() const { return environment_.initialState(); }
+  /// Возвращает число обязательных полигональных экземпляров.
+  std::size_t instanceCount() const { return environment_.instances().size(); }
+  /// Возвращает точную площадь экземпляра в квадратных микронах для ordering.
+  std::uint64_t instanceArea(std::size_t index) const { return environment_.instances()[index].area; }
+  /// Возвращает максимальный габарит экземпляра в микронах для ordering.
+  std::int64_t instanceMaxDimension(std::size_t index) const { return environment_.instances()[index].maxDimension; }
+  /// Возвращает стабильный ID типа детали для общего ordering.
+  const std::string & instancePartId(std::size_t index) const
   {
-    if (context.cancelled())
-      return best;
-    if (context.timedOut())
-    {
-      status = SolveStatus::TimedOut;
-      return best;
-    }
-    std::shuffle(order.begin(), order.end(), random);
-    PolygonState candidate = runOrder(context, order, false);
-    if (betterState(context.environment, candidate, best))
-      best = std::move(candidate);
-    context.report(PolygonProgressStage::RandomIterations, iteration + 1, context.config.randomIterations, best);
+    return environment_.problem().parts[environment_.instances()[index].partIndex].id;
   }
-  status = best.placements.size() == context.environment.instances().size() ? SolveStatus::Solved : SolveStatus::BudgetExhausted;
-  return best;
-}
-
-/// Расширяет совместный выбор детали и позиции слоями ограниченного beam.
-PolygonState runBeam(PolygonSearchContext & context, SolveStatus & status)
-{
-  PolygonState best = context.environment.initialState();
-  std::vector<PolygonState> beam{best};
-  while (!beam.empty() && best.placements.size() < context.environment.instances().size())
+  /// Возвращает публичный индекс экземпляра внутри типа детали.
+  std::uint32_t instanceIndex(std::size_t index) const { return environment_.instances()[index].instanceIndex; }
+  /// Сообщает, размещён ли экземпляр в переданном polygon state.
+  bool isPlaced(const State & state, std::size_t index) const { return state.placedInstances[index] != 0; }
+  /// Сообщает, принадлежат ли два экземпляра одному полигональному типу.
+  bool samePart(std::size_t lhs, std::size_t rhs) const
   {
-    if (context.cancelled())
-      return best;
-    std::vector<PolygonState> children;
-    bool budget = false;
-    for (const PolygonState & state : beam)
-    {
-      for (std::size_t instance = 0; instance < context.environment.instances().size(); ++instance)
-      {
-        if (state.placedInstances[instance])
-          continue;
-        const auto & current = context.environment.instances()[instance];
-        bool duplicate = false;
-        for (std::size_t earlier = 0; earlier < instance; ++earlier)
-          if (!state.placedInstances[earlier] && context.environment.instances()[earlier].partIndex == current.partIndex)
-            duplicate = true;
-        if (duplicate)
-          continue;
-        for (const PolygonAction & action : context.candidates(state, instance))
-        {
-          if (context.cancelled())
-            return best;
-          if (context.timedOut())
-          {
-            status = SolveStatus::TimedOut;
-            return best;
-          }
-          if (context.metrics.expandedStates >= context.config.maxExpandedStates)
-          {
-            budget = true;
-            break;
-          }
-          if (!context.valid(state, action))
-            continue;
-          PolygonState child = state;
-          context.environment.apply(child, action);
-          ++context.metrics.expandedStates;
-          if (betterState(context.environment, child, best))
-            best = child;
-          children.push_back(std::move(child));
-          context.report(PolygonProgressStage::ExpandedStates, context.metrics.expandedStates, context.config.maxExpandedStates,
-                         best);
-        }
-        if (budget)
-          break;
-      }
-      if (budget)
-        break;
-    }
-    if (budget || children.empty())
-      break;
-    std::stable_sort(children.begin(), children.end(),
-                     [&context](const auto & lhs, const auto & rhs) { return betterState(context.environment, lhs, rhs); });
-    if (children.size() > context.config.beamWidth)
-      children.resize(context.config.beamWidth);
-    beam = std::move(children);
+    return environment_.instances()[lhs].partIndex == environment_.instances()[rhs].partIndex;
   }
-  status = best.placements.size() == context.environment.instances().size()
-           ? SolveStatus::Solved
-           : (context.metrics.expandedStates >= context.config.maxExpandedStates ? SolveStatus::BudgetExhausted
-                                                                                 : SolveStatus::NoSolutionFound);
-  return best;
-}
+  /// Возвращает количество размещений текущего состояния.
+  std::size_t placedCount(const State & state) const { return state.placements.size(); }
+  /// Сообщает, содержит ли состояние все обязательные экземпляры.
+  bool complete(const State & state) const { return state.placements.size() == instanceCount(); }
+  /// Строит динамический NFP-каталог выбранного экземпляра для текущего состояния.
+  std::vector<Action> candidates(const State & state, std::size_t instance) const
+  {
+    return environment_.enumerateCandidates(state, instance);
+  }
+  /// Проверяет NFP-кандидат точными правилами границ, пересечений и clearance.
+  bool valid(const State & state, const Action & action) const { return environment_.canApply(state, action); }
+  /// Применяет уже проверенный polygon-кандидат к копии состояния.
+  void apply(State & state, const Action & action) const { environment_.apply(state, action); }
+  /// Сравнивает состояния по принятому polygon objective.
+  bool better(const State & candidate, const State & reference) const { return betterState(environment_, candidate, reference); }
+  /// Сохраняет прежнюю polygon-семантику проверки beam budget до validation.
+  bool budgetBeforeValidation() const { return true; }
 
-/// Создаёт baseline provenance для polygon_solution v1.
-SolverMetadata metadata(const SolverConfig & config)
+  /// Применяет первый допустимый кандидат уже отсортированного NFP-каталога.
+  bool placeOrdered(SearchRuntime & runtime, State & state, std::size_t instance, PlacementPolicy) const
+  {
+    const auto generationStarted = runtime.now();
+    const std::vector<Action> actions = candidates(state, instance);
+    runtime.recordCandidateGeneration(generationStarted, actions.size());
+    // PolygonEnvironment уже ранжирует кандидаты по usedLength/Y/X/rotation,
+    // поэтому дополнительная сортировка в search-слое изменила бы action order.
+    for (const Action & action : actions)
+    {
+      if (runtime.pollStop())
+        return false;
+      const auto validationStarted = runtime.now();
+      const bool applicable = valid(state, action);
+      runtime.recordValidation(validationStarted);
+      if (!applicable)
+        continue;
+      apply(state, action);
+      runtime.recordExpansion();
+      return true;
+    }
+    return false;
+  }
+
+private:
+  const PolygonEnvironment & environment_;
+};
+
+/// Преобразует SolverKind в общий ordering последовательного polygon-поиска.
+PartOrdering orderedPolicy(SolverKind solver)
 {
-  SolverMetadata result;
-  result.family = SolverFamily::Baseline;
-  result.name = toString(config.solver);
-  result.projectVersion = AIPACKAGING_PROJECT_VERSION;
-  result.revision = AIPACKAGING_BUILD_REVISION;
-  result.seed = config.seed;
-  result.randomIterations = config.randomIterations;
-  result.beamWidth = config.beamWidth;
-  result.maxExpandedStates = config.maxExpandedStates;
-  result.timeoutMs = config.timeoutMs;
-  return result;
+  if (solver == SolverKind::InputFirstFit)
+    return PartOrdering::Input;
+  if (solver == SolverKind::AreaLeftBottom)
+    return PartOrdering::AreaDescending;
+  return PartOrdering::MaxSideDescending;
 }
 } // namespace
 
@@ -305,13 +170,13 @@ bool isBetterPolygonSolution(const PolygonSolution & candidate, const PolygonSol
                                       reference.placements.end(), actionLess);
 }
 
-/// Валидирует задачу, запускает алгоритм и независимо проверяет собранный результат.
+/// Проверяет задачу, запускает общий lifecycle через polygon-адаптер и независимо валидирует результат.
 PolygonSolverExecutionResult runPolygonProblem(const PolygonProblem & problem, const SolverConfig & config,
                                                const PolygonExecutionControl & control)
 {
   PolygonSolution solution;
   solution.problemId = problem.problemId;
-  solution.solver = metadata(config);
+  solution.solver = detail::makeBaselineMetadata(config);
   std::string error;
   std::unique_ptr<PolygonEnvironment> environment = PolygonEnvironment::Create(problem, error);
   if (!environment)
@@ -320,25 +185,24 @@ PolygonSolverExecutionResult runPolygonProblem(const PolygonProblem & problem, c
     solution.errorMessage = error;
     return {std::move(solution), false};
   }
-  PolygonSearchContext context{*environment, config, control};
+
+  SearchRuntime runtime(config, control);
+  const PolygonSearchAdapter adapter(*environment);
   SolveStatus status = SolveStatus::NoSolutionFound;
   PolygonState state = environment->initialState();
   try
   {
     if (config.solver == SolverKind::RandomLeftBottom)
-      state = runRandom(context, status);
+      state = detail::runRandom(runtime, adapter, status);
     else if (config.solver == SolverKind::Beam)
-      state = runBeam(context, status);
+      state = detail::runBeam(runtime, adapter, status);
     else
     {
-      const PolygonOrdering ordering =
-        config.solver == SolverKind::InputFirstFit
-          ? PolygonOrdering::Input
-          : (config.solver == SolverKind::AreaLeftBottom ? PolygonOrdering::Area : PolygonOrdering::MaxSide);
-      state = runOrder(context, orderedInstances(*environment, ordering));
-      status = context.timedOut() ? SolveStatus::TimedOut
-                                  : (state.placements.size() == environment->instances().size() ? SolveStatus::Solved
-                                                                                                : SolveStatus::NoSolutionFound);
+      const PartOrdering ordering = orderedPolicy(config.solver);
+      state = detail::runOrdered(runtime, adapter, detail::orderedInstances(adapter, ordering), PlacementPolicy::LeftBottom);
+      status = runtime.stopReason() == SearchStopReason::TimedOut
+               ? SolveStatus::TimedOut
+               : (adapter.complete(state) ? SolveStatus::Solved : SolveStatus::NoSolutionFound);
     }
   }
   catch (const std::length_error & exception)
@@ -346,30 +210,21 @@ PolygonSolverExecutionResult runPolygonProblem(const PolygonProblem & problem, c
     status = SolveStatus::UnsupportedEnvironment;
     solution.errorMessage = exception.what();
   }
+
   solution.status = status;
   solution.placements = state.placements;
   solution.objective = environment->evaluate(state);
-  const auto finished = Clock::now();
-  solution.metrics = context.metrics;
-  solution.metrics.candidateGenerationTimeUs =
-    static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(context.generation).count());
-  solution.metrics.validationTimeUs =
-    static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(context.validation).count());
-  solution.metrics.totalTimeUs =
-    static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(finished - context.started).count());
-  solution.metrics.searchTimeUs =
-    solution.metrics.totalTimeUs -
-    std::min(solution.metrics.totalTimeUs, solution.metrics.candidateGenerationTimeUs + solution.metrics.validationTimeUs);
+  solution.metrics = runtime.finalizedMetrics();
   const ValidationResult validation = validatePolygonSolution(problem, solution);
   if (!validation.success)
   {
     solution.status = SolveStatus::InvalidProblem;
     solution.errorMessage = "internal polygon solution validation failed: " + validation.error;
   }
-  return {std::move(solution), context.cancellationObserved};
+  return {std::move(solution), runtime.cancellationObserved()};
 }
 
-/// Делегирует обычный синхронный запуск управляемому API без внешнего control.
+/// Делегирует обычный синхронный запуск управляемому API без внешних callback.
 PolygonSolution solvePolygonProblem(const PolygonProblem & problem, const SolverConfig & config)
 {
   return runPolygonProblem(problem, config).solution;

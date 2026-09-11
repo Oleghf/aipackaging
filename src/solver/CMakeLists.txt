@@ -45,6 +45,7 @@ target_sources(AIPackaging_PolygonCore PUBLIC
 add_library(AIPackaging_Search STATIC
   "search/gridsolver.cpp"
   "search/polygonsolver.cpp"
+  "search/searchruntime.cpp"
 )
 target_include_directories(AIPackaging_Search PUBLIC "${AIPACKAGING_NESTING_INCLUDE_DIR}")
 target_link_libraries(AIPackaging_Search PUBLIC

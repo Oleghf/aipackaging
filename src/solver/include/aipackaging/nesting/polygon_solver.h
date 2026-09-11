@@ -1,39 +1,19 @@
 #ifndef AIPACKAGING_NESTING_POLYGON_SOLVER_H
 #define AIPACKAGING_NESTING_POLYGON_SOLVER_H
 
-#include <cstdint>
-#include <functional>
-
 #include <aipackaging/nesting/polygon_types.h>
 #include <aipackaging/nesting/search_contracts.h>
 
 namespace aipackaging::solver
 {
-/// Этап выполнения полигонального baseline, определяющий смысл progress-счётчика.
-enum class PolygonProgressStage : std::uint8_t
-{
-  Instances,
-  RandomIterations,
-  ExpandedStates
-};
+/// Совместимое имя общего этапа прогресса для прежнего polygon API.
+using PolygonProgressStage = SearchProgressStage;
 
-/// Наблюдаемый снимок прогресса без передачи изменяемого состояния решателя.
-struct PolygonSolverProgress
-{
-  PolygonProgressStage stage = PolygonProgressStage::Instances;
-  std::uint64_t completed = 0;
-  std::uint64_t total = 0;
-  std::size_t bestPlacedParts = 0;
-  std::size_t totalParts = 0;
-  std::uint64_t expandedStates = 0;
-};
+/// Совместимое имя общего снимка прогресса для прежнего polygon API.
+using PolygonSolverProgress = SearchProgress;
 
-/// Необязательные функции управления длительным полигональным поиском.
-struct PolygonExecutionControl
-{
-  std::function<bool()> cancellationRequested;
-  std::function<void(const PolygonSolverProgress &)> progress;
-};
+/// Совместимое имя общего execution-control для прежнего polygon API.
+using PolygonExecutionControl = SearchExecutionControl;
 
 /// Результат управляемого запуска с отдельным признаком пользовательской отмены.
 struct PolygonSolverExecutionResult

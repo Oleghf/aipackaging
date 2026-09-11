@@ -42,6 +42,11 @@
   NFP-кандидаты, objective/raster, state и validation; Clipper2 и nlohmann/json
   локализованы в своих implementation targets.
 - Canonical `polygon_types.h` больше не зависит от клеточного `gridtypes.h`.
+- В A4 grid и polygon baseline используют единый внутренний search runtime для
+  ordering, random/beam lifecycle, timeout, cancellation, progress, метрик и
+  metadata. Предметные адаптеры сохраняют прежнюю геометрию и objective.
+- Grid получил управляемый `runGridProblem`; прежние polygon progress/control
+  имена сохранены aliases, а `solveGridProblem`/`solvePolygonProblem` совместимы.
 
 ## Инфраструктура проверки
 
@@ -68,10 +73,13 @@
   файлами и должны быть удалены в A6.
 - clang-format и clang-tidy доступны через LLVM из Visual Studio, но ещё не
   подключены как CMake/CI targets.
-- Clean nesting preset не создаёт Math/Domain/Contract/App/Qt targets; локально
-  пройдены 39/39 clean nesting и 41/41 full headless CTest, а 20 CLI golden
-  projections совпали с A1. Также пройдены 42/42 MSVC+Qt desktop CTest и 24/24
-  Python pytest; Linux/CI требуют публикации ветки.
+- A4 сохраняет 44/46/47 CTest entries; локально пройдены clean nesting 44/44,
+  полный Windows headless 46/46, MSVC+Qt desktop 47/47 и Python 24/24. Общий
+  runtime имеет unit tests с управляемыми часами, а architecture self-tests
+  отдельно запрещают Search → Json.
+- Clean nesting preset не создаёт Math/Domain/Contract/App/Qt targets. После A4
+  20 CLI golden projections совпадают с A1/A3 на MinGW и MSVC; Linux/CI требуют
+  публикации ветки.
 
 ## Ограничения desktop-геометрии
 
