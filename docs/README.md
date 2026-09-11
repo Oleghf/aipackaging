@@ -3,6 +3,12 @@
 - [Видение продукта](product-vision.md) — задача, границы, допущения и вопросы.
 - [Текущее состояние](current-state.md) — проверенный baseline и ограничения.
 - [Архитектура](architecture.md) — целевые компоненты, контракты и инварианты.
+- [Архитектурный аудит A0](architecture-audit.md) — фактические зависимости,
+  слабые места и приоритеты переработки.
+- [Целевая архитектура](target-architecture.md) — границы Core, Search, Learning,
+  Json, Application и adapters.
+- [План архитектурной переработки](architecture-refactoring-plan.md) — этапы
+  A1-A8, критерии и порядок относительно M6.2-M6.3.
 - [План разработки](roadmap.md) — этапы и критерии завершения.
 - [Качество и оценка](quality.md) — baseline-алгоритмы, данные, метрики и тесты.
 - [Обучение M3](m3-training.md) — WSL2, smoke, BC/PPO, export и evaluation.
