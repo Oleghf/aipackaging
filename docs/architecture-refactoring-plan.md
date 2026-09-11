@@ -88,6 +88,14 @@ AIPackaging_Math и legacy App; сериализованные решения п
 изменились; forbidden dependency tests проходят. Откат выполняется target за
 target благодаря сохранённым forwarding headers.
 
+Статус реализации: подготовлено в ветке `codex/a3-solver-modules`.
+Вместо одного `SolverImpl` созданы SearchContracts, GridCore, PolygonCore,
+Search, Json и Learning; compatibility targets сохранены. Polygon environment и
+pybind11 bindings физически разделены по ответственности. Локально пройдены
+clean nesting 44/44, полный Windows headless 46/46, MSVC+Qt desktop 47/47,
+Python 24/24 и semantic golden для 20 CLI-решений на MinGW/MSVC. Linux/CI
+считаются непроверенными до публикации ветки.
+
 ## A4. Общий search runtime
 
 Сложность: `M-L`. Желателен до M6.2 и обязателен до добавления новых baseline.

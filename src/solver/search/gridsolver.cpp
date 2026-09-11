@@ -334,41 +334,6 @@ SolverMetadata metadata(const SolverConfig & config)
 }
 } // namespace
 
-/// Преобразует вид решателя в закреплённое CLI/schema v1 имя.
-std::string toString(SolverKind solver)
-{
-  switch (solver)
-  {
-    case SolverKind::InputFirstFit:
-      return "input-first-fit";
-    case SolverKind::AreaLeftBottom:
-      return "area-left-bottom";
-    case SolverKind::MaxSideLeftBottom:
-      return "max-side-left-bottom";
-    case SolverKind::RandomLeftBottom:
-      return "random-left-bottom";
-    case SolverKind::Beam:
-      return "beam";
-  }
-  return "area-left-bottom";
-}
-
-/// Ищет алгоритм по всем допустимым строковым значениям CLI.
-bool parseSolverKind(const std::string & value, SolverKind & solver)
-{
-  constexpr SolverKind VALUES[] = {SolverKind::InputFirstFit, SolverKind::AreaLeftBottom, SolverKind::MaxSideLeftBottom,
-                                   SolverKind::RandomLeftBottom, SolverKind::Beam};
-  for (const SolverKind candidate : VALUES)
-  {
-    if (toString(candidate) == value)
-    {
-      solver = candidate;
-      return true;
-    }
-  }
-  return false;
-}
-
 /// Сравнивает полноту, объём partial, остаток и стабильную последовательность placements.
 bool isBetterGridSolution(const GridSolution & candidate, const GridSolution & reference)
 {

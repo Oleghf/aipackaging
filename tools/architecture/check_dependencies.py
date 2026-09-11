@@ -45,9 +45,11 @@ def is_ignored(path: Path, root: Path, ignored: set[str]) -> bool:
     return any(part in ignored for part in relative.parts)
 
 
-def layer_for(path: Path, layer_roots: dict[str, Path]) -> str | None:
+def layer_for(path: Path, layer_roots: dict[str, Path], header_owners: dict[Path, str]) -> str | None:
     """Определяет архитектурного владельца исходного файла."""
 
+    if path in header_owners:
+        return header_owners[path]
     for layer, layer_root in layer_roots.items():
         try:
             path.relative_to(layer_root)
@@ -57,11 +59,17 @@ def layer_for(path: Path, layer_roots: dict[str, Path]) -> str | None:
     return None
 
 
-def collect_headers(root: Path, layer_roots: dict[str, Path], ignored: set[str]):
+def collect_headers(root: Path, layer_roots: dict[str, Path], header_owners: dict[Path, str], ignored: set[str]):
     """Строит индекс внутренних заголовков и выявляет неоднозначные basename."""
 
     by_basename: dict[str, list[tuple[Path, str]]] = {}
     by_relative: dict[str, tuple[Path, str]] = {}
+    for header, layer in header_owners.items():
+        if header.exists():
+            relative = normalized(header, root)
+            by_relative[relative] = (header, layer)
+            by_relative[relative.removeprefix("src/solver/include/")] = (header, layer)
+            by_basename.setdefault(header.name, []).append((header, layer))
     for layer, layer_root in layer_roots.items():
         if not layer_root.exists():
             continue
@@ -69,6 +77,8 @@ def collect_headers(root: Path, layer_roots: dict[str, Path], ignored: set[str])
             if not header.is_file() or header.suffix.lower() not in {".h", ".hpp"}:
                 continue
             if is_ignored(header, root, ignored):
+                continue
+            if header in header_owners:
                 continue
             relative = header.relative_to(layer_root).as_posix()
             by_relative.setdefault(relative, (header, layer))
@@ -97,6 +107,7 @@ def scan_cpp(root: Path, rules: dict) -> list[Violation]:
 
     ignored = set(rules["ignoredDirectories"])
     layer_roots = {name: root / value for name, value in rules["layers"].items()}
+    header_owners = {root / path: layer for path, layer in rules.get("headerOwners", {}).items()}
     allowed = {name: set(values) for name, values in rules["allowedInternalDependencies"].items()}
     exceptions = {
         (item["source"], item["include"], item["target"]): item
@@ -107,7 +118,7 @@ def scan_cpp(root: Path, rules: dict) -> list[Violation]:
     nlohmann_allowed = set(external["nlohmannAllowedFiles"])
     clipper_allowed = set(external["clipperAllowedFiles"])
     qt_allowed = set(external["qtAllowedLayers"])
-    by_basename, by_relative = collect_headers(root, layer_roots, ignored)
+    by_basename, by_relative = collect_headers(root, layer_roots, header_owners, ignored)
     violations: list[Violation] = []
 
     for basename, matches in sorted(by_basename.items()):
@@ -115,17 +126,18 @@ def scan_cpp(root: Path, rules: dict) -> list[Violation]:
             locations = ", ".join(normalized(path, root) for path, _ in matches)
             violations.append(Violation(matches[0][0], 1, f"неоднозначный basename '{basename}': {locations}"))
 
+    sources: set[Path] = set(header_owners)
     for source_root in layer_roots.values():
         if not source_root.exists():
             continue
         for source in source_root.rglob("*"):
-            if not source.is_file() or source.suffix.lower() not in CPP_SUFFIXES:
-                continue
-            if is_ignored(source, root, ignored):
-                continue
-            source_layer = layer_for(source, layer_roots)
-            source_name = normalized(source, root)
-            for line_number, line in enumerate(source.read_text(encoding="utf-8").splitlines(), 1):
+            if source.is_file() and source.suffix.lower() in CPP_SUFFIXES and not is_ignored(source, root, ignored):
+                sources.add(source)
+
+    for source in sorted(sources):
+        source_layer = layer_for(source, layer_roots, header_owners)
+        source_name = normalized(source, root)
+        for line_number, line in enumerate(source.read_text(encoding="utf-8").splitlines(), 1):
                 match = INCLUDE_PATTERN.match(line)
                 if not match:
                     continue

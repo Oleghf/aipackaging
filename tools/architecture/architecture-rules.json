@@ -5,98 +5,225 @@
     "domain": "src/core/domain",
     "app": "src/core/app",
     "nesting_core": "src/nesting/core",
-    "solver_impl": "src/solver",
+    "grid_core": "src/solver/grid",
+    "polygon_core": "src/solver/polygon",
+    "search_contracts": "src/solver/search/contracts",
+    "search": "src/solver/search",
+    "json": "src/solver/json",
+    "learning": "src/solver/learning",
     "gui": "src/gui",
     "cli": "src/cli",
     "python_binding": "src/python"
   },
   "allowedInternalDependencies": {
-    "contract": ["contract"],
-    "domain": ["domain", "contract"],
-    "app": ["app", "domain", "contract"],
-    "nesting_core": ["nesting_core"],
-    "solver_impl": ["solver_impl", "nesting_core"],
-    "gui": ["gui", "app", "contract"],
-    "cli": ["cli", "solver_impl", "nesting_core"],
-    "python_binding": ["python_binding", "solver_impl", "nesting_core"]
+    "contract": [
+      "contract"
+    ],
+    "domain": [
+      "domain",
+      "contract"
+    ],
+    "app": [
+      "app",
+      "domain",
+      "contract"
+    ],
+    "nesting_core": [
+      "nesting_core"
+    ],
+    "grid_core": [
+      "grid_core",
+      "nesting_core"
+    ],
+    "polygon_core": [
+      "polygon_core",
+      "nesting_core"
+    ],
+    "search_contracts": [
+      "search_contracts",
+      "nesting_core"
+    ],
+    "search": [
+      "search",
+      "search_contracts",
+      "grid_core",
+      "polygon_core",
+      "nesting_core"
+    ],
+    "json": [
+      "json",
+      "search_contracts",
+      "grid_core",
+      "polygon_core",
+      "nesting_core"
+    ],
+    "learning": [
+      "learning",
+      "grid_core",
+      "polygon_core",
+      "nesting_core"
+    ],
+    "solver_compat": [
+      "solver_compat",
+      "search",
+      "search_contracts",
+      "json",
+      "learning",
+      "grid_core",
+      "polygon_core",
+      "nesting_core"
+    ],
+    "gui": [
+      "gui",
+      "app",
+      "contract"
+    ],
+    "cli": [
+      "cli",
+      "search",
+      "search_contracts",
+      "json",
+      "grid_core",
+      "polygon_core",
+      "nesting_core"
+    ],
+    "python_binding": [
+      "python_binding",
+      "search",
+      "search_contracts",
+      "json",
+      "learning",
+      "grid_core",
+      "polygon_core",
+      "nesting_core"
+    ]
   },
   "includeExceptions": [
     {
       "source": "src/core/app/polygonworkspacecontroller.h",
       "include": "polygonenvironment.h",
-      "target": "solver_impl",
+      "target": "solver_compat",
       "reason": "Контроллер M5 пока напрямую владеет полигональной средой.",
       "removeBy": "A6"
     },
     {
       "source": "src/core/app/polygonworkspacecontroller.cpp",
       "include": "polygonio.h",
-      "target": "solver_impl",
+      "target": "solver_compat",
       "reason": "Контроллер M5 пока напрямую использует JSON-адаптер solver.",
       "removeBy": "A6"
     },
     {
       "source": "src/core/app/polygonworkspacecontroller.cpp",
       "include": "polygonsolver.h",
-      "target": "solver_impl",
+      "target": "solver_compat",
       "reason": "Контроллер M5 пока напрямую запускает baseline solver.",
       "removeBy": "A6"
     },
     {
       "source": "src/core/app/polygonworkspaceview.h",
       "include": "gridtypes.h",
-      "target": "solver_impl",
+      "target": "solver_compat",
       "reason": "Presentation API M5 повторно использует общие статусы solver.",
       "removeBy": "A6"
     },
     {
       "source": "src/core/app/polygonworkspaceview.h",
       "include": "polygonsolver.h",
-      "target": "solver_impl",
+      "target": "solver_compat",
       "reason": "Presentation API M5 публикует progress конкретного solver.",
       "removeBy": "A6"
     },
     {
       "source": "src/core/app/polygonworkspaceview.h",
       "include": "polygontypes.h",
-      "target": "solver_impl",
+      "target": "solver_compat",
       "reason": "Presentation API M5 публикует wire/domain типы solver.",
       "removeBy": "A6"
     },
     {
       "source": "src/gui/polygonworkspacewidget.h",
       "include": "gridtypes.h",
-      "target": "solver_impl",
+      "target": "solver_compat",
       "reason": "Qt-виджет M5 отображает общий статус solver.",
       "removeBy": "A6"
     }
   ],
   "externalIncludes": {
-    "qtPrefixes": ["Q", "Qt"],
-    "qtAllowedLayers": ["gui"],
+    "qtPrefixes": [
+      "Q",
+      "Qt"
+    ],
+    "qtAllowedLayers": [
+      "gui"
+    ],
     "nlohmannAllowedFiles": [
-      "src/solver/gridio.cpp",
-      "src/solver/polygonio.cpp"
+      "src/solver/json/gridio.cpp",
+      "src/solver/json/polygonio.cpp"
     ],
     "clipperAllowedFiles": [
-      "src/solver/polygonenvironment.cpp"
+      "src/solver/polygon/polygoncandidates.cpp"
     ]
   },
   "python": {
-    "roots": ["python/aipackaging_ml"],
+    "roots": [
+      "python/aipackaging_ml"
+    ],
     "moduleGroups": {
-      "base": ["__init__", "contracts", "dataset", "environment", "generator", "polygon_dataset"],
-      "model": ["model", "model_bundle", "onnx_policy", "policy", "rl", "training_data"],
-      "training": ["rollout", "training"],
-      "evaluation": ["evaluation", "exporting"],
-      "cli": ["__main__"]
+      "base": [
+        "__init__",
+        "contracts",
+        "dataset",
+        "environment",
+        "generator",
+        "polygon_dataset"
+      ],
+      "model": [
+        "model",
+        "model_bundle",
+        "onnx_policy",
+        "policy",
+        "rl",
+        "training_data"
+      ],
+      "training": [
+        "rollout",
+        "training"
+      ],
+      "evaluation": [
+        "evaluation",
+        "exporting"
+      ],
+      "cli": [
+        "__main__"
+      ]
     },
     "allowedInternalDependencies": {
-      "base": ["base"],
-      "model": ["base", "model"],
-      "training": ["base", "model", "training"],
-      "evaluation": ["base", "model", "training", "evaluation"],
-      "cli": ["base", "model", "training", "evaluation", "cli"]
+      "base": [
+        "base"
+      ],
+      "model": [
+        "base",
+        "model"
+      ],
+      "training": [
+        "base",
+        "model",
+        "training"
+      ],
+      "evaluation": [
+        "base",
+        "model",
+        "training",
+        "evaluation"
+      ],
+      "cli": [
+        "base",
+        "model",
+        "training",
+        "evaluation",
+        "cli"
+      ]
     },
     "torchAllowedFiles": [
       "python/aipackaging_ml/evaluation.py",
@@ -113,5 +240,28 @@
     "build",
     "generated",
     "_deps"
-  ]
+  ],
+  "headerOwners": {
+    "src/solver/include/aipackaging/nesting/grid_environment.h": "grid_core",
+    "src/solver/include/aipackaging/nesting/grid_types.h": "grid_core",
+    "src/solver/include/aipackaging/nesting/polygon_environment.h": "polygon_core",
+    "src/solver/include/aipackaging/nesting/polygon_types.h": "polygon_core",
+    "src/solver/include/aipackaging/nesting/search_contracts.h": "search_contracts",
+    "src/solver/include/aipackaging/nesting/grid_solver.h": "search",
+    "src/solver/include/aipackaging/nesting/polygon_solver.h": "search",
+    "src/solver/include/aipackaging/nesting/grid_io.h": "json",
+    "src/solver/include/aipackaging/nesting/polygon_io.h": "json",
+    "src/solver/include/aipackaging/nesting/grid_learning.h": "learning",
+    "src/solver/include/aipackaging/nesting/polygon_learning.h": "learning",
+    "src/solver/gridenvironment.h": "solver_compat",
+    "src/solver/gridio.h": "solver_compat",
+    "src/solver/gridlearning.h": "solver_compat",
+    "src/solver/gridsolver.h": "solver_compat",
+    "src/solver/gridtypes.h": "solver_compat",
+    "src/solver/polygonenvironment.h": "solver_compat",
+    "src/solver/polygonio.h": "solver_compat",
+    "src/solver/polygonlearning.h": "solver_compat",
+    "src/solver/polygonsolver.h": "solver_compat",
+    "src/solver/polygontypes.h": "solver_compat"
+  }
 }

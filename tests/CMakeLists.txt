@@ -19,20 +19,48 @@ aipackaging_add_test_executable(AIPackaging_NestingCoreTests
 target_link_libraries(AIPackaging_NestingCoreTests PRIVATE AIPackaging_NestingCore)
 set_tests_properties(AIPackaging_NestingCoreTests PROPERTIES LABELS "contract;nesting")
 
-aipackaging_add_test_executable(AIPackaging_SolverTests
+aipackaging_add_test_executable(AIPackaging_GridCoreTests
   "solver/testgridenvironment.cpp"
-  "solver/testgridlearning.cpp"
-  "solver/testgridsolver.cpp"
-  "solver/testgridio.cpp"
-  "solver/testpolygon.cpp"
-  "solver/testcontractcorpus.cpp"
-  "solver/testcompatibilityheaders.cpp"
 )
-target_link_libraries(AIPackaging_SolverTests PRIVATE AIPackaging_SolverImpl AIPackaging_Solver nlohmann_json::nlohmann_json)
-target_compile_definitions(AIPackaging_SolverTests PRIVATE
+target_link_libraries(AIPackaging_GridCoreTests PRIVATE AIPackaging_GridCore)
+set_tests_properties(AIPackaging_GridCoreTests PROPERTIES LABELS "solver;environment;grid")
+
+aipackaging_add_test_executable(AIPackaging_PolygonCoreTests
+  "solver/testpolygonenvironment.cpp"
+)
+target_link_libraries(AIPackaging_PolygonCoreTests PRIVATE AIPackaging_PolygonCore)
+set_tests_properties(AIPackaging_PolygonCoreTests PROPERTIES LABELS "solver;environment;polygon")
+
+aipackaging_add_test_executable(AIPackaging_SearchTests
+  "solver/testgridsolver.cpp"
+  "solver/testpolygonsearch.cpp"
+)
+target_link_libraries(AIPackaging_SearchTests PRIVATE AIPackaging_Search AIPackaging_Json)
+set_tests_properties(AIPackaging_SearchTests PROPERTIES LABELS "solver;search")
+
+aipackaging_add_test_executable(AIPackaging_JsonTests
+  "solver/testgridio.cpp"
+  "solver/testpolygonio.cpp"
+  "solver/testcontractcorpus.cpp"
+)
+target_link_libraries(AIPackaging_JsonTests PRIVATE AIPackaging_Json AIPackaging_Search nlohmann_json::nlohmann_json)
+target_compile_definitions(AIPackaging_JsonTests PRIVATE
   AIPACKAGING_CONTRACT_CORPUS_DIR="${CMAKE_SOURCE_DIR}/tests/contracts"
 )
-set_tests_properties(AIPackaging_SolverTests PROPERTIES LABELS "solver;contract")
+set_tests_properties(AIPackaging_JsonTests PROPERTIES LABELS "solver;contract;io")
+
+aipackaging_add_test_executable(AIPackaging_LearningTests
+  "solver/testgridlearning.cpp"
+  "solver/testpolygonlearning.cpp"
+)
+target_link_libraries(AIPackaging_LearningTests PRIVATE AIPackaging_Learning AIPackaging_Json AIPackaging_Search)
+set_tests_properties(AIPackaging_LearningTests PROPERTIES LABELS "solver;learning")
+
+aipackaging_add_test_executable(AIPackaging_SolverCompatibilityTests
+  "solver/testcompatibilityheaders.cpp"
+)
+target_link_libraries(AIPackaging_SolverCompatibilityTests PRIVATE AIPackaging_SolverImpl AIPackaging_Solver)
+set_tests_properties(AIPackaging_SolverCompatibilityTests PROPERTIES LABELS "solver;contract;compatibility")
 
 if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
   aipackaging_add_test_executable(AIPackaging_AppTests
@@ -166,7 +194,27 @@ aipackaging_assert_target_dependencies(
   ALLOWED_DIRECT AIPackaging_NestingCore
 )
 aipackaging_assert_target_dependencies(
-  TARGET AIPackaging_SolverTests
+  TARGET AIPackaging_GridCoreTests
+  ALLOWED_DIRECT AIPackaging_GridCore
+)
+aipackaging_assert_target_dependencies(
+  TARGET AIPackaging_PolygonCoreTests
+  ALLOWED_DIRECT AIPackaging_PolygonCore
+)
+aipackaging_assert_target_dependencies(
+  TARGET AIPackaging_SearchTests
+  ALLOWED_DIRECT AIPackaging_Search AIPackaging_Json
+)
+aipackaging_assert_target_dependencies(
+  TARGET AIPackaging_JsonTests
+  ALLOWED_DIRECT AIPackaging_Json AIPackaging_Search
+)
+aipackaging_assert_target_dependencies(
+  TARGET AIPackaging_LearningTests
+  ALLOWED_DIRECT AIPackaging_Learning AIPackaging_Json AIPackaging_Search
+)
+aipackaging_assert_target_dependencies(
+  TARGET AIPackaging_SolverCompatibilityTests
   ALLOWED_DIRECT AIPackaging_SolverImpl AIPackaging_Solver
 )
 if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)

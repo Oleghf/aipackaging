@@ -105,14 +105,18 @@ python tools/run_checks.py all --qt-dir "<путь-к-Qt6Config>"
 ```
 
 Проверка `architecture` сопоставляет C++ include и Python imports с
-`tools/architecture/architecture-rules.json`, проверяет production target graph
-в CMake и проигрывает отрицательные self-tests. Временные App/GUI → Solver
-исключения перечислены по конкретным файлам, имеют причину и срок удаления A6.
+`tools/architecture/architecture-rules.json`, включая явных владельцев canonical
+и compatibility headers, проверяет production target graph в CMake и проигрывает
+отрицательные self-tests. Self-tests отклоняют Core → Qt, Learning → Json,
+GridCore → Clipper2, PolygonCore → nlohmann/json и неизвестные target edges.
+Временные App/GUI → Solver исключения перечислены по конкретным файлам, имеют
+причину и срок удаления A6.
 
-C++ regression suite разделён на `solver;contract`, `app`, `legacy` и `gui`.
-CLI-сценарии имеют метки `cli;grid` и `cli;polygon`. Общий corpus из
-`tests/contracts/manifest.json` проверяется strict C++ parsers/validators,
-Python binding и JSON Schema Draft 2020-12.
+C++ regression suite разделён на GridCore, PolygonCore, Search, Json, Learning,
+compatibility, app, legacy и gui executables. CLI-сценарии имеют метки `cli;grid`
+и `cli;polygon`. Общий corpus из `tests/contracts/manifest.json` проверяется
+strict C++ parsers/validators, Python binding и JSON Schema Draft 2020-12.
+После A3 ожидаются 44 clean nesting, 46 full headless и 47 desktop CTest entries.
 
 Workflow `quality.yml` запускает Linux clean nesting, Windows MSVC headless и
 Python 3.13. Qt desktop остаётся обязательной локальной проверкой до отдельного

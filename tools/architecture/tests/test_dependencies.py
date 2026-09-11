@@ -48,6 +48,73 @@ class DependencyCheckerTests(unittest.TestCase):
             self.assertEqual(1, violations[0].line)
             self.assertIn("Qt include", violations[0].message)
 
+    def test_rejects_learning_to_json_include(self) -> None:
+        """Learning не должен получать доступ к сериализации через публичный заголовок."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "src/solver/learning/example.cpp"
+            header = root / "src/solver/include/aipackaging/nesting/polygon_io.h"
+            source.parent.mkdir(parents=True)
+            header.parent.mkdir(parents=True)
+            source.write_text("#include <aipackaging/nesting/polygon_io.h>\n", encoding="utf-8")
+            header.write_text("#pragma once\n", encoding="utf-8")
+            rules = self._rules(
+                {"learning": "src/solver/learning"},
+                {"learning": ["learning"]},
+                {"src/solver/include/aipackaging/nesting/polygon_io.h": "json"},
+            )
+            violations = self._check(root, rules)
+            self.assertEqual(1, len(violations))
+            self.assertIn("learning не может включать json", violations[0].message)
+
+    def test_rejects_external_libraries_outside_owner(self) -> None:
+        """GridCore и PolygonCore не могут напрямую включать чужие внешние библиотеки."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            grid = root / "src/solver/grid/example.cpp"
+            polygon = root / "src/solver/polygon/example.cpp"
+            grid.parent.mkdir(parents=True)
+            polygon.parent.mkdir(parents=True)
+            grid.write_text("#include <clipper2/clipper.h>\n", encoding="utf-8")
+            polygon.write_text("#include <nlohmann/json.hpp>\n", encoding="utf-8")
+            rules = self._rules(
+                {"grid_core": "src/solver/grid", "polygon_core": "src/solver/polygon"},
+                {"grid_core": ["grid_core"], "polygon_core": ["polygon_core"]},
+                {},
+            )
+            violations = self._check(root, rules)
+            self.assertEqual(2, len(violations))
+            self.assertTrue(any("Clipper2" in item.message for item in violations))
+            self.assertTrue(any("nlohmann/json" in item.message for item in violations))
+
+    def _check(self, root: Path, rules: dict):
+        """Сохраняет минимальные правила fixture и запускает общий checker."""
+
+        rules_path = root / "rules.json"
+        rules_path.write_text(json.dumps(rules), encoding="utf-8")
+        return check_repository(root, rules_path)
+
+    def _rules(self, layers: dict, allowed: dict, owners: dict) -> dict:
+        """Создаёт минимальный полный набор правил для отрицательного self-test."""
+
+        return {
+            "version": 1,
+            "layers": layers,
+            "headerOwners": owners,
+            "allowedInternalDependencies": allowed,
+            "includeExceptions": [],
+            "externalIncludes": {
+                "qtPrefixes": ["Q", "Qt"],
+                "qtAllowedLayers": [],
+                "nlohmannAllowedFiles": [],
+                "clipperAllowedFiles": [],
+            },
+            "python": {"roots": [], "torchAllowedFiles": []},
+            "ignoredDirectories": ["build"],
+        }
+
 
 if __name__ == "__main__":
     unittest.main()

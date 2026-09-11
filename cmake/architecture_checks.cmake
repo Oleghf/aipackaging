@@ -63,13 +63,51 @@ endfunction()
 function(aipackaging_check_production_target_graph)
   aipackaging_assert_target_dependencies(TARGET AIPackaging_NestingCore)
   aipackaging_assert_target_dependencies(
-    TARGET AIPackaging_SolverImpl
+    TARGET AIPackaging_SearchContracts
     ALLOWED_DIRECT AIPackaging_NestingCore
     ALLOWED_PUBLIC AIPackaging_NestingCore
   )
   aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_GridCore
+    ALLOWED_DIRECT AIPackaging_NestingCore
+    ALLOWED_PUBLIC AIPackaging_NestingCore
+  )
+  aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_PolygonCore
+    ALLOWED_DIRECT AIPackaging_NestingCore
+    ALLOWED_PUBLIC AIPackaging_NestingCore
+  )
+  aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_Search
+    ALLOWED_DIRECT AIPackaging_SearchContracts AIPackaging_GridCore AIPackaging_PolygonCore
+    ALLOWED_PUBLIC AIPackaging_SearchContracts AIPackaging_GridCore AIPackaging_PolygonCore AIPackaging_NestingCore
+  )
+  aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_Json
+    ALLOWED_DIRECT AIPackaging_SearchContracts AIPackaging_GridCore AIPackaging_PolygonCore
+    ALLOWED_PUBLIC AIPackaging_SearchContracts AIPackaging_GridCore AIPackaging_PolygonCore AIPackaging_NestingCore
+  )
+  aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_Learning
+    ALLOWED_DIRECT AIPackaging_GridCore AIPackaging_PolygonCore
+    ALLOWED_PUBLIC AIPackaging_GridCore AIPackaging_PolygonCore AIPackaging_NestingCore
+  )
+  set(aipackaging_nesting_modules
+    AIPackaging_SearchContracts
+    AIPackaging_GridCore
+    AIPackaging_PolygonCore
+    AIPackaging_Search
+    AIPackaging_Json
+    AIPackaging_Learning
+    AIPackaging_NestingCore
+  )
+  aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_SolverImpl
+    ALLOWED_PUBLIC ${aipackaging_nesting_modules}
+  )
+  aipackaging_assert_target_dependencies(
     TARGET AIPackaging_Solver
-    ALLOWED_PUBLIC AIPackaging_SolverImpl AIPackaging_NestingCore
+    ALLOWED_PUBLIC AIPackaging_SolverImpl ${aipackaging_nesting_modules}
   )
 
   if (TARGET AIPackaging_Contract)
@@ -86,23 +124,23 @@ function(aipackaging_check_production_target_graph)
     aipackaging_assert_target_dependencies(
       TARGET AIPackaging_App
       ALLOWED_DIRECT AIPackaging_Domain AIPackaging_Contract AIPackaging_Solver
-      ALLOWED_PUBLIC AIPackaging_Domain AIPackaging_Contract AIPackaging_Solver AIPackaging_SolverImpl
-        AIPackaging_NestingCore AIPackaging_Math
+      ALLOWED_PUBLIC AIPackaging_Domain AIPackaging_Contract AIPackaging_Solver AIPackaging_SolverImpl AIPackaging_Math
+        ${aipackaging_nesting_modules}
     )
   endif()
 
   if (TARGET AIPackaging_Cli)
     aipackaging_assert_target_dependencies(
       TARGET AIPackaging_Cli
-      ALLOWED_DIRECT AIPackaging_SolverImpl
-      ALLOWED_PUBLIC AIPackaging_NestingCore
+      ALLOWED_DIRECT AIPackaging_Search AIPackaging_Json
+      ALLOWED_PUBLIC ${aipackaging_nesting_modules}
     )
   endif()
   if (TARGET _aipackaging_solver)
     aipackaging_assert_target_dependencies(
       TARGET _aipackaging_solver
-      ALLOWED_DIRECT AIPackaging_SolverImpl
-      ALLOWED_PUBLIC AIPackaging_NestingCore
+      ALLOWED_DIRECT AIPackaging_Search AIPackaging_Json AIPackaging_Learning
+      ALLOWED_PUBLIC ${aipackaging_nesting_modules}
     )
   endif()
   if (TARGET AIPackaging_GUI)
@@ -111,7 +149,7 @@ function(aipackaging_check_production_target_graph)
       ALLOW_QT
       ALLOWED_DIRECT AIPackaging_Contract AIPackaging_Math AIPackaging_App
       ALLOWED_PUBLIC AIPackaging_Contract AIPackaging_Math AIPackaging_App
-        AIPackaging_Domain AIPackaging_Solver AIPackaging_SolverImpl AIPackaging_NestingCore
+        AIPackaging_Domain AIPackaging_Solver AIPackaging_SolverImpl ${aipackaging_nesting_modules}
     )
   endif()
   if (TARGET AIPackaging)

@@ -14,21 +14,22 @@ Qt GUI
 полный план. Граница стратегии пригодна для повторного использования, но
 клеточная `Figure` не является целевой полигональной моделью.
 
-Параллельно реализован независимый от Qt контур раскроя. После A2 его
-публичные контракты и реализация имеют разных владельцев:
+Параллельно реализован независимый от Qt модульный контур раскроя:
 
 ```text
-grid_problem v1 -> GridEnvironment -> baseline solver -> GridSolutionValidator
-                                              |
-                                      grid_solution v1
+JSON -> GridCore / PolygonCore -> Search -> independently validated solution
+                         |
+                      Learning -> pybind11
 ```
 
 `AIPackaging_NestingCore` владеет общими objective/status/metrics/metadata и
-результатом валидации. `AIPackaging_SolverImpl` временно объединяет grid и
-polygon implementations, а старое имя `AIPackaging_Solver` является только
-INTERFACE compatibility target. Контур не использует `Board/Figure`. CLI является
-исследовательской точкой запуска и сохраняет полный либо лучший частичный
-результат вместе с конфигурацией и метриками.
+результатом валидации. `GridCore` и `PolygonCore` владеют состояниями,
+допустимостью, кандидатами и objective; `Search` — baseline, `Json` —
+wire-адаптерами, а `Learning` — пошаговыми средами. `SearchContracts` отделяет
+конфигурацию алгоритма от его реализации. `AIPackaging_SolverImpl` и старое имя
+`AIPackaging_Solver` остаются только INTERFACE compatibility targets до миграции
+App/GUI в A6. Контур не использует `Board/Figure`. CLI сохраняет полный либо
+лучший частичный результат вместе с конфигурацией и метриками.
 
 M4 добавляет второй, также независимый от Qt контур:
 
@@ -183,15 +184,24 @@ space.
 контракта решателя и домена, но домен не зависит от Qt Widgets, PyTorch, ONNX
 Runtime или конкретного алгоритма.
 
-Фактический переходный build graph A2:
+Фактический модульный build graph после A3:
 
 ```text
 AIPackaging_NestingCore
-  <- AIPackaging_SolverImpl <- CLI / pybind11 / solver tests
-                            <- AIPackaging_Solver (compatibility)
-                                      <- legacy App / GUI
+  <- SearchContracts
+  <- GridCore
+  <- PolygonCore <- Clipper2 (PRIVATE)
+
+Search   <- SearchContracts + GridCore + PolygonCore
+Json     <- SearchContracts + GridCore + PolygonCore + nlohmann/json (PRIVATE)
+Learning <- GridCore + PolygonCore
+
+SolverImpl (INTERFACE) <- Search + Json + Learning
+Solver (INTERFACE) <- SolverImpl <- legacy App / GUI
 ```
 
-`NestingCore` не линкует Qt, Math, JSON, Clipper2 или Python. JSON и Clipper2
-остаются PRIVATE деталями `SolverImpl`. При `BUILD_DESKTOP=OFF` и
+`NestingCore`, `GridCore`, `SearchContracts` и `Learning` не линкуют Qt, Math,
+JSON или Python. Clipper2 доступен только реализации polygon candidate generation,
+а nlohmann/json — только `Json`. CLI напрямую использует `Search` и `Json`,
+pybind11-модуль — `Search`, `Json` и `Learning`. При `BUILD_DESKTOP=OFF` и
 `BUILD_LEGACY_TESTS=OFF` CMake не создаёт Math, Domain, Contract и App targets.

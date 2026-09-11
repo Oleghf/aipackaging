@@ -33,11 +33,15 @@
 - Desktop M5 содержит отдельную полигональную вкладку: strict загрузка задачи,
   пять baseline, расширенные бюджеты, асинхронный progress/отмена, визуализация
   колец и сохранение только independently validated результата.
-- В A2 общие контракты вынесены в `AIPackaging_NestingCore`, текущая реализация
-  находится в `AIPackaging_SolverImpl`, а `AIPackaging_Solver` сохранён как
-  INTERFACE compatibility target для App/GUI до A6.
-- Canonical API использует prefix `aipackaging/nesting`; polygon types больше не
-  зависят от клеточного `gridtypes.h`, wire-форматы при этом не изменены.
+- В A2 общие контракты вынесены в `AIPackaging_NestingCore`, а canonical API
+  получил prefix `aipackaging/nesting` без изменения wire-форматов.
+- В A3 реализация разделена на `SearchContracts`, `GridCore`, `PolygonCore`,
+  `Search`, `Json` и `Learning`. `SolverImpl` и `Solver` теперь являются
+  INTERFACE compatibility targets для App/GUI до A6.
+- Полигональная реализация разделена на normalization, collision/clearance,
+  NFP-кандидаты, objective/raster, state и validation; Clipper2 и nlohmann/json
+  локализованы в своих implementation targets.
+- Canonical `polygon_types.h` больше не зависит от клеточного `gridtypes.h`.
 
 ## Инфраструктура проверки
 
@@ -54,8 +58,9 @@
   Python 3.13; Qt desktop пока проверяется локально.
 - `tools/run_checks.py` предоставляет единые команды `architecture`, `nesting`, `headless`,
   `python`, `desktop` и `all` без установки или очистки зависимостей.
-- C++ tests разделены на Solver, App, LegacyGeometry и условный Gui target;
-  локально пройдены 40/40 CTest в headless и 41/41 в MSVC+Qt desktop.
+- Solver tests разделены по владельцам GridCore, PolygonCore, Search, Json,
+  Learning и compatibility. Локально пройдены clean nesting 44/44, полный
+  Windows headless 46/46, MSVC+Qt desktop 47/47 и Python 24/24.
 - Общий grid/polygon contract corpus классифицируется C++ parser/validator,
   Python native binding и JSON Schema Draft 2020-12.
 - Allow-list автоматически запрещает новые Core → Qt, недопустимые внутренние
