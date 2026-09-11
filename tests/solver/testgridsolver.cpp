@@ -1,7 +1,7 @@
 #include <array>
 
-#include <gridenvironment.h>
-#include <gridsolver.h>
+#include <aipackaging/nesting/grid_environment.h>
+#include <aipackaging/nesting/grid_solver.h>
 #include <gtest/gtest.h>
 
 namespace

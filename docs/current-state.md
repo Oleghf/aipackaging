@@ -1,6 +1,6 @@
 # Текущее состояние
 
-Проверено 2026-09-10.
+Проверено 2026-09-11.
 
 ## Baseline
 
@@ -33,6 +33,11 @@
 - Desktop M5 содержит отдельную полигональную вкладку: strict загрузка задачи,
   пять baseline, расширенные бюджеты, асинхронный progress/отмена, визуализация
   колец и сохранение только independently validated результата.
+- В A2 общие контракты вынесены в `AIPackaging_NestingCore`, текущая реализация
+  находится в `AIPackaging_SolverImpl`, а `AIPackaging_Solver` сохранён как
+  INTERFACE compatibility target для App/GUI до A6.
+- Canonical API использует prefix `aipackaging/nesting`; polygon types больше не
+  зависят от клеточного `gridtypes.h`, wire-форматы при этом не изменены.
 
 ## Инфраструктура проверки
 
@@ -47,7 +52,7 @@
 - Исходные C++-файлы нормализованы по корневому `.clang-format`.
 - В ветке A1 добавлен GitHub Actions workflow для Linux/Windows headless и
   Python 3.13; Qt desktop пока проверяется локально.
-- `tools/run_checks.py` предоставляет единые команды `architecture`, `headless`,
+- `tools/run_checks.py` предоставляет единые команды `architecture`, `nesting`, `headless`,
   `python`, `desktop` и `all` без установки или очистки зависимостей.
 - C++ tests разделены на Solver, App, LegacyGeometry и условный Gui target;
   локально пройдены 40/40 CTest в headless и 41/41 в MSVC+Qt desktop.
@@ -58,6 +63,10 @@
   файлами и должны быть удалены в A6.
 - clang-format и clang-tidy доступны через LLVM из Visual Studio, но ещё не
   подключены как CMake/CI targets.
+- Clean nesting preset не создаёт Math/Domain/Contract/App/Qt targets; локально
+  пройдены 39/39 clean nesting и 41/41 full headless CTest, а 20 CLI golden
+  projections совпали с A1. Также пройдены 42/42 MSVC+Qt desktop CTest и 24/24
+  Python pytest; Linux/CI требуют публикации ветки.
 
 ## Ограничения desktop-геометрии
 

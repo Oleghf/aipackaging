@@ -7,8 +7,9 @@
 #include <sstream>
 #include <string_view>
 
-#include <gridenvironment.h>
-#include <gridio.h>
+#include <aipackaging/nesting/grid_environment.h>
+#include <aipackaging/nesting/grid_io.h>
+#include <aipackaging/nesting/search_contracts.h>
 #include <nlohmann/json.hpp>
 
 namespace aipackaging::solver

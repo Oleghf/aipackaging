@@ -2,7 +2,7 @@ find_package(Python 3.12...<3.14 REQUIRED COMPONENTS Interpreter Development.Mod
 find_package(pybind11 3.1 CONFIG REQUIRED)
 
 pybind11_add_module(_aipackaging_solver MODULE bindings.cpp)
-target_link_libraries(_aipackaging_solver PRIVATE AIPackaging_Solver)
+target_link_libraries(_aipackaging_solver PRIVATE AIPackaging_SolverImpl)
 target_compile_definitions(_aipackaging_solver PRIVATE
   AIPACKAGING_PYTHON_VERSION="${PROJECT_VERSION}"
   AIPACKAGING_BUILD_REVISION="${AIPACKAGING_BUILD_REVISION}"

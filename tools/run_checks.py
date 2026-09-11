@@ -49,6 +49,17 @@ def run_sequence(commands: list[list[str]]) -> int:
     return 0
 
 
+def semantic_cli_command(build_dir: str) -> list[str]:
+    """Формирует команду сравнения устойчивых полей CLI с эталоном A1."""
+
+    return [
+        sys.executable,
+        "tools/regression/check_cli_semantics.py",
+        "--build-dir",
+        build_dir,
+    ]
+
+
 def architecture_checks() -> int:
     """Проверяет include/import-граф и отрицательные тесты правил CMake."""
 
@@ -89,6 +100,28 @@ def headless_checks() -> int:
             ["cmake", "--preset", preset],
             ["cmake", "--build", "--preset", f"build-{preset}"],
             ["ctest", "--test-dir", f"build/{preset}", "-C", "Debug", "--output-on-failure"],
+            semantic_cli_command(f"build/{preset}"),
+        ]
+    )
+
+
+def nesting_checks() -> int:
+    """Собирает только Core, SolverImpl, CLI и их тесты без legacy и Qt."""
+
+    system = platform.system()
+    if system == "Windows":
+        preset = "windows-nesting-tests"
+    elif system == "Linux":
+        preset = "linux-nesting-tests"
+    else:
+        print(f"Nesting runner does not define a preset for {system}.", file=sys.stderr)
+        return 1
+    return run_sequence(
+        [
+            ["cmake", "--preset", preset],
+            ["cmake", "--build", "--preset", f"build-{preset}"],
+            ["ctest", "--test-dir", f"build/{preset}", "-C", "Debug", "--output-on-failure"],
+            semantic_cli_command(f"build/{preset}"),
         ]
     )
 
@@ -115,6 +148,7 @@ def desktop_checks(qt_dir: str | None) -> int:
             configure,
             ["cmake", "--build", "--preset", "build-windows-tests"],
             ["ctest", "--test-dir", "build/windows-tests", "-C", "Debug", "--output-on-failure"],
+            semantic_cli_command("build/windows-tests"),
         ]
     )
 
@@ -123,19 +157,20 @@ def main() -> int:
     """Выбирает контур проверки по подкоманде CLI."""
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("check", choices=["architecture", "headless", "python", "desktop", "all"])
+    parser.add_argument("check", choices=["architecture", "nesting", "headless", "python", "desktop", "all"])
     parser.add_argument("--qt-dir", help="Каталог с Qt6Config.cmake для desktop-проверки")
     arguments = parser.parse_args()
 
     actions = {
         "architecture": architecture_checks,
+        "nesting": nesting_checks,
         "headless": headless_checks,
         "python": python_checks,
         "desktop": lambda: desktop_checks(arguments.qt_dir),
     }
     if arguments.check != "all":
         return actions[arguments.check]()
-    for name in ("architecture", "headless", "python", "desktop"):
+    for name in ("architecture", "nesting", "headless", "python", "desktop"):
         result = actions[name]()
         if result:
             return result

@@ -61,35 +61,48 @@ endfunction()
 
 # Фиксирует разрешённый граф production-targets после их создания.
 function(aipackaging_check_production_target_graph)
+  aipackaging_assert_target_dependencies(TARGET AIPackaging_NestingCore)
   aipackaging_assert_target_dependencies(
-    TARGET AIPackaging_Contract
-    ALLOWED_DIRECT AIPackaging_Math
-    ALLOWED_PUBLIC AIPackaging_Math
-  )
-  aipackaging_assert_target_dependencies(
-    TARGET AIPackaging_Domain
-    ALLOWED_DIRECT AIPackaging_Math AIPackaging_Contract
-    ALLOWED_PUBLIC AIPackaging_Math AIPackaging_Contract
+    TARGET AIPackaging_SolverImpl
+    ALLOWED_DIRECT AIPackaging_NestingCore
+    ALLOWED_PUBLIC AIPackaging_NestingCore
   )
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_Solver
+    ALLOWED_PUBLIC AIPackaging_SolverImpl AIPackaging_NestingCore
   )
-  aipackaging_assert_target_dependencies(
-    TARGET AIPackaging_App
-    ALLOWED_DIRECT AIPackaging_Domain AIPackaging_Contract AIPackaging_Solver
-    ALLOWED_PUBLIC AIPackaging_Domain AIPackaging_Contract AIPackaging_Solver AIPackaging_Math
-  )
+
+  if (TARGET AIPackaging_Contract)
+    aipackaging_assert_target_dependencies(
+      TARGET AIPackaging_Contract
+      ALLOWED_DIRECT AIPackaging_Math
+      ALLOWED_PUBLIC AIPackaging_Math
+    )
+    aipackaging_assert_target_dependencies(
+      TARGET AIPackaging_Domain
+      ALLOWED_DIRECT AIPackaging_Math AIPackaging_Contract
+      ALLOWED_PUBLIC AIPackaging_Math AIPackaging_Contract
+    )
+    aipackaging_assert_target_dependencies(
+      TARGET AIPackaging_App
+      ALLOWED_DIRECT AIPackaging_Domain AIPackaging_Contract AIPackaging_Solver
+      ALLOWED_PUBLIC AIPackaging_Domain AIPackaging_Contract AIPackaging_Solver AIPackaging_SolverImpl
+        AIPackaging_NestingCore AIPackaging_Math
+    )
+  endif()
 
   if (TARGET AIPackaging_Cli)
     aipackaging_assert_target_dependencies(
       TARGET AIPackaging_Cli
-      ALLOWED_DIRECT AIPackaging_Solver
+      ALLOWED_DIRECT AIPackaging_SolverImpl
+      ALLOWED_PUBLIC AIPackaging_NestingCore
     )
   endif()
   if (TARGET _aipackaging_solver)
     aipackaging_assert_target_dependencies(
       TARGET _aipackaging_solver
-      ALLOWED_DIRECT AIPackaging_Solver
+      ALLOWED_DIRECT AIPackaging_SolverImpl
+      ALLOWED_PUBLIC AIPackaging_NestingCore
     )
   endif()
   if (TARGET AIPackaging_GUI)
@@ -98,7 +111,7 @@ function(aipackaging_check_production_target_graph)
       ALLOW_QT
       ALLOWED_DIRECT AIPackaging_Contract AIPackaging_Math AIPackaging_App
       ALLOWED_PUBLIC AIPackaging_Contract AIPackaging_Math AIPackaging_App
-        AIPackaging_Domain AIPackaging_Solver
+        AIPackaging_Domain AIPackaging_Solver AIPackaging_SolverImpl AIPackaging_NestingCore
     )
   endif()
   if (TARGET AIPackaging)

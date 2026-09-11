@@ -97,6 +97,7 @@ baseline, neural greedy, neural best-of-16 и hybrid. Research gate требуе
 
 ```powershell
 python tools/run_checks.py architecture
+python tools/run_checks.py nesting
 python tools/run_checks.py headless
 python tools/run_checks.py python
 python tools/run_checks.py desktop --qt-dir "<путь-к-Qt6Config>"
@@ -113,6 +114,14 @@ CLI-сценарии имеют метки `cli;grid` и `cli;polygon`. Общи
 `tests/contracts/manifest.json` проверяется strict C++ parsers/validators,
 Python binding и JSON Schema Draft 2020-12.
 
-Workflow `quality.yml` запускает Linux headless, Windows MSVC headless и Python
-3.13. Qt desktop остаётся обязательной локальной проверкой до отдельного решения
-об установке Qt на hosted runner.
+Workflow `quality.yml` запускает Linux clean nesting, Windows MSVC headless и
+Python 3.13. Qt desktop остаётся обязательной локальной проверкой до отдельного
+решения об установке Qt на hosted runner.
+
+После A2 команда `nesting` использует чистый preset и доказывает отсутствие Qt,
+Math и legacy targets. Она выполняет 39 CTest entries. Полный headless выполняет
+41, desktop — 42. После CTest runner сравнивает 20 grid/polygon CLI-решений с
+семантическими SHA-256 A1: учитываются status, placements, objective и
+детерминированные счётчики, но исключаются wall-clock и revision.
+Для grid random зафиксированы отдельные A1-хеши MinGW и MSVC, поскольку
+стандартный `shuffle` этих библиотек даёт разные, но повторяемые перестановки.

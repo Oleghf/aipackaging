@@ -7,9 +7,9 @@
 #include <sstream>
 #include <string_view>
 
+#include <aipackaging/nesting/polygon_environment.h>
+#include <aipackaging/nesting/polygon_io.h>
 #include <nlohmann/json.hpp>
-#include <polygonenvironment.h>
-#include <polygonio.h>
 
 namespace aipackaging::solver
 {

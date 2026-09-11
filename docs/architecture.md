@@ -14,7 +14,8 @@ Qt GUI
 полный план. Граница стратегии пригодна для повторного использования, но
 клеточная `Figure` не является целевой полигональной моделью.
 
-Параллельно реализовано независимое от Qt ядро `AIPackaging_Solver`:
+Параллельно реализован независимый от Qt контур раскроя. После A2 его
+публичные контракты и реализация имеют разных владельцев:
 
 ```text
 grid_problem v1 -> GridEnvironment -> baseline solver -> GridSolutionValidator
@@ -22,7 +23,10 @@ grid_problem v1 -> GridEnvironment -> baseline solver -> GridSolutionValidator
                                       grid_solution v1
 ```
 
-Оно не использует `Board/Figure` и пока не подключено к GUI. CLI является
+`AIPackaging_NestingCore` владеет общими objective/status/metrics/metadata и
+результатом валидации. `AIPackaging_SolverImpl` временно объединяет grid и
+polygon implementations, а старое имя `AIPackaging_Solver` является только
+INTERFACE compatibility target. Контур не использует `Board/Figure`. CLI является
 исследовательской точкой запуска и сохраняет полный либо лучший частичный
 результат вместе с конфигурацией и метриками.
 
@@ -36,7 +40,10 @@ polygon_problem v1 -> curve flattening -> PolygonEnvironment -> baseline
                                       PolygonSolutionValidator
 ```
 
-Клеточный и полигональный контракты сосуществуют; формат определяется корневым
+Клеточный и полигональный контракты сосуществуют; canonical C++-заголовки
+доступны как `aipackaging/nesting/...`, а старые плоские заголовки являются
+forwarding API. Канонический `polygon_types.h` больше не включает grid API.
+Формат определяется корневым
 полем `format`, поэтому прежние задачи, CLI-команды и датасеты не мигрируют.
 
 ## Целевая система
@@ -175,3 +182,16 @@ space.
 Направление зависимостей: `gui -> app -> domain`; адаптеры решателей зависят от
 контракта решателя и домена, но домен не зависит от Qt Widgets, PyTorch, ONNX
 Runtime или конкретного алгоритма.
+
+Фактический переходный build graph A2:
+
+```text
+AIPackaging_NestingCore
+  <- AIPackaging_SolverImpl <- CLI / pybind11 / solver tests
+                            <- AIPackaging_Solver (compatibility)
+                                      <- legacy App / GUI
+```
+
+`NestingCore` не линкует Qt, Math, JSON, Clipper2 или Python. JSON и Clipper2
+остаются PRIVATE деталями `SolverImpl`. При `BUILD_DESKTOP=OFF` и
+`BUILD_LEGACY_TESTS=OFF` CMake не создаёт Math, Domain, Contract и App targets.

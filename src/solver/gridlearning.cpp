@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <utility>
 
-#include <gridlearning.h>
+#include <aipackaging/nesting/grid_learning.h>
 
 namespace aipackaging::solver
 {

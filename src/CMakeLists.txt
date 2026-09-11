@@ -1,8 +1,12 @@
-# Подключаем другие CMakeLists
-add_subdirectory("core/domain/")
-add_subdirectory("core/contract/")
-add_subdirectory("core/app/")
+# Подключаем независимое ядро раскроя и текущую реализацию решателя.
+add_subdirectory("nesting/")
 add_subdirectory("solver/")
+
+if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
+  add_subdirectory("core/domain/")
+  add_subdirectory("core/contract/")
+  add_subdirectory("core/app/")
+endif()
 
 if (BUILD_SOLVER_CLI)
   add_subdirectory("cli/")

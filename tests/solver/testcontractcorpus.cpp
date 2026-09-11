@@ -3,12 +3,12 @@
 #include <sstream>
 #include <string>
 
-#include <gridenvironment.h>
-#include <gridio.h>
+#include <aipackaging/nesting/grid_environment.h>
+#include <aipackaging/nesting/grid_io.h>
+#include <aipackaging/nesting/polygon_environment.h>
+#include <aipackaging/nesting/polygon_io.h>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
-#include <polygonenvironment.h>
-#include <polygonio.h>
 
 namespace
 {

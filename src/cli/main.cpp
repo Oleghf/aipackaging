@@ -7,12 +7,12 @@
 #include <string>
 #include <string_view>
 
-#include <gridenvironment.h>
-#include <gridio.h>
-#include <gridsolver.h>
-#include <polygonenvironment.h>
-#include <polygonio.h>
-#include <polygonsolver.h>
+#include <aipackaging/nesting/grid_environment.h>
+#include <aipackaging/nesting/grid_io.h>
+#include <aipackaging/nesting/grid_solver.h>
+#include <aipackaging/nesting/polygon_environment.h>
+#include <aipackaging/nesting/polygon_io.h>
+#include <aipackaging/nesting/polygon_solver.h>
 
 namespace
 {

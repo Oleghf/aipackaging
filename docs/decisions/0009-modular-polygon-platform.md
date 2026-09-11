@@ -34,6 +34,19 @@ M1-M3. Клеточный desktop `Board/Figure` изолируется feature 
 execution runner завершаются до M6.3. Любой neural/hybrid backend обязан выбирать
 действия C++ environment и проходить тот же exact validator.
 
+Первый шаг решения реализуется в A2 без изменения namespace и wire formats:
+
+- `AIPackaging_NestingCore` владеет общими контрактами и строковыми
+  преобразованиями status/family;
+- `AIPackaging_SolverImpl` временно владеет восемью существующими grid/polygon
+  translation units и публично зависит только от Core;
+- `AIPackaging_Solver` становится INTERFACE-совместимостью для старых flat
+  headers и App/GUI;
+- `SolverKind` и `SolverConfig` принадлежат отдельному search contract, но общий
+  execution-control откладывается до A4;
+- legacy targets создаются только для desktop либо при явном
+  `BUILD_LEGACY_TESTS=ON`.
+
 ## Рассмотренные варианты
 
 ### Сохранить единый `AIPackaging_Solver`

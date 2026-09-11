@@ -2,11 +2,11 @@
 #include <numbers>
 #include <string>
 
+#include <aipackaging/nesting/polygon_environment.h>
+#include <aipackaging/nesting/polygon_io.h>
+#include <aipackaging/nesting/polygon_learning.h>
+#include <aipackaging/nesting/polygon_solver.h>
 #include <gtest/gtest.h>
-#include <polygonenvironment.h>
-#include <polygonio.h>
-#include <polygonlearning.h>
-#include <polygonsolver.h>
 
 namespace
 {

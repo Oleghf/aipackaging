@@ -5,7 +5,7 @@
 #include <set>
 #include <utility>
 
-#include <gridenvironment.h>
+#include <aipackaging/nesting/grid_environment.h>
 
 namespace aipackaging::solver
 {

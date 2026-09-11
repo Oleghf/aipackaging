@@ -5,8 +5,8 @@
 #include <stdexcept>
 #include <tuple>
 
-#include <polygonenvironment.h>
-#include <polygonsolver.h>
+#include <aipackaging/nesting/polygon_environment.h>
+#include <aipackaging/nesting/polygon_solver.h>
 
 #ifndef AIPACKAGING_PROJECT_VERSION
 #define AIPACKAGING_PROJECT_VERSION "unknown"

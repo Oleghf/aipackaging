@@ -7,12 +7,12 @@
 #include <string>
 #include <vector>
 
-#include <gridio.h>
-#include <gridlearning.h>
-#include <gridsolver.h>
-#include <polygonio.h>
-#include <polygonlearning.h>
-#include <polygonsolver.h>
+#include <aipackaging/nesting/grid_io.h>
+#include <aipackaging/nesting/grid_learning.h>
+#include <aipackaging/nesting/grid_solver.h>
+#include <aipackaging/nesting/polygon_io.h>
+#include <aipackaging/nesting/polygon_learning.h>
+#include <aipackaging/nesting/polygon_solver.h>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>

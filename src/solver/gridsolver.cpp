@@ -5,8 +5,8 @@
 #include <tuple>
 #include <utility>
 
-#include <gridenvironment.h>
-#include <gridsolver.h>
+#include <aipackaging/nesting/grid_environment.h>
+#include <aipackaging/nesting/grid_solver.h>
 
 #ifndef AIPACKAGING_PROJECT_VERSION
 #define AIPACKAGING_PROJECT_VERSION "unknown"
@@ -334,27 +334,6 @@ SolverMetadata metadata(const SolverConfig & config)
 }
 } // namespace
 
-/// Преобразует статус enum в закреплённое schema v1 имя.
-std::string toString(SolveStatus status)
-{
-  switch (status)
-  {
-    case SolveStatus::Solved:
-      return "solved";
-    case SolveStatus::NoSolutionFound:
-      return "no_solution_found";
-    case SolveStatus::BudgetExhausted:
-      return "budget_exhausted";
-    case SolveStatus::TimedOut:
-      return "timed_out";
-    case SolveStatus::UnsupportedEnvironment:
-      return "unsupported_environment";
-    case SolveStatus::InvalidProblem:
-      return "invalid_problem";
-  }
-  return "invalid_problem";
-}
-
 /// Преобразует вид решателя в закреплённое CLI/schema v1 имя.
 std::string toString(SolverKind solver)
 {
@@ -374,37 +353,6 @@ std::string toString(SolverKind solver)
   return "area-left-bottom";
 }
 
-/// Преобразует семейство provenance в закреплённое schema v2 имя.
-std::string toString(SolverFamily family)
-{
-  switch (family)
-  {
-    case SolverFamily::Baseline:
-      return "baseline";
-    case SolverFamily::Neural:
-      return "neural";
-    case SolverFamily::Hybrid:
-      return "hybrid";
-  }
-  return "baseline";
-}
-
-/// Ищет статус по всем допустимым строковым значениям schema v1.
-bool parseSolveStatus(const std::string & value, SolveStatus & status)
-{
-  constexpr SolveStatus VALUES[] = {SolveStatus::Solved,   SolveStatus::NoSolutionFound,        SolveStatus::BudgetExhausted,
-                                    SolveStatus::TimedOut, SolveStatus::UnsupportedEnvironment, SolveStatus::InvalidProblem};
-  for (const SolveStatus candidate : VALUES)
-  {
-    if (toString(candidate) == value)
-    {
-      status = candidate;
-      return true;
-    }
-  }
-  return false;
-}
-
 /// Ищет алгоритм по всем допустимым строковым значениям CLI.
 bool parseSolverKind(const std::string & value, SolverKind & solver)
 {
@@ -415,21 +363,6 @@ bool parseSolverKind(const std::string & value, SolverKind & solver)
     if (toString(candidate) == value)
     {
       solver = candidate;
-      return true;
-    }
-  }
-  return false;
-}
-
-/// Ищет семейство по всем допустимым значениям solution v2.
-bool parseSolverFamily(const std::string & value, SolverFamily & family)
-{
-  constexpr SolverFamily VALUES[] = {SolverFamily::Baseline, SolverFamily::Neural, SolverFamily::Hybrid};
-  for (const SolverFamily candidate : VALUES)
-  {
-    if (toString(candidate) == value)
-    {
-      family = candidate;
       return true;
     }
   }

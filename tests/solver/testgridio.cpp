@@ -1,8 +1,8 @@
 #include <string>
 
-#include <gridenvironment.h>
-#include <gridio.h>
-#include <gridsolver.h>
+#include <aipackaging/nesting/grid_environment.h>
+#include <aipackaging/nesting/grid_io.h>
+#include <aipackaging/nesting/grid_solver.h>
 #include <gtest/gtest.h>
 
 namespace

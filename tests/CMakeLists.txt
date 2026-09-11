@@ -13,6 +13,12 @@ function(aipackaging_add_test_executable target_name)
   add_test(NAME ${target_name} COMMAND $<TARGET_FILE:${target_name}>)
 endfunction()
 
+aipackaging_add_test_executable(AIPackaging_NestingCoreTests
+  "nesting/testcommoncontracts.cpp"
+)
+target_link_libraries(AIPackaging_NestingCoreTests PRIVATE AIPackaging_NestingCore)
+set_tests_properties(AIPackaging_NestingCoreTests PROPERTIES LABELS "contract;nesting")
+
 aipackaging_add_test_executable(AIPackaging_SolverTests
   "solver/testgridenvironment.cpp"
   "solver/testgridlearning.cpp"
@@ -20,48 +26,51 @@ aipackaging_add_test_executable(AIPackaging_SolverTests
   "solver/testgridio.cpp"
   "solver/testpolygon.cpp"
   "solver/testcontractcorpus.cpp"
+  "solver/testcompatibilityheaders.cpp"
 )
-target_link_libraries(AIPackaging_SolverTests PRIVATE AIPackaging_Solver nlohmann_json::nlohmann_json)
+target_link_libraries(AIPackaging_SolverTests PRIVATE AIPackaging_SolverImpl AIPackaging_Solver nlohmann_json::nlohmann_json)
 target_compile_definitions(AIPackaging_SolverTests PRIVATE
   AIPACKAGING_CONTRACT_CORPUS_DIR="${CMAKE_SOURCE_DIR}/tests/contracts"
 )
 set_tests_properties(AIPackaging_SolverTests PROPERTIES LABELS "solver;contract")
 
-aipackaging_add_test_executable(AIPackaging_AppTests
-  "core/app/testpackingcontroller.cpp"
-  "core/app/testfigurepoolio.cpp"
-  "core/app/testpackingscenesaver.cpp"
-  "core/app/testdrawcontroller.cpp"
-  "core/app/testfigurescenegeometry.cpp"
-  "core/app/testpolygonworkspacecontroller.cpp"
-)
-target_include_directories(AIPackaging_AppTests PRIVATE
-  "${CMAKE_SOURCE_DIR}/src/core/app"
-  "${CMAKE_SOURCE_DIR}/src/core/app/services"
-  "${CMAKE_SOURCE_DIR}/src/core/app/services/packing"
-  "${CMAKE_SOURCE_DIR}/src/core/app/services/io"
-)
-target_link_libraries(AIPackaging_AppTests PRIVATE
-  AIPackaging_App AIPackaging_Math AIPackaging_Domain AIPackaging_Contract AIPackaging_Solver
-)
-set_tests_properties(AIPackaging_AppTests PROPERTIES LABELS "app")
+if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
+  aipackaging_add_test_executable(AIPackaging_AppTests
+    "core/app/testpackingcontroller.cpp"
+    "core/app/testfigurepoolio.cpp"
+    "core/app/testpackingscenesaver.cpp"
+    "core/app/testdrawcontroller.cpp"
+    "core/app/testfigurescenegeometry.cpp"
+    "core/app/testpolygonworkspacecontroller.cpp"
+  )
+  target_include_directories(AIPackaging_AppTests PRIVATE
+    "${CMAKE_SOURCE_DIR}/src/core/app"
+    "${CMAKE_SOURCE_DIR}/src/core/app/services"
+    "${CMAKE_SOURCE_DIR}/src/core/app/services/packing"
+    "${CMAKE_SOURCE_DIR}/src/core/app/services/io"
+  )
+  target_link_libraries(AIPackaging_AppTests PRIVATE
+    AIPackaging_App AIPackaging_Math AIPackaging_Domain AIPackaging_Contract AIPackaging_Solver
+  )
+  set_tests_properties(AIPackaging_AppTests PROPERTIES LABELS "app")
 
-aipackaging_add_test_executable(AIPackaging_LegacyGeometryTests
-  "aipackaging_math/geometry/testpoint2d.cpp"
-  "aipackaging_math/geometry/testvector2d.cpp"
-  "aipackaging_math/geometry/testline2d.cpp"
-  "aipackaging_math/geometry/testcircle2d.cpp"
-  "aipackaging_math/geometry/testrect2d.cpp"
-  "aipackaging_math/geometry/testboundedcurve2d.cpp"
-  "aipackaging_math/algorithms/testalgs.cpp"
-  "aipackaging_math/algorithms/testCountour2D.cpp"
-  "aipackaging_math/algorithms/testmathutils.cpp"
-  "aipackaging_math/algorithms/testdataformat.cpp"
-)
-target_link_libraries(AIPackaging_LegacyGeometryTests PRIVATE
-  AIPackaging_Math AIPackaging_Domain AIPackaging_Contract
-)
-set_tests_properties(AIPackaging_LegacyGeometryTests PROPERTIES LABELS "legacy")
+  aipackaging_add_test_executable(AIPackaging_LegacyGeometryTests
+    "aipackaging_math/geometry/testpoint2d.cpp"
+    "aipackaging_math/geometry/testvector2d.cpp"
+    "aipackaging_math/geometry/testline2d.cpp"
+    "aipackaging_math/geometry/testcircle2d.cpp"
+    "aipackaging_math/geometry/testrect2d.cpp"
+    "aipackaging_math/geometry/testboundedcurve2d.cpp"
+    "aipackaging_math/algorithms/testalgs.cpp"
+    "aipackaging_math/algorithms/testCountour2D.cpp"
+    "aipackaging_math/algorithms/testmathutils.cpp"
+    "aipackaging_math/algorithms/testdataformat.cpp"
+  )
+  target_link_libraries(AIPackaging_LegacyGeometryTests PRIVATE
+    AIPackaging_Math AIPackaging_Domain AIPackaging_Contract
+  )
+  set_tests_properties(AIPackaging_LegacyGeometryTests PROPERTIES LABELS "legacy")
+endif()
 
 if (BUILD_DESKTOP)
   aipackaging_add_test_executable(AIPackaging_GuiTests
@@ -143,25 +152,33 @@ if (BUILD_SOLVER_CLI)
   endforeach()
 endif()
 
-copy_target_dll(AIPackaging_AppTests AIPackaging_Math)
-copy_target_dll(AIPackaging_LegacyGeometryTests AIPackaging_Math)
+if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
+  copy_target_dll(AIPackaging_AppTests AIPackaging_Math)
+  copy_target_dll(AIPackaging_LegacyGeometryTests AIPackaging_Math)
+endif()
 if (BUILD_DESKTOP)
   copy_target_dll(AIPackaging_GuiTests AIPackaging_Math)
   copy_target_qt_dll(AIPackaging_GuiTests)
 endif()
 
 aipackaging_assert_target_dependencies(
+  TARGET AIPackaging_NestingCoreTests
+  ALLOWED_DIRECT AIPackaging_NestingCore
+)
+aipackaging_assert_target_dependencies(
   TARGET AIPackaging_SolverTests
-  ALLOWED_DIRECT AIPackaging_Solver
+  ALLOWED_DIRECT AIPackaging_SolverImpl AIPackaging_Solver
 )
-aipackaging_assert_target_dependencies(
-  TARGET AIPackaging_AppTests
-  ALLOWED_DIRECT AIPackaging_App AIPackaging_Math AIPackaging_Domain AIPackaging_Contract AIPackaging_Solver
-)
-aipackaging_assert_target_dependencies(
-  TARGET AIPackaging_LegacyGeometryTests
-  ALLOWED_DIRECT AIPackaging_Math AIPackaging_Domain AIPackaging_Contract
-)
+if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
+  aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_AppTests
+    ALLOWED_DIRECT AIPackaging_App AIPackaging_Math AIPackaging_Domain AIPackaging_Contract AIPackaging_Solver
+  )
+  aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_LegacyGeometryTests
+    ALLOWED_DIRECT AIPackaging_Math AIPackaging_Domain AIPackaging_Contract
+  )
+endif()
 if (BUILD_DESKTOP)
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_GuiTests

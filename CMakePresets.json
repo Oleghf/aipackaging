@@ -42,6 +42,7 @@
             "displayName": "Windows Tests",
             "inherits": "windows-base",
             "cacheVariables": {
+                "BUILD_LEGACY_TESTS": "ON",
                 "BUILD_TESTS": "ON"
             }
         },
@@ -52,6 +53,20 @@
             "generator": "Ninja",
             "cacheVariables": {
                 "BUILD_DESKTOP": "OFF",
+                "BUILD_LEGACY_TESTS": "ON",
+                "BUILD_SOLVER_CLI": "ON",
+                "BUILD_TESTS": "ON",
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "windows-nesting-tests",
+            "displayName": "Windows Clean Nesting Tests",
+            "inherits": "windows-base",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "BUILD_DESKTOP": "OFF",
+                "BUILD_LEGACY_TESTS": "OFF",
                 "BUILD_SOLVER_CLI": "ON",
                 "BUILD_TESTS": "ON",
                 "CMAKE_BUILD_TYPE": "Debug"
@@ -94,6 +109,7 @@
             "displayName": "MacOS Tests",
             "inherits": "macos-base",
             "cacheVariables": {
+                "BUILD_LEGACY_TESTS": "ON",
                 "BUILD_TESTS": "ON"
             }
         },
@@ -125,6 +141,7 @@
             "displayName": "Linux Tests",
             "inherits": "linux-base",
             "cacheVariables": {
+                "BUILD_LEGACY_TESTS": "ON",
                 "BUILD_TESTS": "ON"
             }
         },
@@ -135,6 +152,20 @@
             "generator": "Ninja",
             "cacheVariables": {
                 "BUILD_DESKTOP": "OFF",
+                "BUILD_LEGACY_TESTS": "ON",
+                "BUILD_SOLVER_CLI": "ON",
+                "BUILD_TESTS": "ON",
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "linux-nesting-tests",
+            "displayName": "Linux Clean Nesting Tests",
+            "inherits": "linux-base",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "BUILD_DESKTOP": "OFF",
+                "BUILD_LEGACY_TESTS": "OFF",
                 "BUILD_SOLVER_CLI": "ON",
                 "BUILD_TESTS": "ON",
                 "CMAKE_BUILD_TYPE": "Debug"
@@ -179,6 +210,17 @@
             "name": "build-windows-headless-tests",
             "configurePreset": "windows-headless-tests",
             "displayName": "Build Windows Headless Solver Tests",
+            "configuration": "Debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "build-windows-nesting-tests",
+            "configurePreset": "windows-nesting-tests",
+            "displayName": "Build Windows Clean Nesting Tests",
             "configuration": "Debug",
             "condition": {
                 "type": "equals",
@@ -256,6 +298,17 @@
             "name": "build-linux-headless-tests",
             "configurePreset": "linux-headless-tests",
             "displayName": "Build Linux Headless Solver Tests",
+            "configuration": "Debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "build-linux-nesting-tests",
+            "configurePreset": "linux-nesting-tests",
+            "displayName": "Build Linux Clean Nesting Tests",
             "configuration": "Debug",
             "condition": {
                 "type": "equals",

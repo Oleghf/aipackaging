@@ -10,8 +10,8 @@
 #include <stdexcept>
 #include <tuple>
 
+#include <aipackaging/nesting/polygon_environment.h>
 #include <clipper2/clipper.h>
-#include <polygonenvironment.h>
 
 namespace aipackaging::solver
 {

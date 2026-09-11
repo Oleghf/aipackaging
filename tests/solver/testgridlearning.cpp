@@ -3,8 +3,8 @@
 #include <stdexcept>
 #include <string>
 
-#include <gridlearning.h>
-#include <gridsolver.h>
+#include <aipackaging/nesting/grid_learning.h>
+#include <aipackaging/nesting/grid_solver.h>
 #include <gtest/gtest.h>
 
 namespace

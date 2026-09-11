@@ -25,13 +25,20 @@ include("${CMAKE_SOURCE_DIR}/cmake/helpers.cmake")
 include("${CMAKE_SOURCE_DIR}/cmake/architecture_checks.cmake")
 include(FetchContent)
 
-FetchContent_Declare(
-  AIPackaging_Math
-  GIT_REPOSITORY https://gitverse.ru/polytech_kolomna/aipackaging_math.git
-  GIT_TAG        9d0a95b8f8fa7dccfddfcc6eabcda1f664705d22
-)
+option(BUILD_DESKTOP "Build the Qt desktop application" ON)
+option(BUILD_SOLVER_CLI "Build the headless grid solver CLI" ON)
+option(BUILD_PYTHON_BINDINGS "Build the optional Python ML bindings" OFF)
+option(BUILD_TESTS "Build tests" OFF)
+option(BUILD_LEGACY_TESTS "Build legacy domain, application and geometry tests" OFF)
 
-FetchContent_MakeAvailable(AIPackaging_Math)
+if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
+  FetchContent_Declare(
+    AIPackaging_Math
+    GIT_REPOSITORY https://gitverse.ru/polytech_kolomna/aipackaging_math.git
+    GIT_TAG        9d0a95b8f8fa7dccfddfcc6eabcda1f664705d22
+  )
+  FetchContent_MakeAvailable(AIPackaging_Math)
+endif()
 
 set(JSON_BuildTests OFF CACHE INTERNAL "Disable nlohmann/json tests")
 set(CLIPPER2_TESTS OFF CACHE BOOL "Disable Clipper2 tests" FORCE)
@@ -52,11 +59,6 @@ FetchContent_Declare(
   SOURCE_SUBDIR  CPP
 )
 FetchContent_MakeAvailable(Clipper2)
-
-option(BUILD_DESKTOP "Build the Qt desktop application" ON)
-option(BUILD_SOLVER_CLI "Build the headless grid solver CLI" ON)
-option(BUILD_PYTHON_BINDINGS "Build the optional Python ML bindings" OFF)
-option(BUILD_TESTS "Build tests" OFF)
 
 add_subdirectory("src/")
 aipackaging_check_production_target_graph()

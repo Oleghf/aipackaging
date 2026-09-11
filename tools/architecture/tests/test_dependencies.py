@@ -18,17 +18,17 @@ class DependencyCheckerTests(unittest.TestCase):
     """Проверяет, что сканер действительно отклоняет запрещённые include."""
 
     def test_rejects_core_to_qt_include(self) -> None:
-        """Запрещённый Qt include из domain должен давать ошибку с номером строки."""
+        """Запрещённый Qt include из nesting Core должен давать ошибку с номером строки."""
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = root / "src/core/domain/example.cpp"
+            source = root / "src/nesting/core/example.cpp"
             source.parent.mkdir(parents=True)
             source.write_text("#include <QWidget>\n", encoding="utf-8")
             rules = {
                 "version": 1,
-                "layers": {"domain": "src/core/domain"},
-                "allowedInternalDependencies": {"domain": ["domain"]},
+                "layers": {"nesting_core": "src/nesting/core"},
+                "allowedInternalDependencies": {"nesting_core": ["nesting_core"]},
                 "includeExceptions": [],
                 "externalIncludes": {
                     "qtPrefixes": ["Q", "Qt"],

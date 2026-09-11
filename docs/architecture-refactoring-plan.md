@@ -65,6 +65,13 @@ corpus и GitHub Actions. Локально пройдены 40/40 headless и 41
 AIPackaging_Math и legacy App; сериализованные решения побайтово эквивалентны.
 Откат — переключение compatibility target на прежний source list.
 
+Статус реализации: подготовлено в ветке `codex/a2-common-contracts`.
+`AIPackaging_NestingCore` владеет нейтральными контрактами,
+`AIPackaging_SolverImpl` — прежними восемью translation units, а
+`AIPackaging_Solver` сохраняет старые include/link entry points. Локально
+пройдены clean nesting 39/39, полный Windows headless 41/41, MSVC+Qt desktop
+42/42 и Python 24/24; Linux/CI считаются непроверенными до публикации ветки.
+
 ## A3. Разделение polygon Core, Json и Learning
 
 Сложность: `L`. Обязателен до M6.2.

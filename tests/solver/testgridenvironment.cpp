@@ -1,7 +1,7 @@
 #include <memory>
 #include <string>
 
-#include <gridenvironment.h>
+#include <aipackaging/nesting/grid_environment.h>
 #include <gtest/gtest.h>
 
 namespace
