@@ -2,43 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 from typing import Any, Mapping
 
-
-def sha256_file(path: str | Path) -> str:
-    """Возвращает SHA-256 точного содержимого файла в нижнем регистре."""
-
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
-def canonical_json(value: Mapping[str, Any]) -> str:
-    """Кодирует объект стабильным UTF-8-совместимым JSON без лишних пробелов."""
-
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-
-
-def write_canonical_json(path: str | Path, value: Mapping[str, Any]) -> None:
-    """Записывает канонический JSON с единственным завершающим переводом строки."""
-
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(canonical_json(value) + "\n", encoding="utf-8", newline="\n")
-
-
-def _require_keys(value: Any, expected: set[str], label: str) -> Mapping[str, Any]:
-    """Отклоняет не-объект, отсутствующие и неизвестные поля строгого контракта."""
-
-    if not isinstance(value, Mapping) or set(value) != expected:
-        actual = sorted(value) if isinstance(value, Mapping) else type(value).__name__
-        raise ValueError(f"{label} fields mismatch: expected {sorted(expected)}, got {actual}")
-    return value
+from .datasets.serialization import canonical_json, require_keys as _require_keys, sha256_file, write_canonical_json
 
 
 def _positive_number(value: Any, label: str, *, allow_zero: bool = False) -> float:

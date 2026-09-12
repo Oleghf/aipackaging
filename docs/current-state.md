@@ -1,6 +1,6 @@
 # Текущее состояние
 
-Проверено 2026-09-11.
+Проверено 2026-09-12.
 
 ## Baseline
 
@@ -47,6 +47,11 @@
   metadata. Предметные адаптеры сохраняют прежнюю геометрию и objective.
 - Grid получил управляемый `runGridProblem`; прежние polygon progress/control
   имена сохранены aliases, а `solveGridProblem`/`solvePolygonProblem` совместимы.
+- В A5 общий Python-модуль владеет canonical JSON/JSONL, deterministic gzip,
+  SHA-256, shard paths и атомарным cache envelope. Grid и polygon pipeline
+  разделены на generation, rollout, replay/verification и manifest assembly.
+- Старые Python import paths сохранены фасадами; CLI использует отдельные
+  dataset/ML handlers, поэтому generate/verify не импортируют PyTorch.
 
 ## Инфраструктура проверки
 
@@ -77,6 +82,9 @@
   полный Windows headless 46/46, MSVC+Qt desktop 47/47 и Python 24/24. Общий
   runtime имеет unit tests с управляемыми часами, а architecture self-tests
   отдельно запрещают Search → Json.
+- A5 сохраняет C++ targets и wire-форматы. Python pytest проходит 30/30,
+  architecture self-tests — 6/6; минимальные grid/polygon v1 outputs старого и
+  нового pipeline совпадают побайтово по семи файлам каждый.
 - Clean nesting preset не создаёт Math/Domain/Contract/App/Qt targets. После A4
   20 CLI golden projections совпадают с A1/A3 на MinGW и MSVC; Linux/CI требуют
   публикации ветки.

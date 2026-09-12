@@ -101,6 +101,28 @@ Python-код не может изменить C++ value-state через общ
 Python один раз на эпизод; `stepCompact` обновляет только occupancy, remaining,
 action mask и objective.
 
+После A5 Python dataset pipeline разделён по владельцам:
+
+```text
+datasets.serialization/cache
+          |
+    +-----+------------------+
+    |                        |
+datasets.grid            datasets.polygon
+generation/rollout       recipes/generation/rollout
+pipeline/verification    pipeline/replay/verification
+    |                        |
+dataset.py facade        polygon_dataset.py facade
+          \                 /
+           C++ binding + Learning environments
+```
+
+Общая инфраструктура не импортирует native binding, environment или ML. Grid и
+polygon verification не вычисляют геометрию самостоятельно: решения и действия
+проверяются через C++ validator, comparator и action space. Старые Python import
+paths сохранены фасадами. Dataset CLI отделён от ленивых ML handlers и работает
+без train-extra.
+
 ### Генератор кандидатов
 
 В MVP сеть не ищет неограниченные вещественные координаты. Генератор возвращает

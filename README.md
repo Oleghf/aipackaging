@@ -151,7 +151,7 @@ src/gui/             Пользовательский интерфейс Qt
 src/solver/          Headless клеточная/полигональная среда, baseline и JSON I/O
 src/cli/             Командная строка исследовательского solver
 src/python/          Низкоуровневые pybind11 bindings
-python/aipackaging_ml/ Python API, датасет, обучение, оценка и ONNX-экспорт
+python/aipackaging_ml/ Python API, модульные dataset pipelines, обучение и ONNX
 tests/               Автоматические тесты C++
 examples/            Примеры клеточных фигур
 schemas/             JSON Schema публичных форматов

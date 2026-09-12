@@ -170,13 +170,21 @@
       "python/aipackaging_ml"
     ],
     "moduleGroups": {
+      "dataset_common": [
+        "datasets.serialization",
+        "datasets.cache"
+      ],
       "base": [
         "__init__",
         "contracts",
+        "environment"
+      ],
+      "dataset": [
         "dataset",
-        "environment",
         "generator",
-        "polygon_dataset"
+        "polygon_dataset",
+        "datasets.grid",
+        "datasets.polygon"
       ],
       "model": [
         "model",
@@ -194,34 +202,74 @@
         "evaluation",
         "exporting"
       ],
+      "dataset_cli": [
+        "commands.datasets"
+      ],
+      "ml_cli": [
+        "commands.ml"
+      ],
       "cli": [
         "__main__"
       ]
     },
     "allowedInternalDependencies": {
+      "dataset_common": [
+        "dataset_common"
+      ],
       "base": [
+        "dataset_common",
         "base"
       ],
-      "model": [
+      "dataset": [
+        "dataset_common",
         "base",
+        "dataset"
+      ],
+      "model": [
+        "dataset_common",
+        "base",
+        "dataset",
         "model"
       ],
       "training": [
+        "dataset_common",
         "base",
+        "dataset",
         "model",
         "training"
       ],
       "evaluation": [
+        "dataset_common",
         "base",
+        "dataset",
         "model",
         "training",
         "evaluation"
       ],
-      "cli": [
+      "dataset_cli": [
+        "dataset_common",
         "base",
+        "dataset",
+        "dataset_cli"
+      ],
+      "ml_cli": [
+        "dataset_common",
+        "base",
+        "dataset",
         "model",
         "training",
         "evaluation",
+        "ml_cli"
+      ],
+      "cli": [
+        "dataset_common",
+        "base",
+        "dataset",
+        "model",
+        "training",
+        "evaluation",
+        "dataset_cli",
+        "ml_cli",
         "cli"
       ]
     },

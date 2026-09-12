@@ -27,6 +27,8 @@
   BC/PPO, masked hierarchy, ONNX bundle и quality gate M3.
 - [ADR-0006: полигональный контракт](decisions/0006-polygon-nesting-contract.md) —
   микронная геометрия, NFP, производственные расстояния и observation M4.
+- [ADR-0012: границы Python dataset pipeline](decisions/0012-python-dataset-pipeline-boundaries.md) —
+  общая сериализация, независимые grid/polygon pipelines и data-only CLI.
 
 Документы явно разделяют текущее и целевое состояние. Планируемую возможность
 нельзя выдавать за уже реализованную.

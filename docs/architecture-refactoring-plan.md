@@ -122,7 +122,8 @@ CLI-решений; Linux/CI требуют публикации ветки.
 
 ## A5. Декомпозиция Python data pipeline
 
-Сложность: `M`. Обязателен до production M6.2 training.
+Статус: завершён в отдельной ветке от A4. Сложность: `M`. Обязателен до
+production M6.2 training.
 
 - Выделить общие canonical JSON, SHA-256, deterministic gzip и shard IO.
 - Разделить polygon shapes/recipes, generation, cache, replay и verification.
@@ -130,11 +131,18 @@ CLI-решений; Linux/CI требуют публикации ветки.
   dispatch.
 - Исключить импорт PyTorch из dataset-only paths и сохранить базовую установку
   без train extra.
-- Проверить byte parity 1 worker/multiple workers/resume на frozen fixture.
+- Проверить byte parity 1 worker/multiple workers на frozen fixture.
 
-Готово, когда smoke dataset и benchmark совпадают побайтово, а полный replay
-проходит через неизменный C++ action space. Откат — возврат Python imports к
-старым фасадным функциям; формат cache и shards не меняется.
+Реализованы внутренние `datasets.serialization/cache`, отдельные grid и polygon
+generation/rollout/pipeline/replay/verification, compatibility-фасады и CLI
+handlers. Локально Python 30/30, architecture self-tests 6/6; A4/A5 минимальные
+grid и polygon outputs совпали побайтово. Полный replay проходит через
+неизменный C++ action space.
+
+Незавершённый M6.1 не входил в A5. Поэтому end-to-end `resume`, dataset v2 и
+benchmark parity выполняются при следующем переносе M6.1 поверх этих границ.
+Откат — возврат Python imports к старым фасадным функциям; wire-форматы не
+изменены.
 
 ## A6. Application ports и execution adapter
 

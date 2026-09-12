@@ -177,9 +177,7 @@ def scan_python(root: Path, rules: dict) -> list[Violation]:
     python_rules = rules["python"]
     torch_allowed = set(python_rules["torchAllowedFiles"])
     module_groups = {
-        module: group
-        for group, modules in python_rules.get("moduleGroups", {}).items()
-        for module in modules
+        module: group for group, modules in python_rules.get("moduleGroups", {}).items() for module in modules
     }
     allowed_internal = {
         group: set(targets)
@@ -199,6 +197,12 @@ def scan_python(root: Path, rules: dict) -> list[Violation]:
             except SyntaxError as error:
                 violations.append(Violation(source, error.lineno or 1, f"не удалось разобрать Python: {error.msg}"))
                 continue
+            relative_module = source.relative_to(python_root).with_suffix("")
+            source_parts = list(relative_module.parts)
+            if source_parts[-1] == "__init__":
+                source_parts.pop()
+            source_module = ".".join(source_parts) or "__init__"
+            source_group = _python_group(source_module, module_groups)
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     modules = [alias.name for alias in node.names]
@@ -209,12 +213,9 @@ def scan_python(root: Path, rules: dict) -> list[Violation]:
                 if any(name == "torch" or name.startswith("torch.") for name in modules) and source_name not in torch_allowed:
                     violations.append(Violation(source, node.lineno, "PyTorch import запрещён вне training/model/evaluation модулей"))
 
-                if not isinstance(node, ast.ImportFrom) or node.level == 0:
-                    continue
-                imported = [node.module.split(".")[0]] if node.module else [alias.name for alias in node.names]
-                source_group = module_groups.get(source.stem)
+                imported = _resolve_python_imports(source, python_root, node)
                 for module in imported:
-                    target_group = module_groups.get(module)
+                    target_group = _python_group(module, module_groups)
                     if target_group and target_group not in allowed_internal.get(source_group, set()):
                         violations.append(
                             Violation(
@@ -224,6 +225,54 @@ def scan_python(root: Path, rules: dict) -> list[Violation]:
                             )
                         )
     return violations
+
+
+def _python_group(module: str, module_groups: dict[str, str]) -> str | None:
+    """Определяет владельца модуля по самому длинному совпавшему prefix правила."""
+
+    matches = [prefix for prefix in module_groups if module == prefix or module.startswith(prefix + ".")]
+    if not matches:
+        return None
+    return module_groups[max(matches, key=len)]
+
+
+def _resolve_python_imports(source: Path, python_root: Path, node: ast.AST) -> list[str]:
+    """Возвращает полные имена внутренних модулей для относительных и package-import."""
+
+    if isinstance(node, ast.Import):
+        prefix = python_root.name + "."
+        return [alias.name[len(prefix) :] for alias in node.names if alias.name.startswith(prefix)]
+    if not isinstance(node, ast.ImportFrom):
+        return []
+    if node.level == 0:
+        if node.module == python_root.name:
+            base: list[str] = []
+        elif node.module and node.module.startswith(python_root.name + "."):
+            base = node.module.split(".")[1:]
+        else:
+            return []
+    else:
+        relative = source.relative_to(python_root).with_suffix("")
+        package_parts = list(relative.parts)
+        package_parts.pop()
+        remove_count = max(0, node.level - 1)
+        if remove_count > len(package_parts):
+            return []
+        base = package_parts[: len(package_parts) - remove_count]
+        if node.module:
+            base.extend(node.module.split("."))
+
+    # ``from package import module`` должен указывать на дочерний module, а
+    # импорт функции из обычного модуля — на сам module.
+    result = []
+    for alias in node.names:
+        child = [*base, alias.name]
+        child_path = python_root.joinpath(*child)
+        if child_path.with_suffix(".py").exists() or child_path.is_dir():
+            result.append(".".join(child))
+        else:
+            result.append(".".join(base))
+    return result
 
 
 def check_repository(root: Path, rules_path: Path) -> list[Violation]:

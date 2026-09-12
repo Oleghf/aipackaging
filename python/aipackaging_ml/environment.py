@@ -7,12 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from . import _aipackaging_solver as _native
-
-
-def canonical_json(value: Mapping[str, Any]) -> str:
-    """Сериализует словарь стабильным компактным JSON для нативного strict parser."""
-
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+from .datasets.serialization import canonical_json
 
 
 class GridNestingEnv:

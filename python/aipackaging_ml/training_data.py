@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping
 
 from .contracts import sha256_file
-from .dataset import _read_jsonl_gzip
+from .datasets.serialization import read_jsonl_gzip
 from .environment import GridNestingEnv
 
 
@@ -57,7 +57,7 @@ def load_expert_episodes(
     for shard in manifest["shards"]:
         if shard["split"] != split or shard["tier"] not in tiers:
             continue
-        records = _read_jsonl_gzip(dataset_root / shard["path"])
+        records = read_jsonl_gzip(dataset_root / shard["path"])
         if shard["kind"] == "problems":
             for problem in records:
                 problems[problem["problemId"]] = (shard["tier"], problem)
@@ -95,7 +95,7 @@ def load_frozen_baseline_solutions(
     for shard in manifest["shards"]:
         if shard["split"] != split or shard["tier"] not in tiers or shard["kind"] != "trajectories":
             continue
-        for trajectory in _read_jsonl_gzip(dataset_root / shard["path"]):
+        for trajectory in read_jsonl_gzip(dataset_root / shard["path"]):
             result.setdefault(trajectory["problemId"], {})[trajectory["solver"]["name"]] = trajectory["finalSolution"]
     return result
 

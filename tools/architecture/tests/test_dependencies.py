@@ -109,6 +109,30 @@ class DependencyCheckerTests(unittest.TestCase):
             self.assertTrue(any("Clipper2" in item.message for item in violations))
             self.assertTrue(any("nlohmann/json" in item.message for item in violations))
 
+    def test_rejects_torch_from_dataset_module(self) -> None:
+        """Dataset pipeline не должен незаметно требовать установленный PyTorch."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "python/aipackaging_ml/datasets/grid/pipeline.py"
+            source.parent.mkdir(parents=True)
+            source.write_text("import torch\n", encoding="utf-8")
+            violations = self._check(root, self._python_rules())
+            self.assertEqual(1, len(violations))
+            self.assertIn("PyTorch import", violations[0].message)
+
+    def test_rejects_training_from_dataset_common(self) -> None:
+        """Общая сериализация не должна зависеть от training orchestration."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "python/aipackaging_ml/datasets/serialization.py"
+            source.parent.mkdir(parents=True)
+            source.write_text("from aipackaging_ml.training import train_pipeline\n", encoding="utf-8")
+            violations = self._check(root, self._python_rules())
+            self.assertEqual(1, len(violations))
+            self.assertIn("dataset_common не может импортировать training", violations[0].message)
+
     def _check(self, root: Path, rules: dict):
         """Сохраняет минимальные правила fixture и запускает общий checker."""
 
@@ -134,6 +158,26 @@ class DependencyCheckerTests(unittest.TestCase):
             "python": {"roots": [], "torchAllowedFiles": []},
             "ignoredDirectories": ["build"],
         }
+
+    def _python_rules(self) -> dict:
+        """Создаёт минимальные prefix-правила Python для отрицательных self-tests."""
+
+        rules = self._rules({}, {}, {})
+        rules["python"] = {
+            "roots": ["python/aipackaging_ml"],
+            "moduleGroups": {
+                "dataset_common": ["datasets.serialization", "datasets.cache"],
+                "dataset": ["datasets.grid", "datasets.polygon"],
+                "training": ["training"],
+            },
+            "allowedInternalDependencies": {
+                "dataset_common": ["dataset_common"],
+                "dataset": ["dataset_common", "dataset"],
+                "training": ["dataset_common", "dataset", "training"],
+            },
+            "torchAllowedFiles": [],
+        }
+        return rules
 
 
 if __name__ == "__main__":

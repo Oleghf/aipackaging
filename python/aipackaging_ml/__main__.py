@@ -7,7 +7,8 @@ import json
 from pathlib import Path
 from typing import Sequence
 
-from .dataset import DEFAULT_SPLITS, generate_dataset, verify_dataset
+from .commands import datasets as dataset_commands
+from .commands import ml as ml_commands
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -19,9 +20,9 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("--output", type=Path, default=Path("artifacts/datasets/grid-v1"))
     generate.add_argument("--seed", type=int, default=42)
     generate.add_argument("--workers", type=int, default=1)
-    generate.add_argument("--train", type=int, default=DEFAULT_SPLITS["train"])
-    generate.add_argument("--validation", type=int, default=DEFAULT_SPLITS["validation"])
-    generate.add_argument("--test", type=int, default=DEFAULT_SPLITS["test"])
+    generate.add_argument("--train", type=int, default=dataset_commands.DEFAULT_SPLITS["train"])
+    generate.add_argument("--validation", type=int, default=dataset_commands.DEFAULT_SPLITS["validation"])
+    generate.add_argument("--test", type=int, default=dataset_commands.DEFAULT_SPLITS["test"])
     generate.add_argument("--tier", choices=("small", "medium"), action="append")
     generate.add_argument("--smoke", action="store_true", help="по одной задаче каждого split и tier")
 
@@ -74,78 +75,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Выполняет выбранную команду и печатает машинно-читаемый итог."""
 
     arguments = _parser().parse_args(argv)
-    if arguments.command == "generate-polygon-dataset":
-        from .polygon_dataset import generate_polygon_dataset
-
-        sizes = {"train": 1, "validation": 1, "test": 1} if arguments.smoke else None
-        keyword = {} if sizes is None else {"split_sizes": sizes}
-        manifest = generate_polygon_dataset(arguments.output, master_seed=arguments.seed,
-                                            workers=arguments.workers, **keyword)
-        print(json.dumps({"manifest": str(arguments.output / "manifest.json"),
-                          "shards": len(manifest["shards"])}, sort_keys=True))
-        return 0
-    if arguments.command == "verify-polygon-dataset":
-        from .polygon_dataset import verify_polygon_dataset
-
-        print(json.dumps(verify_polygon_dataset(arguments.path), sort_keys=True))
-        return 0
-    if arguments.command == "generate-dataset":
-        split_sizes = (
-            {"train": 1, "validation": 1, "test": 1}
-            if arguments.smoke
-            else {"train": arguments.train, "validation": arguments.validation, "test": arguments.test}
-        )
-        manifest = generate_dataset(
-            arguments.output,
-            master_seed=arguments.seed,
-            tiers=tuple(arguments.tier or ("small", "medium")),
-            split_sizes=split_sizes,
-            workers=arguments.workers,
-        )
-        print(json.dumps({"manifest": str(arguments.output / "manifest.json"), "shards": len(manifest["shards"])}))
-        return 0
-    if arguments.command == "verify-dataset":
-        result = verify_dataset(arguments.path)
-        print(json.dumps(result, sort_keys=True))
-        return 0
-    if arguments.command == "train":
-        from .training import train_pipeline
-
-        result = train_pipeline(
-            arguments.config,
-            arguments.dataset,
-            arguments.run_dir,
-            device_name=arguments.device,
-            smoke=arguments.smoke,
-            resume=arguments.resume,
-        )
-    elif arguments.command == "evaluate":
-        from .evaluation import evaluate_checkpoint
-
-        result = evaluate_checkpoint(
-            arguments.checkpoint,
-            arguments.config,
-            arguments.dataset,
-            arguments.output,
-            split=arguments.split,
-            device_name=arguments.device,
-            smoke=arguments.smoke,
-        )
-    elif arguments.command == "export-onnx":
-        from .exporting import export_policy_bundle
-
-        result = export_policy_bundle(arguments.checkpoint, arguments.config, arguments.output, model_id=arguments.model_id)
-    else:
-        from .evaluation import verify_model_bundle
-
-        result = verify_model_bundle(
-            arguments.model,
-            arguments.checkpoint,
-            arguments.config,
-            arguments.dataset,
-            split=arguments.split,
-            smoke=arguments.smoke,
-        )
+    handlers = {
+        "generate-dataset": dataset_commands.generate_grid,
+        "verify-dataset": dataset_commands.verify_grid,
+        "generate-polygon-dataset": dataset_commands.generate_polygon,
+        "verify-polygon-dataset": dataset_commands.verify_polygon,
+        "train": ml_commands.train,
+        "evaluate": ml_commands.evaluate,
+        "export-onnx": ml_commands.export_onnx,
+        "verify-model": ml_commands.verify_model,
+    }
+    result = handlers[arguments.command](arguments)
     print(json.dumps(result, sort_keys=True))
     return 0
 

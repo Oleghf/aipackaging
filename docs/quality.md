@@ -126,6 +126,17 @@ Semantic golden по-прежнему сравнивает 20 CLI-решений
 пройдены clean nesting 44/44, полный headless 46/46, MSVC+Qt desktop 47/47 и
 Python 24/24.
 
+После A5 Python suite дополнительно проверяет общие canonical JSON/JSONL codecs,
+gzip `mtime=0`, SHA-256, безопасные shard-пути, атомарный cache envelope,
+compatibility imports и dataset-only CLI с запрещённым импортом PyTorch. Grid и
+polygon минимальные датасеты до/после декомпозиции совпадают побайтово при одной
+build revision; варианты с одним и двумя worker также идентичны. Полный pytest
+содержит 30 успешно пройденных тестов.
+
+Python architecture checker использует полные module paths и longest-prefix
+ownership. Отрицательные self-tests отдельно запрещают dataset → PyTorch и
+dataset common → training.
+
 Workflow `quality.yml` запускает Linux clean nesting, Windows MSVC headless и
 Python 3.13. Qt desktop остаётся обязательной локальной проверкой до отдельного
 решения об установке Qt на hosted runner.

@@ -8,6 +8,13 @@ from pathlib import Path
 import pytest
 
 from aipackaging_ml.dataset import generate_dataset, verify_dataset
+from aipackaging_ml.datasets.serialization import (
+    read_canonical_json,
+    read_jsonl_gzip,
+    sha256_file,
+    write_canonical_json,
+    write_jsonl_gzip,
+)
 from aipackaging_ml.generator import PROFILES, family_hash, generate_unique_problem
 
 
@@ -67,4 +74,44 @@ def test_verifier_detects_corrupted_shard(tmp_path: Path) -> None:
     shard = root / manifest["shards"][0]["path"]
     shard.write_bytes(shard.read_bytes() + b"corruption")
     with pytest.raises(ValueError, match="checksum mismatch"):
+        verify_dataset(root)
+
+
+def test_verifier_rejects_duplicate_problem_and_damaged_action_audit(tmp_path: Path) -> None:
+    """Даже с пересчитанным checksum verifier отклоняет дубли ID и повреждённый replay."""
+
+    root = tmp_path / "dataset"
+    generate_dataset(
+        root,
+        tiers=("small",),
+        split_sizes={"train": 1, "validation": 0, "test": 0},
+        workers=1,
+    )
+    manifest_path = root / "manifest.json"
+    manifest = read_canonical_json(manifest_path)
+    problem_shard = next(
+        item for item in manifest["shards"] if item["kind"] == "problems" and item["records"]
+    )
+    problem_path = root / problem_shard["path"]
+    problems = read_jsonl_gzip(problem_path)
+    write_jsonl_gzip(problem_path, [*problems, problems[0]])
+    problem_shard["records"] += 1
+    problem_shard["sha256"] = sha256_file(problem_path)
+    write_canonical_json(manifest_path, manifest)
+    with pytest.raises(ValueError, match="duplicate problemId"):
+        verify_dataset(root)
+
+    write_jsonl_gzip(problem_path, problems)
+    problem_shard["records"] -= 1
+    problem_shard["sha256"] = sha256_file(problem_path)
+    trajectory_shard = next(
+        item for item in manifest["shards"] if item["kind"] == "trajectories" and item["records"]
+    )
+    trajectory_path = root / trajectory_shard["path"]
+    trajectories = read_jsonl_gzip(trajectory_path)
+    trajectories[0]["actionIndices"] = [-1, *trajectories[0]["actionIndices"][1:]]
+    write_jsonl_gzip(trajectory_path, trajectories)
+    trajectory_shard["sha256"] = sha256_file(trajectory_path)
+    write_canonical_json(manifest_path, manifest)
+    with pytest.raises(ValueError, match="action index audit mismatch"):
         verify_dataset(root)
