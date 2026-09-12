@@ -43,6 +43,8 @@ baseline-алгоритмов, метрик и цикла обучения.
 - strict polygon JSON, line/arc/Bézier и нормализация в `int64` микроны;
 - динамические NFP-кандидаты, полигональные baseline и точный валидатор;
 - Python `PolygonNestingEnv` и воспроизводимый polygon smoke dataset;
+- production `polygon_dataset` v2 с двумя tiers, family isolation, resume и
+  benchmark пяти замороженных baseline;
 - асинхронная desktop-вкладка polygon_problem с прогрессом, отменой, метриками и
   сохранением независимо проверенного polygon_solution;
 - модульные тесты доменного и прикладного слоёв.
@@ -128,12 +130,18 @@ python -m pip install -e ".[dev]"
 python -m pytest
 python -m aipackaging_ml generate-dataset --output artifacts/datasets/grid-v1
 python -m aipackaging_ml verify-dataset artifacts/datasets/grid-v1
-python -m aipackaging_ml generate-polygon-dataset --output artifacts/datasets/polygon-v1
-python -m aipackaging_ml verify-polygon-dataset artifacts/datasets/polygon-v1
+python -m aipackaging_ml generate-polygon-dataset `
+  --output artifacts/datasets/polygon-v2 --workers 4 --resume
+python -m aipackaging_ml verify-polygon-dataset artifacts/datasets/polygon-v2
+python -m aipackaging_ml benchmark-polygon-baselines `
+  --dataset artifacts/datasets/polygon-v2 `
+  --output artifacts/benchmarks/polygon-v2-validation.json
 ```
 
-По умолчанию генератор создаёт 768 задач: по 256/64/64 для обоих tiers. Для
-быстрой проверки добавьте `--smoke`; `--workers` меняет скорость, но не байты.
+Grid-генератор создаёт 768 задач. Polygon v2 создаёт 384 задачи: 256/64/64,
+поровну между `small` и `medium`. `--smoke` создаёт 12 коротких задач — по две
+scale-вариации каждого split и tier. Worker count и история `--resume` не меняют
+опубликованные bytes.
 
 CUDA-обучение M3 можно выполнять в WSL2 или непосредственно в проверенной
 Windows-среде. Подготовка и команды запуска описаны в

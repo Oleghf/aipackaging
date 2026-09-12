@@ -52,6 +52,9 @@
   разделены на generation, rollout, replay/verification и manifest assembly.
 - Старые Python import paths сохранены фасадами; CLI использует отдельные
   dataset/ML handlers, поэтому generate/verify не импортируют PyTorch.
+- В M6.1R поверх границ A5 добавлены production polygon dataset v2, profiles,
+  парные scale-семейства, native hidden-layout validation, resume и frozen
+  baseline benchmark. Dataset v1 остаётся читаемым.
 
 ## Инфраструктура проверки
 
@@ -85,6 +88,11 @@
 - A5 сохраняет C++ targets и wire-форматы. Python pytest проходит 30/30,
   architecture self-tests — 6/6; минимальные grid/polygon v1 outputs старого и
   нового pipeline совпадают побайтово по семи файлам каждый.
+- M6.1R считается готовым к каноническому прогону, но не завершённым: до
+  генерации 384 задач manifest SHA-256 и validation benchmark не зафиксированы.
+- Локальный Python suite после переноса проходит 43/43; clean nesting — 44/44,
+  Windows headless — 46/46, MSVC+Qt desktop — 47/47. Архитектурная проверка и
+  шесть отрицательных self-tests также проходят.
 - Clean nesting preset не создаёт Math/Domain/Contract/App/Qt targets. После A4
   20 CLI golden projections совпадают с A1/A3 на MinGW и MSVC; Linux/CI требуют
   публикации ветки.

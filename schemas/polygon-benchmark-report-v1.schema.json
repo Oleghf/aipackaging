@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aipackaging.local/schemas/polygon-benchmark-report-v1.schema.json",
+  "title": "AIPackaging polygon baseline benchmark report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "datasetManifestSha256", "datasetVersion", "revision", "split", "solverBudgets", "summaries", "tasks"],
+  "properties": {
+    "format": {"const": "aipackaging.polygon_benchmark_report"},
+    "version": {"const": 1},
+    "datasetManifestSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "datasetVersion": {"enum": [1, 2]},
+    "revision": {"type": "string", "minLength": 1},
+    "split": {"enum": ["validation", "test"]},
+    "solverBudgets": {"$ref": "#/$defs/budgets"},
+    "summaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input-first-fit", "area-left-bottom", "max-side-left-bottom", "random-left-bottom", "beam"],
+      "properties": {
+        "input-first-fit": {"$ref": "#/$defs/summary"},
+        "area-left-bottom": {"$ref": "#/$defs/summary"},
+        "max-side-left-bottom": {"$ref": "#/$defs/summary"},
+        "random-left-bottom": {"$ref": "#/$defs/summary"},
+        "beam": {"$ref": "#/$defs/summary"}
+      }
+    },
+    "tasks": {"type": "array", "items": {"$ref": "#/$defs/task"}}
+  },
+  "$defs": {
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timeoutMs", "randomIterations", "beamWidth", "maxExpandedStates"],
+      "properties": {
+        "timeoutMs": {"const": 0},
+        "randomIterations": {"type": "integer", "minimum": 1},
+        "beamWidth": {"type": "integer", "minimum": 1},
+        "maxExpandedStates": {"type": "integer", "minimum": 1}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tasks", "solved", "completionRate", "meanPlacedParts", "meanPlacedAreaSquareMicrometers", "meanUsedLengthMicrometers", "meanLargestExtraRectangleSquareMicrometers", "meanFragmentationPenaltySquareMicrometers", "meanMaterialUtilization", "expertSelections"],
+      "properties": {
+        "tasks": {"type": "integer", "minimum": 0},
+        "solved": {"type": "integer", "minimum": 0},
+        "completionRate": {"type": "number", "minimum": 0, "maximum": 1},
+        "meanPlacedParts": {"type": "number", "minimum": 0},
+        "meanPlacedAreaSquareMicrometers": {"type": "number", "minimum": 0},
+        "meanUsedLengthMicrometers": {"type": "number", "minimum": 0},
+        "meanLargestExtraRectangleSquareMicrometers": {"type": "number", "minimum": 0},
+        "meanFragmentationPenaltySquareMicrometers": {"type": "number", "minimum": 0},
+        "meanMaterialUtilization": {"type": "number", "minimum": 0, "maximum": 1},
+        "expertSelections": {"type": "integer", "minimum": 0}
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["problemId", "tier", "expertTrajectoryId", "expertSolver", "results"],
+      "properties": {
+        "problemId": {"type": "string", "minLength": 1},
+        "tier": {"enum": ["small", "medium", "smoke"]},
+        "expertTrajectoryId": {"type": "string", "minLength": 1},
+        "expertSolver": {"enum": ["input-first-fit", "area-left-bottom", "max-side-left-bottom", "random-left-bottom", "beam"]},
+        "results": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"$ref": "#/$defs/result"}}
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["solver", "status", "objective", "isExpert", "qualityRelation", "usedLengthDeltaFromExpertMicrometers"],
+      "properties": {
+        "solver": {"enum": ["input-first-fit", "area-left-bottom", "max-side-left-bottom", "random-left-bottom", "beam"]},
+        "status": {"enum": ["solved", "no_solution_found", "budget_exhausted", "timed_out", "unsupported_environment", "invalid_problem"]},
+        "objective": {"$ref": "#/$defs/objective"},
+        "isExpert": {"type": "boolean"},
+        "qualityRelation": {"enum": ["equivalent_to_best", "worse_than_best"]},
+        "usedLengthDeltaFromExpertMicrometers": {"type": "integer"}
+      }
+    },
+    "objective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["placedParts", "totalParts", "placedAreaSquareMicrometers", "usedLengthMicrometers", "largestExtraRectangleSquareMicrometers", "fragmentationPenaltySquareMicrometers", "materialUtilization"],
+      "properties": {
+        "placedParts": {"type": "integer", "minimum": 0},
+        "totalParts": {"type": "integer", "minimum": 1},
+        "placedAreaSquareMicrometers": {"type": "integer", "minimum": 0},
+        "usedLengthMicrometers": {"type": "integer", "minimum": 0},
+        "largestExtraRectangleSquareMicrometers": {"type": "integer", "minimum": 0},
+        "fragmentationPenaltySquareMicrometers": {"type": "integer", "minimum": 0},
+        "materialUtilization": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    }
+  }
+}

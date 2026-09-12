@@ -182,6 +182,7 @@
       "dataset": [
         "dataset",
         "generator",
+        "polygon_benchmark",
         "polygon_dataset",
         "datasets.grid",
         "datasets.polygon"

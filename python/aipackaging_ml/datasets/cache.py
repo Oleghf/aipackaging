@@ -55,3 +55,24 @@ def read_cache_record(
     if not isinstance(record["payload"], dict):
         raise ValueError("dataset cache payload must be an object")
     return record["payload"]
+
+
+def read_compatible_cache_record(
+    path: str | Path,
+    *,
+    expected_identity: Mapping[str, Any],
+    expected_fingerprint: str,
+) -> dict[str, Any] | None:
+    """Возвращает совместимый cache, игнорирует устаревший и отклоняет повреждённый."""
+
+    record = read_canonical_json(path)
+    require_keys(record, {"format", "version", "identity", "fingerprint", "payload"}, "dataset cache")
+    if record["format"] != CACHE_FORMAT or record["version"] != CACHE_VERSION:
+        raise ValueError("unsupported dataset cache format or version")
+    if not isinstance(record["identity"], dict) or not isinstance(record["fingerprint"], str):
+        raise ValueError("dataset cache identity or fingerprint has invalid type")
+    if record["identity"] != dict(expected_identity) or record["fingerprint"] != expected_fingerprint:
+        return None
+    if not isinstance(record["payload"], dict):
+        raise ValueError("dataset cache payload must be an object")
+    return record["payload"]

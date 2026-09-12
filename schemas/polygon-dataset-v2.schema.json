@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aipackaging.local/schemas/polygon-dataset-v2.schema.json",
+  "title": "AIPackaging polygon dataset v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "problemContractVersion", "trajectoryContractVersion", "observationVersion", "masterSeed", "revision", "generator", "solverBudgets", "problems", "coverage", "shards", "expertTrajectoryId"],
+  "properties": {
+    "format": {"const": "aipackaging.polygon_dataset"},
+    "version": {"const": 2},
+    "problemContractVersion": {"const": 1},
+    "trajectoryContractVersion": {"const": 1},
+    "observationVersion": {"const": 1},
+    "masterSeed": {"type": "integer", "minimum": 0},
+    "revision": {"type": "string", "minLength": 1},
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "implementationRevision", "mode", "tiers", "splitSizes", "variantsPerFamily", "maxAttempts"],
+      "properties": {
+        "name": {"const": "deterministic-polygon-tiers"},
+        "version": {"const": 2},
+        "implementationRevision": {"const": "2.0.0"},
+        "mode": {"enum": ["canonical", "smoke", "custom"]},
+        "tiers": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {"enum": ["small", "medium"]},
+          "additionalProperties": {"$ref": "#/$defs/tier"}
+        },
+        "splitSizes": {"$ref": "#/$defs/splits"},
+        "variantsPerFamily": {"const": 2},
+        "maxAttempts": {"type": "integer", "minimum": 1, "maximum": 256}
+      }
+    },
+    "solverBudgets": {"$ref": "#/$defs/budgets"},
+    "problems": {"type": "object", "additionalProperties": {"$ref": "#/$defs/problemMetadata"}},
+    "coverage": {
+      "type": "object",
+      "propertyNames": {"enum": ["small", "medium"]},
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": {"enum": ["convex", "concave", "arc", "bezier", "hole", "thin", "symmetric"]},
+        "additionalProperties": {"type": "integer", "minimum": 0}
+      }
+    },
+    "shards": {"type": "array", "items": {"$ref": "#/$defs/shard"}},
+    "expertTrajectoryId": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1}}
+  },
+  "$defs": {
+    "range": {
+      "type": "array",
+      "prefixItems": [{"type": "number"}, {"type": "number"}],
+      "items": false
+    },
+    "tier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sheetWidth", "sheetHeight", "partTypes", "instances", "partExtent"],
+      "properties": {
+        "sheetWidth": {"$ref": "#/$defs/range"},
+        "sheetHeight": {"$ref": "#/$defs/range"},
+        "partTypes": {"$ref": "#/$defs/range"},
+        "instances": {"$ref": "#/$defs/range"},
+        "partExtent": {"$ref": "#/$defs/range"}
+      }
+    },
+    "splits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["train", "validation", "test"],
+      "properties": {
+        "train": {"type": "integer", "minimum": 0},
+        "validation": {"type": "integer", "minimum": 0},
+        "test": {"type": "integer", "minimum": 0}
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timeoutMs", "randomIterations", "beamWidth", "maxExpandedStates"],
+      "properties": {
+        "timeoutMs": {"const": 0},
+        "randomIterations": {"type": "integer", "minimum": 1},
+        "beamWidth": {"type": "integer", "minimum": 1},
+        "maxExpandedStates": {"type": "integer", "minimum": 1}
+      }
+    },
+    "problemMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier", "familyIndex", "scaleVariant", "derivedSeed", "familyHash", "attempt", "features"],
+      "properties": {
+        "tier": {"enum": ["small", "medium"]},
+        "familyIndex": {"type": "integer", "minimum": 0},
+        "scaleVariant": {"enum": [0, 1]},
+        "derivedSeed": {"type": "integer", "minimum": 0},
+        "familyHash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "attempt": {"type": "integer", "minimum": 0, "maximum": 255},
+        "features": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["convex", "concave", "arc", "bezier", "hole", "thin", "symmetric"]}
+        }
+      }
+    },
+    "shard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["split", "kind", "path", "records", "sha256"],
+      "properties": {
+        "split": {"enum": ["train", "validation", "test"]},
+        "kind": {"enum": ["problems", "trajectories"]},
+        "path": {"type": "string", "minLength": 1},
+        "records": {"type": "integer", "minimum": 0},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

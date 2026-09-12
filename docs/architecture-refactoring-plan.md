@@ -139,8 +139,9 @@ handlers. Локально Python 30/30, architecture self-tests 6/6; A4/A5 ми
 grid и polygon outputs совпали побайтово. Полный replay проходит через
 неизменный C++ action space.
 
-Незавершённый M6.1 не входил в A5. Поэтому end-to-end `resume`, dataset v2 и
-benchmark parity выполняются при следующем переносе M6.1 поверх этих границ.
+Незавершённый M6.1 не входил в A5. В M6.1R его функциональность перенесена поверх
+новых границ по компонентам: dataset v2, resume и benchmark не возвращают
+монолитный фасад. Канонический прогон остаётся отдельным completion gate.
 Откат — возврат Python imports к старым фасадным функциям; wire-форматы не
 изменены.
 
@@ -198,6 +199,7 @@ targets, старые scene-файлы имеют importer либо официа
 ```text
 M6.1 checkpoint
   -> A1 -> A2 -> A3 -> A4 -> A5
+  -> M6.1R canonical dataset freeze
   -> M6.2 polygon BC/PPO
   -> A6
   -> M6.3 ONNX deployment

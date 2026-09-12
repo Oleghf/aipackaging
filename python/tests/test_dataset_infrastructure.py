@@ -12,7 +12,7 @@ import pytest
 
 from aipackaging_ml import contracts, dataset, environment, generator, polygon_dataset
 from aipackaging_ml.datasets import serialization
-from aipackaging_ml.datasets.cache import read_cache_record, write_cache_record
+from aipackaging_ml.datasets.cache import read_cache_record, read_compatible_cache_record, write_cache_record
 from aipackaging_ml.datasets.grid import generation as grid_generation
 from aipackaging_ml.datasets.grid import pipeline as grid_pipeline
 from aipackaging_ml.datasets.grid import verification as grid_verification
@@ -72,6 +72,9 @@ def test_atomic_cache_requires_matching_identity_and_fingerprint(tmp_path: Path)
     assert not list(tmp_path.glob("*.tmp"))
     with pytest.raises(ValueError, match="identity or fingerprint"):
         read_cache_record(path, expected_identity=identity, expected_fingerprint="other")
+    assert read_compatible_cache_record(
+        path, expected_identity=identity, expected_fingerprint="other"
+    ) is None
     path.write_bytes(b"{}\n")
     with pytest.raises(ValueError, match="fields mismatch"):
         read_cache_record(path, expected_identity=identity, expected_fingerprint="abc")

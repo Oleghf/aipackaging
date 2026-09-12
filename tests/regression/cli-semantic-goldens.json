@@ -3,31 +3,31 @@
   "projection": {
     "root": ["format", "version", "problemId", "status", "placements", "objective", "errorMessage"],
     "metrics": ["candidatesGenerated", "candidatesValidated", "expandedStates"],
-    "solver": ["name", "projectVersion", "seed", "randomIterations", "beamWidth", "maxExpandedStates", "timeoutMs"]
+    "solver": ["name", "seed", "randomIterations", "beamWidth", "maxExpandedStates", "timeoutMs"]
   },
   "solutions": {
-    "polygon-concave-area-left-bottom.json": "1a109ee8146e871ebc924f4028e66ac869626a6c9dc5a96e50c13c837573dc02",
-    "polygon-concave-beam.json": "a9c51c403754aceffb46d92608e6d6267a7b388b1702d54ba236ce1d31cac2b8",
-    "polygon-concave-input-first-fit.json": "24959f467d959b650adf037d53a3e6dbdcaa4c99182da61462123b2a2443318b",
-    "polygon-concave-max-side-left-bottom.json": "ea237946345d3b7a54b6005e9b6e79962e63855477c1d01bf94a83c44c700160",
-    "polygon-concave-random-left-bottom.json": "d44cd738792fefab322ead1877956b3f589caae9f0d0fb4fcbd60e122c324cad",
-    "polygon-curves-and-hole-area-left-bottom.json": "e51fdc45cad1bb324ac03aab312f3a58e169f7929709e3f217da6a6ec467fc37",
-    "polygon-curves-and-hole-beam.json": "935aa5350dc1ccf6a2de386019201826cb05d9e1196989e8b80c95217044b487",
-    "polygon-curves-and-hole-input-first-fit.json": "568df6b59dfd9004ebd9c696c2b5d81aa13f8669dbc6019adbb91b2a54688a50",
-    "polygon-curves-and-hole-max-side-left-bottom.json": "ab40c03be364fcbb52f96164b2175d96be88df385233c9346f8ac9b2fa3fd49b",
-    "polygon-curves-and-hole-random-left-bottom.json": "be2d36862fbf74cb74b5484db99bf02c5a1b7709adf994e1b33a47e9a0133e7f",
-    "polygon-small-area-left-bottom.json": "0eec030c3ac43e6c7cdb81ecb793a012fa56fd4e72bce2909122e0602dc469a5",
-    "polygon-small-beam.json": "efd276d37949895f73ffb786081a34ee2ce3d2903f8a90bd7a9e420a52a3cd14",
-    "polygon-small-input-first-fit.json": "2799e5e7714662415e34d07e85fa1369ba3a6b14a9525cf8a3b108de8bb04027",
-    "polygon-small-max-side-left-bottom.json": "735196b589df859e0f2e8379399a4e9342f8a9f7f29e12af365fcf94050b3471",
-    "polygon-small-random-left-bottom.json": "53fe26babc7333d851ee9dbba2bb1963924ffced445ada1f100fa70c2dbea519",
-    "solution-area-left-bottom.json": "fb1ee1a5b4f8297617929ff48127825e019e492117be2d13b928ec2e6d5899dd",
-    "solution-beam.json": "5dd416c5bb67602f207c1d73e5fe5762ef107b1fdeeb40d01dce076f8f1f053c",
-    "solution-input-first-fit.json": "aa6797443f18812e2973a1288f73f2faa525b2bda735d9738125d55d8dea3109",
-    "solution-max-side-left-bottom.json": "3262b9cb9de11738ed5dc9220ee810181dd300adb5932f10ad3b90382b91dd7a",
+    "polygon-concave-area-left-bottom.json": "817b298118c924c65f55623469017636c6036834c2ece62c00661d00b3fc2905",
+    "polygon-concave-beam.json": "fa5208e4f9b9586f8d06731fbabd488712b4a7b75ad31429bff048bfbcacf269",
+    "polygon-concave-input-first-fit.json": "7a51b77acbc8f5de9b8a7305b24f037968e01d2546440d2a5b61b640c2161d46",
+    "polygon-concave-max-side-left-bottom.json": "f6b7a04a89856f41c1da6b43073908bcb799bfeee864657c660786c23bd401a3",
+    "polygon-concave-random-left-bottom.json": "db23aca99fee1530827f27220ade7af557a83fa669b0284bc8579a9be4536623",
+    "polygon-curves-and-hole-area-left-bottom.json": "fc97717377d64e920093b80dbad4508ef43eb6097be04cc752cd9455f760fd12",
+    "polygon-curves-and-hole-beam.json": "702e8912abdbeb9684750a19721b378e8d55c71c1f36bc5ca0481592730264d1",
+    "polygon-curves-and-hole-input-first-fit.json": "bb9c8a2766da2b387a11488f5d95db11c90120d6dddec571e9386b9865130837",
+    "polygon-curves-and-hole-max-side-left-bottom.json": "f64b01d2cade8ecb6eac304b4833eee3f5b75ea8b9434873e392bf31ce1a09ed",
+    "polygon-curves-and-hole-random-left-bottom.json": "b0d0025e8b66a57a1577bcb221d6b7b36ba31236f75dbea5c1e758f62e1e108b",
+    "polygon-small-area-left-bottom.json": "56ce611297c862f5968694692a6a08bff4f1fae4b06b246f2fcc4db4ec61d86f",
+    "polygon-small-beam.json": "ad504bb21840a183f19b3b33e09b8c0e948d3de7d224c89fea1d27007cb9ed0f",
+    "polygon-small-input-first-fit.json": "e04fa621bfcb7d829a30b494313c6334af3bb11d29edb60aaad806532788df28",
+    "polygon-small-max-side-left-bottom.json": "05887fa26554c3603978393c0128ad3dc959c7ec37e15b53f37df6bd8538c7b2",
+    "polygon-small-random-left-bottom.json": "9d13d2e4d8240d434f0733d7486ef76927aad4eb3deaf5c178bca76b2e9aba6f",
+    "solution-area-left-bottom.json": "15b796fa0f6a0d645e0caef6efb4051236c748b96e42e762fe7ab7906ae82a67",
+    "solution-beam.json": "b3c0be650cf29f819bf43f580ec935617f1855b215041ce4b4a71dd33c8cc2f3",
+    "solution-input-first-fit.json": "fbc2f5799ff3440a298f9e1ec8e5fc5e0bd7e11df41101415f2cdc7151de434f",
+    "solution-max-side-left-bottom.json": "566e961d1e05ca7d130a1deb1f9fb7656cfae92701fc766dd740856dd7ea70f3",
     "solution-random-left-bottom.json": [
-      "e28bbcae0549a85147127a9da9fd72355e0ff6a002e0a03f7c397bcfe9cfc87e",
-      "06fcf3895dcde4df91154e49d5cf930cac1307a4a85faff73063b1c7220476ca"
+      "4e19d4d29ee6b6224db10e8d585a77df4a1b68ec0e6c19e86e055712a4d8a695",
+      "d9651fb1606ddbab7ab959235083e947d04917d35a7a7ac5573bc194615e1e3a"
     ]
   }
 }

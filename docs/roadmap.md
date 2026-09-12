@@ -78,7 +78,19 @@
 - визуализация колец, отверстий, остатка, partial и solver-метрик;
 - безопасный отказ от невалидного результата backend-а.
 
-## M6 — Полигональная политика и inference
+## M6.1 — Полигональный датасет и baseline benchmark
+
+Статус: готов к каноническому прогону.
+
+- production tiers `small`/`medium` и две scale-вариации каждой семьи;
+- точная проверка скрытой раскладки и пяти baseline trajectories;
+- воспроизводимые shards, atomic resume-cache и family isolation;
+- validation/test benchmark только по замороженным результатам.
+
+Этап завершается после генерации 256/64/64 задач, полного verify, validation
+benchmark и фиксации SHA-256 manifest в документации.
+
+## M6.2–M6.3 — Полигональная политика и inference
 
 - полигональные BC/PPO-датасеты и обучение;
 - проверка качества на замороженном test split;

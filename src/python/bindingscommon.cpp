@@ -55,5 +55,6 @@ void configureModule(py::module_ & module)
 {
   module.doc() = "Низкоуровневые bindings сред раскроя AIPackaging";
   module.attr("__version__") = AIPACKAGING_PYTHON_VERSION;
+  module.attr("__revision__") = AIPACKAGING_BUILD_REVISION;
 }
 } // namespace aipackaging::python

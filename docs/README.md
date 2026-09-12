@@ -13,6 +13,8 @@
 - [Качество и оценка](quality.md) — baseline-алгоритмы, данные, метрики и тесты.
 - [Обучение M3](m3-training.md) — WSL2, smoke, BC/PPO, export и evaluation.
 - [ADR-0007](decisions/0007-polygon-desktop-workspace.md) — полигональная desktop-вкладка, потоки и отмена.
+- [ADR-0008](decisions/0008-polygon-dataset-and-benchmark.md) — production polygon dataset v2,
+  family isolation, resume и frozen baseline benchmark.
 - [CPU smoke-эксперимент M3](experiments/m3-smoke-2026-09-10.md) — проверенный
   инженерный прогон до канонического CUDA-обучения.
 - [ADR-0001: гибридный решатель](decisions/0001-hybrid-neural-solver.md) — граница

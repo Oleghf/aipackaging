@@ -71,6 +71,13 @@ worker-потока, cooperative cancellation, игнорирование зап
 - Нужны сложные случаи: тонкие элементы, почти касающиеся границы, вогнутость,
   повторы, симметрия, отверстия и экстремальные масштабы.
 
+Production polygon dataset v2 дополнительно проверяет declared tier, парные
+scale-вариации, отсутствие family leakage между splits, coverage семи классов,
+полный replay пяти baseline и повторный выбор expert общим C++-компаратором.
+Wall-clock поля решений обнуляются. Resume-cache используется только при точном
+совпадении identity и fingerprint; benchmark читает frozen trajectories и по
+умолчанию не использует test split.
+
 ## Уровни тестирования
 
 Unit tests покрывают нормализацию, offsets, преобразования, пересечения,
@@ -130,8 +137,9 @@ Python 24/24.
 gzip `mtime=0`, SHA-256, безопасные shard-пути, атомарный cache envelope,
 compatibility imports и dataset-only CLI с запрещённым импортом PyTorch. Grid и
 polygon минимальные датасеты до/после декомпозиции совпадают побайтово при одной
-build revision; варианты с одним и двумя worker также идентичны. Полный pytest
-содержит 30 успешно пройденных тестов.
+build revision; варианты с одним и двумя worker также идентичны. После M6.1R
+полный pytest содержит 43 успешно пройденных теста, включая schema, family,
+resume, replay и benchmark-регрессии.
 
 Python architecture checker использует полные module paths и longest-prefix
 ownership. Отрицательные self-tests отдельно запрещают dataset → PyTorch и
@@ -145,6 +153,7 @@ Python 3.13. Qt desktop остаётся обязательной локальн
 Math и legacy targets. Она выполняет 39 CTest entries. Полный headless выполняет
 41, desktop — 42. После CTest runner сравнивает 20 grid/polygon CLI-решений с
 семантическими SHA-256 A1: учитываются status, placements, objective и
-детерминированные счётчики, но исключаются wall-clock и revision.
+детерминированные счётчики, но исключаются wall-clock, revision и изменяемая
+версия проекта.
 Для grid random зафиксированы отдельные A1-хеши MinGW и MSVC, поскольку
 стандартный `shuffle` этих библиотек даёт разные, но повторяемые перестановки.

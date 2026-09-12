@@ -109,8 +109,9 @@ datasets.serialization/cache
     +-----+------------------+
     |                        |
 datasets.grid            datasets.polygon
-generation/rollout       recipes/generation/rollout
-pipeline/verification    pipeline/replay/verification
+generation/rollout       recipes/generation/family
+pipeline/verification    rollout/replay/pipeline
+                         verification/benchmark
     |                        |
 dataset.py facade        polygon_dataset.py facade
           \                 /
@@ -135,6 +136,21 @@ polygons вычитаются из inner-fit rectangle текущей ориен
 `PolygonLearningEnvironment` возвращает базовые occupied/clearance raster и
 условное observation выбранной пары: четыре канала 128×128, динамические actions
 и признаки кандидатов. Индексы таких действий нельзя сохранять между шагами.
+
+Production-контур M6.1 использует те же C++ environment, validator и comparator:
+
+```text
+seeded family recipe -> 2 uniform scale variants -> hidden shelf validation
+       -> 5 frozen baseline trajectories -> dynamic replay -> dataset v2
+             ^                                      |
+             |                              validation benchmark v1
+      atomic task cache
+```
+
+Cache содержит identity задачи и fingerprint полной конфигурации. Финальные
+shards собираются в адресном порядке, поэтому multiprocessing и resume не
+влияют на bytes. Family hash не зависит от четверть-оборота и равномерного
+масштаба, но сохраняет aspect ratio.
 
 ### Нейросетевая политика
 
