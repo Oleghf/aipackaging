@@ -143,6 +143,12 @@ Grid-генератор создаёт 768 задач. Polygon v2 создаёт
 scale-вариации каждого split и tier. Worker count и история `--resume` не меняют
 опубликованные bytes.
 
+Канонический polygon dataset v2 заморожен на revision `1baf53a8c1f0`.
+SHA-256 manifest:
+`747ADE28A858DE2F1D484CDF6C942DF07CB59AF017EEB886F8C18D9105422C44`.
+Фактические размеры, coverage и результаты validation benchmark приведены в
+[отчёте M6.1](docs/experiments/m6-1-polygon-dataset-v2-2026-09-13.md).
+
 CUDA-обучение M3 можно выполнять в WSL2 или непосредственно в проверенной
 Windows-среде. Подготовка и команды запуска описаны в
 [руководстве M3](docs/m3-training.md). Базовый пакет не зависит от PyTorch;

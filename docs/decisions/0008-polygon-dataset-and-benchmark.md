@@ -34,3 +34,11 @@ Cache использует общий envelope A5 с identity задачи и fi
 - M6.1 завершается только после полного прогона 384 задач, verify и validation
   benchmark с зафиксированным manifest SHA-256;
 - обучение и ONNX остаются этапами M6.2–M6.3.
+
+## Фактическая фиксация
+
+Completion gate пройден 2026-09-13 на revision `1baf53a8c1f0`. Dataset содержит
+384 задачи и 1920 траекторий. SHA-256 канонического manifest:
+`747ADE28A858DE2F1D484CDF6C942DF07CB59AF017EEB886F8C18D9105422C44`.
+Полные параметры, размеры shards и validation benchmark зафиксированы в
+[отчёте M6.1](../experiments/m6-1-polygon-dataset-v2-2026-09-13.md).

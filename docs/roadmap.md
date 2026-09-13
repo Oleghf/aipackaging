@@ -80,15 +80,19 @@
 
 ## M6.1 — Полигональный датасет и baseline benchmark
 
-Статус: готов к каноническому прогону.
+Статус: завершён 2026-09-13.
 
 - production tiers `small`/`medium` и две scale-вариации каждой семьи;
 - точная проверка скрытой раскладки и пяти baseline trajectories;
 - воспроизводимые shards, atomic resume-cache и family isolation;
 - validation/test benchmark только по замороженным результатам.
 
-Этап завершается после генерации 256/64/64 задач, полного verify, validation
-benchmark и фиксации SHA-256 manifest в документации.
+Сгенерированы и полностью проверены 256/64/64 задач и 1920 траекторий.
+Validation benchmark построен, независимо пересчитан из замороженных траекторий
+и принят verifier-ом. SHA-256 manifest:
+`747ADE28A858DE2F1D484CDF6C942DF07CB59AF017EEB886F8C18D9105422C44`.
+Подробности зафиксированы в
+[отчёте M6.1](experiments/m6-1-polygon-dataset-v2-2026-09-13.md).
 
 ## M6.2–M6.3 — Полигональная политика и inference
 

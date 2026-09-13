@@ -141,6 +141,16 @@ build revision; варианты с одним и двумя worker также �
 полный pytest содержит 43 успешно пройденных теста, включая schema, family,
 resume, replay и benchmark-регрессии.
 
+Канонический polygon dataset v2 содержит 384 задачи и 1920 траекторий. Полный
+verifier повторно проиграл все действия через динамический C++ action space и
+принял dataset; Draft 2020-12 schema отдельно приняла manifest. Validation
+benchmark охватывает 64 задачи, построен без перезапуска solver и связан с
+manifest SHA-256
+`747ADE28A858DE2F1D484CDF6C942DF07CB59AF017EEB886F8C18D9105422C44`.
+Независимый verifier повторно вычислил и принял все агрегаты пяти solver.
+Фактический протокол приведён в
+[отчёте M6.1](experiments/m6-1-polygon-dataset-v2-2026-09-13.md).
+
 Python architecture checker использует полные module paths и longest-prefix
 ownership. Отрицательные self-tests отдельно запрещают dataset → PyTorch и
 dataset common → training.

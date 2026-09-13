@@ -17,6 +17,8 @@
   family isolation, resume и frozen baseline benchmark.
 - [CPU smoke-эксперимент M3](experiments/m3-smoke-2026-09-10.md) — проверенный
   инженерный прогон до канонического CUDA-обучения.
+- [Канонический polygon dataset v2](experiments/m6-1-polygon-dataset-v2-2026-09-13.md) —
+  замороженные хеши, coverage и validation benchmark M6.1.
 - [ADR-0001: гибридный решатель](decisions/0001-hybrid-neural-solver.md) — граница
   между нейросетью и детерминированной геометрией.
 - [ADR-0002: ценность остатка](decisions/0002-valuable-remnant-objective.md) —

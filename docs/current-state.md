@@ -1,6 +1,6 @@
 # Текущее состояние
 
-Проверено 2026-09-12.
+Проверено 2026-09-13.
 
 ## Baseline
 
@@ -88,8 +88,10 @@
 - A5 сохраняет C++ targets и wire-форматы. Python pytest проходит 30/30,
   architecture self-tests — 6/6; минимальные grid/polygon v1 outputs старого и
   нового pipeline совпадают побайтово по семи файлам каждый.
-- M6.1R считается готовым к каноническому прогону, но не завершённым: до
-  генерации 384 задач manifest SHA-256 и validation benchmark не зафиксированы.
+- M6.1R завершён: канонические 384 задачи и 1920 траекторий сгенерированы на
+  revision `1baf53a8c1f0`, полностью replay-проверены, а validation benchmark
+  построен из замороженных trajectories. SHA-256 manifest:
+  `747ADE28A858DE2F1D484CDF6C942DF07CB59AF017EEB886F8C18D9105422C44`.
 - Локальный Python suite после переноса проходит 43/43; clean nesting — 44/44,
   Windows headless — 46/46, MSVC+Qt desktop — 47/47. Архитектурная проверка и
   шесть отрицательных self-tests также проходят.
