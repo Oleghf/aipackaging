@@ -13,7 +13,7 @@ namespace
 {
 constexpr double VIEW_PADDING = 24.0;
 
-/// Создаёт замкнутый QPainterPath из presentation-кольца.
+/// Создаёт замкнутый `QPainterPath` из кольца модели представления.
 void appendRing(QPainterPath & path, const std::vector<PolygonViewPoint> & ring)
 {
   if (ring.empty())
@@ -43,7 +43,7 @@ PolygonCanvasWidget::PolygonCanvasWidget(QWidget * parent)
   setAttribute(Qt::WA_OpaquePaintEvent);
 }
 
-/// Копирует неизменяемую presentation-модель; геометрия solver-а не вычисляется в GUI.
+/// Копирует модель представления; геометрия решателя не вычисляется в GUI.
 void PolygonCanvasWidget::setSnapshot(const PolygonWorkspaceSnapshot & snapshot)
 {
   snapshot_ = snapshot;
@@ -58,7 +58,7 @@ void PolygonCanvasWidget::fitToView()
   update();
 }
 
-/// Применяет Y-up transform и рисует кольца с odd-even заполнением отверстий.
+/// Применяет преобразование к оси Y, направленной вверх, и рисует кольца с чередующимся заполнением отверстий.
 void PolygonCanvasWidget::paintEvent(QPaintEvent * event)
 {
   QWidget::paintEvent(event);
@@ -79,7 +79,7 @@ void PolygonCanvasWidget::paintEvent(QPaintEvent * event)
   const double fitScale = std::min(availableWidth / scene.sheetWidth, availableHeight / scene.sheetHeight);
   const double scale = fitScale * zoom_;
 
-  // Центрируем лист, инвертируем экранную Y и затем применяем пользовательский pan.
+  // Центрируем лист, инвертируем экранную ось Y и затем применяем пользовательское смещение.
   painter.translate(width() / 2.0 + pan_.x(), height() / 2.0 + pan_.y());
   painter.scale(scale, -scale);
   painter.translate(-scene.sheetWidth / 2.0, -scene.sheetHeight / 2.0);
@@ -132,7 +132,7 @@ void PolygonCanvasWidget::paintEvent(QPaintEvent * event)
   }
 }
 
-/// Запоминает начало drag только для левой кнопки read-only полотна.
+/// Запоминает начало перетаскивания только для левой кнопки доступного лишь для чтения полотна.
 void PolygonCanvasWidget::mousePressEvent(QMouseEvent * event)
 {
   if (event->button() == Qt::LeftButton)
@@ -146,7 +146,7 @@ void PolygonCanvasWidget::mousePressEvent(QMouseEvent * event)
   QWidget::mousePressEvent(event);
 }
 
-/// Добавляет экранное смещение без изменения координат presentation-модели.
+/// Добавляет экранное смещение без изменения координат модели представления.
 void PolygonCanvasWidget::mouseMoveEvent(QMouseEvent * event)
 {
   if (panning_)
@@ -160,7 +160,7 @@ void PolygonCanvasWidget::mouseMoveEvent(QMouseEvent * event)
   QWidget::mouseMoveEvent(event);
 }
 
-/// Завершает drag и восстанавливает курсор открытой ладони.
+/// Завершает перетаскивание и восстанавливает курсор открытой ладони.
 void PolygonCanvasWidget::mouseReleaseEvent(QMouseEvent * event)
 {
   if (event->button() == Qt::LeftButton && panning_)
@@ -173,7 +173,7 @@ void PolygonCanvasWidget::mouseReleaseEvent(QMouseEvent * event)
   QWidget::mouseReleaseEvent(event);
 }
 
-/// Умножает zoom на ограниченный экспоненциальный коэффициент wheel delta.
+/// Умножает масштаб на ограниченный экспоненциальный коэффициент прокрутки колеса.
 void PolygonCanvasWidget::wheelEvent(QWheelEvent * event)
 {
   const double factor = std::pow(1.0015, event->angleDelta().y());

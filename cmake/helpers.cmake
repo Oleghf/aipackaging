@@ -1,4 +1,4 @@
-# Копирует в папку к target DLL библиотеку
+# Копирует библиотеку DLL в каталог цели сборки.
 function(copy_target_dll target DLL_target)
     add_custom_command(TARGET ${target} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -7,7 +7,7 @@ function(copy_target_dll target DLL_target)
 endfunction()
 
 
-# Копирует нужные qt зависимости в папку к target
+# Копирует необходимые зависимости Qt в каталог цели сборки.
 function(copy_target_qt_dll target)
     if(WIN32 AND TARGET Qt6::windeployqt)
         add_custom_command(TARGET ${target} POST_BUILD

@@ -36,8 +36,8 @@ void configureControlButton(QPushButton * button)
 
 //------------------------------------------------------------------------------
 /**
-  \brief Конструктор
-  \details Расставляет shell режима упаковки и соединяет UI-сигналы
+  \brief Создаёт виджет клеточного раскроя.
+  \details Размещает оболочку режима раскроя и соединяет сигналы UI.
 */
 //--
 PackagingWidget::PackagingWidget(QWidget * parent)

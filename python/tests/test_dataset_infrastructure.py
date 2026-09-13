@@ -1,4 +1,4 @@
-"""Проверки общей сериализации, cache и совместимых фасадов A5."""
+"""Проверки общей сериализации, кэша и совместимых фасадов A5."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from aipackaging_ml.datasets.polygon import verification as polygon_verification
 
 
 def test_canonical_json_gzip_and_sha_are_shared_and_deterministic(tmp_path: Path) -> None:
-    """Общие codecs сохраняют прежние байты независимо от имени выходного gzip."""
+    """Общие кодеки сохраняют прежние байты независимо от имени выходного gzip."""
 
     value = {"я": [2, 1], "a": True}
     expected = '{"a":true,"я":[2,1]}\n'.encode("utf-8")
@@ -43,45 +43,45 @@ def test_canonical_json_gzip_and_sha_are_shared_and_deterministic(tmp_path: Path
 
 
 def test_serialization_rejects_noncanonical_corrupt_and_escaping_data(tmp_path: Path) -> None:
-    """Reader отклоняет иное JSON-представление, неверный mtime и выход из dataset root."""
+    """Средство чтения отклоняет иной JSON, неверное время изменения и выход из корня набора."""
 
     document = tmp_path / "noncanonical.json"
     document.write_text('{"b": 1, "a": 2}\n', encoding="utf-8")
-    with pytest.raises(ValueError, match="not canonical"):
+    with pytest.raises(ValueError, match="представлен неканонически"):
         serialization.read_canonical_json(document)
 
     shard = tmp_path / "bad.jsonl.gz"
     with shard.open("wb") as raw:
         with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=1) as stream:
             stream.write(json.dumps([1, 2]).encode("utf-8") + b"\n")
-    with pytest.raises(ValueError, match="mtime"):
+    with pytest.raises(ValueError, match="времени изменения"):
         serialization.read_jsonl_gzip(shard)
-    with pytest.raises(ValueError, match="escapes"):
+    with pytest.raises(ValueError, match="выходит за корневой каталог"):
         serialization.resolve_dataset_path(tmp_path, "../outside.jsonl.gz")
-    with pytest.raises(ValueError, match="fields mismatch"):
+    with pytest.raises(ValueError, match="ожидались поля"):
         serialization.require_keys({"known": 1, "extra": 2}, {"known"}, "fixture")
 
 
 def test_atomic_cache_requires_matching_identity_and_fingerprint(tmp_path: Path) -> None:
-    """Cache публикует только каноническую полную запись с ожидаемой конфигурацией."""
+    """Кэш публикует только каноническую полную запись с ожидаемой конфигурацией."""
 
     path = tmp_path / "task.json"
     identity = {"tier": "small", "index": 3}
     write_cache_record(path, identity=identity, fingerprint="abc", payload={"result": 7})
     assert read_cache_record(path, expected_identity=identity, expected_fingerprint="abc") == {"result": 7}
     assert not list(tmp_path.glob("*.tmp"))
-    with pytest.raises(ValueError, match="identity or fingerprint"):
+    with pytest.raises(ValueError, match="идентификатор или отпечаток"):
         read_cache_record(path, expected_identity=identity, expected_fingerprint="other")
     assert read_compatible_cache_record(
         path, expected_identity=identity, expected_fingerprint="other"
     ) is None
     path.write_bytes(b"{}\n")
-    with pytest.raises(ValueError, match="fields mismatch"):
+    with pytest.raises(ValueError, match="ожидались поля"):
         read_cache_record(path, expected_identity=identity, expected_fingerprint="abc")
 
 
 def test_legacy_dataset_modules_are_thin_compatible_facades() -> None:
-    """Старые import paths указывают на новые реализации без изменения публичных объектов."""
+    """Старые пути импорта указывают на новые реализации без изменения публичных объектов."""
 
     assert generator.generate_problem is grid_generation.generate_problem
     assert dataset.DEFAULT_SPLITS is grid_pipeline.DEFAULT_SPLITS
@@ -93,7 +93,7 @@ def test_legacy_dataset_modules_are_thin_compatible_facades() -> None:
 
 
 def test_dataset_cli_smoke_does_not_load_torch(tmp_path: Path) -> None:
-    """Generate/verify выполняются в чистом процессе, где любой импорт torch запрещён."""
+    """Создание и проверка выполняются в чистом процессе без импорта PyTorch."""
 
     output = tmp_path / "cli-grid"
     script = f"""
@@ -103,7 +103,7 @@ import sys
 class RejectTorch(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path, target=None):
         if fullname == "torch" or fullname.startswith("torch."):
-            raise AssertionError("dataset-only CLI imported PyTorch")
+            raise AssertionError("команда набора данных CLI импортировала PyTorch")
         return None
 
 sys.meta_path.insert(0, RejectTorch())

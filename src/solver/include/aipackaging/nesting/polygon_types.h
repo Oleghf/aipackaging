@@ -25,7 +25,7 @@ enum class PolygonSegmentKind : std::uint8_t
   CubicBezier
 };
 
-/// Сегмент пути, продолжающийся от предыдущей точки до поля end.
+/// Сегмент пути, продолжающийся от предыдущей точки до поля `end`.
 struct PolygonSegment
 {
   PolygonSegmentKind kind = PolygonSegmentKind::Line;
@@ -145,7 +145,7 @@ struct PolygonObjectiveComponents
   int rasterRows = 128;
 };
 
-/// Value-state полигональной среды с уже применёнными действиями.
+/// Изменяемое состояние полигональной среды с уже применёнными действиями.
 struct PolygonState
 {
   std::vector<unsigned char> placedInstances;

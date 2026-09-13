@@ -12,7 +12,7 @@
 
 namespace aipackaging::solver
 {
-/// Доказывает, что плоские заголовки и compatibility target сохраняют прежний публичный API.
+/// Доказывает, что плоские заголовки и совместимая цель сборки сохраняют публичный API.
 TEST(SolverCompatibilityHeaders, CompileAndLinkLegacyApi)
 {
   const GridObjectiveDefinition gridObjective;

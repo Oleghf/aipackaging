@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://aipackaging.local/schemas/training-run-v1.schema.json",
-  "title": "AIPackaging training run v1",
+  "title": "AIPackaging: запуск обучения v1",
   "type": "object", "additionalProperties": false,
   "required": ["format", "version", "status", "seed", "device", "datasetManifestSha256", "configSha256", "bcCheckpoint", "ppoCheckpoint", "metrics", "software"],
   "properties": {

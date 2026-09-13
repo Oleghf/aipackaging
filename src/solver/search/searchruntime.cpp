@@ -16,7 +16,7 @@ namespace aipackaging::solver::detail
 {
 namespace
 {
-/// Приводит длительность steady clock к целым микросекундам диагностических метрик.
+/// Приводит длительность монотонных часов к целым микросекундам диагностических метрик.
 std::uint64_t microseconds(SearchRuntime::Clock::duration value)
 {
   return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(value).count());
@@ -38,13 +38,13 @@ const SolverConfig & SearchRuntime::config() const
   return config_;
 }
 
-/// Делегирует получение времени внедрённому provider, чтобы тесты не зависели от wall clock.
+/// Делегирует получение времени внедрённому источнику, чтобы тесты не зависели от реального времени.
 SearchRuntime::Clock::time_point SearchRuntime::now() const
 {
   return clock_();
 }
 
-/// Сначала фиксирует явную отмену пользователя, затем проверяет аварийный timeout.
+/// Сначала фиксирует явную отмену пользователя, затем проверяет ограничение времени.
 bool SearchRuntime::pollStop()
 {
   if (stopReason_ != SearchStopReason::None)
@@ -64,13 +64,13 @@ bool SearchRuntime::pollStop()
   return false;
 }
 
-/// Читает уже сохранённую причину, не опрашивая внешний callback повторно.
+/// Читает сохранённую причину, не вызывая внешнюю функцию повторно.
 SearchStopReason SearchRuntime::stopReason() const
 {
   return stopReason_;
 }
 
-/// Сопоставляет наблюдаемую причину остановки с публичным признаком cancellation.
+/// Сопоставляет наблюдаемую причину остановки с публичным признаком отмены.
 bool SearchRuntime::cancellationObserved() const
 {
   return stopReason_ == SearchStopReason::Cancelled;
@@ -102,7 +102,7 @@ std::uint64_t SearchRuntime::expandedStates() const
   return metrics_.expandedStates;
 }
 
-/// Собирает progress из общих счётчиков и вызывает callback непосредственно в потоке поиска.
+/// Собирает ход выполнения из общих счётчиков и вызывает функцию в потоке поиска.
 void SearchRuntime::report(SearchProgressStage stage, std::uint64_t completed, std::uint64_t total, std::size_t bestPlacedParts,
                            std::size_t totalParts) const
 {
@@ -122,7 +122,7 @@ SolverMetrics SearchRuntime::finalizedMetrics() const
   return result;
 }
 
-/// Копирует воспроизводимые параметры запуска и compile-time идентификаторы проекта в metadata.
+/// Копирует воспроизводимые параметры запуска и заданные при сборке идентификаторы проекта в служебные сведения.
 SolverMetadata makeBaselineMetadata(const SolverConfig & config)
 {
   SolverMetadata result;

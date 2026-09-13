@@ -16,14 +16,14 @@ using detail::PlacementPolicy;
 using detail::SearchRuntime;
 using detail::SearchStopReason;
 
-/// Задаёт стабильный tie-break двух grid-размещений независимо от порядка в памяти.
+/// Задаёт стабильное разрешение равенства двух клеточных размещений независимо от порядка в памяти.
 bool placementLess(const GridPlacement & lhs, const GridPlacement & rhs)
 {
   return std::tie(lhs.partId, lhs.instanceIndex, lhs.rotationDegrees, lhs.column, lhs.row) <
          std::tie(rhs.partId, rhs.instanceIndex, rhs.rotationDegrees, rhs.column, rhs.row);
 }
 
-/// Сравнивает grid-состояния по полноте, объёму partial, objective и последовательности действий.
+/// Сравнивает клеточные состояния по полноте, частичному объёму, цели и действиям.
 bool betterState(const GridEnvironment & environment, const GridState & lhs, const GridState & rhs)
 {
   const ObjectiveComponents left = environment.evaluate(lhs);
@@ -46,7 +46,7 @@ bool betterState(const GridEnvironment & environment, const GridState & lhs, con
                                       placementLess);
 }
 
-/// Сравнивает допустимые grid-кандидаты по valuable-remnant left-bottom.
+/// Сравнивает допустимые клеточные варианты по правилу нижнего левого размещения с сохранением ценного остатка.
 bool leftBottomLess(const GridEnvironment & environment, const GridState & state, std::size_t instancePosition,
                     const GridAction & lhs, const GridAction & rhs)
 {
@@ -69,7 +69,7 @@ bool leftBottomLess(const GridEnvironment & environment, const GridState & state
   return placementLess(lhs, rhs);
 }
 
-/// Адаптирует GridEnvironment к общему lifecycle без переноса grid-геометрии в runtime.
+/// Адаптирует `GridEnvironment` к общему жизненному циклу без переноса клеточной геометрии в механизм выполнения.
 class GridSearchAdapter
 {
 public:
@@ -82,22 +82,22 @@ public:
   {
   }
 
-  /// Возвращает пустое состояние grid-среды.
+  /// Возвращает пустое состояние клеточной среды.
   State initialState() const { return environment_.initialState(); }
   /// Возвращает число обязательных экземпляров задачи.
   std::size_t instanceCount() const { return environment_.instances().size(); }
-  /// Возвращает площадь экземпляра в клетках для общего ordering.
+  /// Возвращает площадь экземпляра в клетках для общего упорядочивания.
   std::size_t instanceArea(std::size_t index) const { return environment_.instances()[index].area; }
-  /// Возвращает максимальный габарит экземпляра для общего ordering.
+  /// Возвращает максимальный габарит экземпляра для общего упорядочивания.
   int instanceMaxDimension(std::size_t index) const { return environment_.instances()[index].maxDimension; }
-  /// Возвращает стабильный ID типа детали для общего ordering.
+  /// Возвращает стабильный идентификатор типа детали для общего упорядочивания.
   const std::string & instancePartId(std::size_t index) const
   {
     return environment_.problem().parts[environment_.instances()[index].partIndex].id;
   }
   /// Возвращает публичный индекс экземпляра внутри типа детали.
   std::uint32_t instanceIndex(std::size_t index) const { return environment_.instances()[index].instanceIndex; }
-  /// Сообщает, размещён ли экземпляр в переданном value-state.
+  /// Сообщает, размещён ли экземпляр в переданном изменяемом состоянии.
   bool isPlaced(const State & state, std::size_t index) const { return state.placedInstances[index] != 0; }
   /// Сообщает, принадлежат ли два экземпляра одному типу детали.
   bool samePart(std::size_t lhs, std::size_t rhs) const
@@ -113,16 +113,16 @@ public:
   {
     return environment_.enumerateCandidates(state, instance);
   }
-  /// Проверяет один grid-кандидат точными правилами среды.
+  /// Проверяет один клеточный вариант точными правилами среды.
   bool valid(const State & state, const Action & action) const { return environment_.canApply(state, action); }
-  /// Применяет уже проверенный grid-кандидат к копии состояния.
+  /// Применяет уже проверенный клеточный вариант к копии состояния.
   void apply(State & state, const Action & action) const { environment_.apply(state, action); }
-  /// Сравнивает два состояния по принятому grid objective.
+  /// Сравнивает два состояния по принятой клеточной целевой функции.
   bool better(const State & candidate, const State & reference) const { return betterState(environment_, candidate, reference); }
-  /// Сохраняет прежнюю grid-семантику проверки beam budget после validation.
+  /// Сохраняет клеточную семантику проверки бюджета лучевого поиска после валидации.
   bool budgetBeforeValidation() const { return false; }
 
-  /// Выбирает и применяет first-fit либо лучший left-bottom кандидат одного экземпляра.
+  /// Выбирает и применяет первое допустимое либо лучшее нижнее левое размещение одного экземпляра.
   bool placeOrdered(SearchRuntime & runtime, State & state, std::size_t instance, PlacementPolicy policy) const
   {
     const auto generationStarted = runtime.now();
@@ -163,7 +163,7 @@ private:
   const GridEnvironment & environment_;
 };
 
-/// Преобразует SolverKind в общий ordering и placement policy последовательного поиска.
+/// Преобразует SolverKind в общий порядок деталей и правило последовательного размещения.
 std::pair<PartOrdering, PlacementPolicy> orderedPolicy(SolverKind solver)
 {
   if (solver == SolverKind::InputFirstFit)
@@ -174,7 +174,7 @@ std::pair<PartOrdering, PlacementPolicy> orderedPolicy(SolverKind solver)
 }
 } // namespace
 
-/// Сравнивает полноту, объём partial, остаток и стабильную последовательность placements.
+/// Сравнивает полноту, частичный объём, остаток и стабильную последовательность размещений.
 bool isBetterGridSolution(const GridSolution & candidate, const GridSolution & reference)
 {
   const bool candidateComplete = candidate.complete();
@@ -195,7 +195,7 @@ bool isBetterGridSolution(const GridSolution & candidate, const GridSolution & r
                                       reference.placements.end(), placementLess);
 }
 
-/// Проверяет задачу, запускает общий lifecycle через grid-адаптер и собирает проверенный результат.
+/// Проверяет задачу, запускает общий жизненный цикл через клеточный адаптер и собирает проверенный результат.
 GridSolverExecutionResult runGridProblem(const GridProblem & problem, const SolverConfig & config,
                                          const SearchExecutionControl & control)
 {
@@ -243,7 +243,7 @@ GridSolverExecutionResult runGridProblem(const GridProblem & problem, const Solv
     solution.errorMessage = toString(status);
 
   // Публичный результат повторно проходит независимый валидатор, поэтому
-  // ошибка сборки solution не может выйти за границу Search.
+  // ошибка сборки решения не может выйти за границу модуля поиска.
   const ValidationResult validation = validateGridSolution(problem, solution);
   if (!validation.success)
   {
@@ -253,7 +253,7 @@ GridSolverExecutionResult runGridProblem(const GridProblem & problem, const Solv
   return {std::move(solution), runtime.cancellationObserved()};
 }
 
-/// Делегирует обычный синхронный запуск управляемому API без внешних callback.
+/// Делегирует обычный синхронный запуск управляемому API без внешних обратных вызовов.
 GridSolution solveGridProblem(const GridProblem & problem, const SolverConfig & config)
 {
   return runGridProblem(problem, config).solution;

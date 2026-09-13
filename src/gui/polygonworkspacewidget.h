@@ -18,26 +18,26 @@ class QTextEdit;
 class QToolButton;
 class PolygonCanvasWidget;
 
-/// Вкладка управления read-only полигональной задачей и baseline-поиском.
+/// Вкладка просмотра полигональной задачи и запуска базового поиска.
 class PolygonWorkspaceWidget : public QWidget
 {
   Q_OBJECT
 public:
-  /// Создаёт полотно, панель файлов, solver-настроек, прогресса и метрик.
+  /// Создаёт полотно, панель файлов, настройки решателя, ход выполнения и метрики.
   explicit PolygonWorkspaceWidget(QWidget * parent = nullptr);
   /// Возвращает проверяемые числовые настройки, выбранные пользователем.
   aipackaging::solver::SolverConfig solverConfig() const;
-  /// Применяет presentation-снимок и согласованно переключает доступность контролов.
+  /// Применяет снимок модели представления и согласованно переключает доступность элементов управления.
   void present(const PolygonWorkspaceSnapshot & snapshot);
 
 signals:
-  /// Запрашивает выбор и открытие polygon_problem.
+  /// Запрашивает выбор и открытие задачи `polygon_problem`.
   void requestOpenProblem();
-  /// Запрашивает выбор пути и сохранение polygon_solution.
+  /// Запрашивает выбор пути и сохранение решения `polygon_solution`.
   void requestSaveSolution();
   /// Запрашивает запуск с текущими настройками.
   void requestStart();
-  /// Запрашивает cooperative cancellation текущего запуска.
+  /// Запрашивает согласованную отмену текущего запуска.
   void requestCancel();
 
 private:

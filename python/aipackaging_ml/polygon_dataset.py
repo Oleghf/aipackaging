@@ -1,4 +1,4 @@
-"""Совместимый публичный фасад полигонального dataset pipeline v1/v2."""
+"""Совместимый публичный фасад конвейера полигонального набора данных v1/v2."""
 
 from .datasets.polygon.family import polygon_family_hash
 from .datasets.polygon.generation import POLYGON_PROFILES, POLYGON_TIERS, generate_polygon_problem

@@ -13,7 +13,7 @@ FIXTURE = Path(__file__).parent / "fixtures" / "polygon-smoke-problem.json"
 
 
 def test_polygon_observation_and_dynamic_actions() -> None:
-    """Наблюдения read-only, а action space пересчитывается после шага."""
+    """Наблюдения доступны только для чтения, а пространство действий обновляется после шага."""
 
     environment = PolygonNestingEnv.from_file(FIXTURE)
     observation, info = environment.reset(seed=42)

@@ -12,11 +12,11 @@ namespace
 constexpr std::size_t MAX_V1_SHEET_AREA = 4096;
 constexpr std::size_t MAX_V1_ACTIONS = 1000000;
 
-/// Умножает и прибавляет без переполнения uint64_t, используемого wire-контрактом rank v1.
+/// Умножает и прибавляет без переполнения типа `uint64_t`, используемого контрактом ранга v1.
 std::uint64_t checkedMultiplyAdd(std::uint64_t value, std::uint64_t multiplier, std::uint64_t addition)
 {
   if (multiplier != 0 && value > (std::numeric_limits<std::uint64_t>::max() - addition) / multiplier)
-    throw std::overflow_error("grid learning reward rank overflow");
+    throw std::overflow_error("переполнение ранга вознаграждения клеточной среды");
   return value * multiplier + addition;
 }
 
@@ -50,7 +50,7 @@ std::unique_ptr<GridLearningEnvironment> GridLearningEnvironment::Create(const G
   }
 
   // Лимиты проверяются до создания GridEnvironment: M1 допускает значительно
-  // большие листы и quantity, которые среда обучения не должна аллоцировать.
+  // большие листы и количества, для которых среда обучения не должна выделять память.
   const std::size_t sheetArea = static_cast<std::size_t>(problem.sheet.columns) * problem.sheet.rows;
   if (sheetArea > limits.maxSheetArea)
   {
@@ -124,7 +124,7 @@ GridLearningEnvironment::GridLearningEnvironment(std::unique_ptr<GridEnvironment
   updateTerminal(buildActionMask());
 }
 
-/// Обнуляет occupancy и размещения, после чего обновляет терминальные признаки.
+/// Обнуляет занятость и размещения, после чего обновляет признаки завершения.
 GridLearningObservation GridLearningEnvironment::reset()
 {
   GridLearningDynamicObservation dynamic = resetCompact();
@@ -136,7 +136,7 @@ GridLearningObservation GridLearningEnvironment::reset()
   return result;
 }
 
-/// Сбрасывает value-state и возвращает только поля, меняющиеся в ходе эпизода.
+/// Сбрасывает изменяемое состояние и возвращает только поля, меняющиеся в ходе эпизода.
 GridLearningDynamicObservation GridLearningEnvironment::resetCompact()
 {
   state_ = environment_->initialState();
@@ -145,7 +145,7 @@ GridLearningDynamicObservation GridLearningEnvironment::resetCompact()
   return buildDynamicObservation(std::move(mask));
 }
 
-/// Копирует только постоянные поля уже построенного observation-кэша.
+/// Копирует только постоянные поля уже построенного кэша наблюдения.
 GridLearningStaticObservation GridLearningEnvironment::staticObservation() const
 {
   GridLearningStaticObservation result;
@@ -164,13 +164,13 @@ GridLearningStaticObservation GridLearningEnvironment::staticObservation() const
   return result;
 }
 
-/// Собирает только поля, зависящие от текущего value-state среды.
+/// Собирает только поля, зависящие от текущего изменяемого состояния среды.
 GridLearningDynamicObservation GridLearningEnvironment::dynamicObservation() const
 {
   return buildDynamicObservation(buildActionMask());
 }
 
-/// Объединяет value-state, objective и переданную mask без повторной геометрической проверки.
+/// Объединяет изменяемое состояние, целевую функцию и переданную маску без повторной геометрической проверки.
 GridLearningDynamicObservation GridLearningEnvironment::buildDynamicObservation(std::vector<std::uint8_t> actionMask) const
 {
   GridLearningDynamicObservation result;
@@ -193,7 +193,7 @@ GridLearningDynamicObservation GridLearningEnvironment::buildDynamicObservation(
   return result;
 }
 
-/// Объединяет кэшированные статические признаки с текущим occupancy, mask и objective.
+/// Объединяет кэшированные статические признаки с текущей занятостью, маской и целевой функцией.
 GridLearningObservation GridLearningEnvironment::observation() const
 {
   GridLearningObservation result = staticObservation_;
@@ -205,20 +205,20 @@ GridLearningObservation GridLearningEnvironment::observation() const
   return result;
 }
 
-/// Проверяет индекс и mask, применяет действие и собирает общую компактную часть результата.
+/// Проверяет индекс и маску, применяет действие и собирает общую компактную часть результата.
 GridLearningCompactStepResult GridLearningEnvironment::applyStep(std::size_t actionIndex)
 {
   if (terminal_)
-    throw std::runtime_error("cannot step a terminated grid learning episode");
+    throw std::runtime_error("нельзя выполнить шаг завершённого клеточного эпизода обучения");
   if (actionIndex >= actions_.size())
-    throw std::out_of_range("grid learning action index is out of range");
+    throw std::out_of_range("индекс действия клеточной среды вне допустимого диапазона");
   if (!environment_->canApply(state_, actions_[actionIndex]))
-    throw std::invalid_argument("grid learning action is masked out");
+    throw std::invalid_argument("действие клеточной среды запрещено маской");
 
   const ObjectiveComponents before = environment_->evaluate(state_);
   const std::uint64_t rankBefore = calculateRank(before);
   if (!environment_->apply(state_, actions_[actionIndex]))
-    throw std::logic_error("validated grid learning action could not be applied");
+    throw std::logic_error("проверенное действие клеточной среды не удалось применить");
   const ObjectiveComponents after = environment_->evaluate(state_);
   const std::uint64_t rankAfter = calculateRank(after);
   std::vector<std::uint8_t> mask = buildActionMask();
@@ -240,7 +240,7 @@ GridLearningCompactStepResult GridLearningEnvironment::applyStep(std::size_t act
   return result;
 }
 
-/// Делегирует изменение состояния общему compact-пути и добавляет постоянные массивы observation v1.
+/// Делегирует изменение состояния компактному пути и добавляет массивы наблюдения v1.
 GridLearningStepResult GridLearningEnvironment::step(std::size_t actionIndex)
 {
   GridLearningCompactStepResult compact = applyStep(actionIndex);
@@ -264,11 +264,11 @@ GridLearningCompactStepResult GridLearningEnvironment::stepCompact(std::size_t a
   return applyStep(actionIndex);
 }
 
-/// Копирует текущие placements и вычисляет objective тем же кодом, что использует валидатор.
+/// Копирует текущие размещения и вычисляет целевую функцию тем же кодом, что валидатор.
 GridSolution GridLearningEnvironment::snapshotSolution(const SolverMetadata & solver, SolveStatus incompleteStatus) const
 {
   if (incompleteStatus == SolveStatus::Solved || incompleteStatus == SolveStatus::InvalidProblem)
-    throw std::invalid_argument("snapshot incomplete status must describe a valid partial search result");
+    throw std::invalid_argument("статус неполного снимка должен описывать корректный частичный результат");
 
   GridSolution result;
   result.wireVersion = solver.family == SolverFamily::Baseline ? 1 : 2;
@@ -286,14 +286,14 @@ const GridAction & GridLearningEnvironment::action(std::size_t actionIndex) cons
   return actions_.at(actionIndex);
 }
 
-/// Линейно сопоставляет сериализованное действие каталогу; операция предназначена для replay.
+/// Линейно сопоставляет сериализованное действие каталогу для повторного проигрывания.
 std::size_t GridLearningEnvironment::findAction(const GridAction & actionValue) const
 {
   const auto found = std::find(actions_.begin(), actions_.end(), actionValue);
   return found == actions_.end() ? actions_.size() : static_cast<std::size_t>(found - actions_.begin());
 }
 
-/// Пересчитывает objective и кодирует его поля смешанными основаниями в порядке M1.
+/// Пересчитывает целевую функцию и кодирует её поля смешанными основаниями в порядке M1.
 std::uint64_t GridLearningEnvironment::rank() const
 {
   return calculateRank(environment_->evaluate(state_));
@@ -308,14 +308,14 @@ std::vector<std::uint8_t> GridLearningEnvironment::buildActionMask() const
   return result;
 }
 
-/// Считает complete по количеству, а dead-end — по отсутствию единиц в готовой mask.
+/// Определяет полноту по количеству, а тупик — по отсутствию единиц в готовой маске.
 void GridLearningEnvironment::updateTerminal(const std::vector<std::uint8_t> & actionMask)
 {
   complete_ = state_.placements.size() == environment_->instances().size();
   terminal_ = complete_ || std::none_of(actionMask.begin(), actionMask.end(), [](std::uint8_t value) { return value != 0; });
 }
 
-/// Кодирует лексикографический порядок в uint64_t последовательными checked multiply-add.
+/// Кодирует лексикографический порядок в тип `uint64_t` последовательными проверяемыми операциями умножения и сложения.
 std::uint64_t GridLearningEnvironment::calculateRank(const ObjectiveComponents & objective) const
 {
   const GridProblem & problem = environment_->problem();
@@ -330,7 +330,7 @@ std::uint64_t GridLearningEnvironment::calculateRank(const ObjectiveComponents &
   return result;
 }
 
-/// Разворачивает ориентации и действия в плоские массивы с документированным row-major layout.
+/// Разворачивает ориентации и действия в плоские массивы с построчным размещением элементов.
 GridLearningObservation GridLearningEnvironment::buildStaticObservation() const
 {
   GridLearningObservation result;

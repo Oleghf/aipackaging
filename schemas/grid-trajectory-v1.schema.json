@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://aipackaging.local/schemas/grid-trajectory-v1.schema.json",
-  "title": "AIPackaging grid trajectory v1",
+  "title": "AIPackaging: клеточная траектория v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "version", "trajectoryId", "problemId", "solver", "actionIndices", "steps", "finalSolution"],

@@ -18,14 +18,14 @@ namespace
 {
 using namespace aipackaging::solver;
 
-/// Печатает публичный контракт команды solve и доступных параметров.
+/// Печатает справку по команде `solve` и доступным параметрам.
 void printUsage()
 {
-  std::cerr << "Usage: AIPackaging_Cli solve --input <problem.json> --output <solution.json>\n"
-               "       [--solver input-first-fit|area-left-bottom|max-side-left-bottom|random-left-bottom|beam]\n"
-               "       [--seed N] [--random-iterations N] [--beam-width N]\n"
-               "       [--max-expanded-states N] [--timeout-ms N]\n"
-               "       AIPackaging_Cli validate --problem <problem.json> --solution <solution.json>\n";
+  std::cerr << "Использование: `AIPackaging_Cli solve --input <problem.json> --output <solution.json>`\n"
+               "       `[--solver input-first-fit|area-left-bottom|max-side-left-bottom|random-left-bottom|beam]`\n"
+               "       `[--seed N] [--random-iterations N] [--beam-width N]`\n"
+               "       `[--max-expanded-states N] [--timeout-ms N]`\n"
+               "       `AIPackaging_Cli validate --problem <problem.json> --solution <solution.json>`\n";
 }
 
 /// Строго разбирает неотрицательное десятичное число без пробелов и суффиксов.
@@ -39,7 +39,7 @@ bool parseUnsigned(std::string_view text, std::uint64_t & value)
   return error == std::errc{} && position == end;
 }
 
-/// Забирает следующее значение argv для параметра с обязательным аргументом.
+/// Забирает следующее значение массива аргументов для параметра с обязательным значением.
 bool readValue(int argc, char ** argv, int & index, std::string & value)
 {
   if (index + 1 >= argc)
@@ -48,7 +48,7 @@ bool readValue(int argc, char ** argv, int & index, std::string & value)
   return true;
 }
 
-/// Читает CLI-значение, проверяя его диапазон для size_t текущей платформы.
+/// Читает значение CLI, проверяя его диапазон для типа `size_t` текущей платформы.
 bool readSizeOption(int argc, char ** argv, int & index, std::size_t & value)
 {
   std::string text;
@@ -61,7 +61,7 @@ bool readSizeOption(int argc, char ** argv, int & index, std::size_t & value)
   return true;
 }
 
-/// Читает файл целиком для безопасного определения wire-формата до parsing.
+/// Читает файл целиком для определения формата обмена до синтаксического разбора.
 bool readTextFile(const std::string & path, std::string & text)
 {
   std::ifstream input(path, std::ios::binary);
@@ -71,7 +71,7 @@ bool readTextFile(const std::string & path, std::string & text)
   return static_cast<bool>(input) || input.eof();
 }
 
-/// Проверяет согласованную пару grid или polygon problem/solution.
+/// Проверяет согласованную пару клеточной или полигональной задачи и решения.
 int validateCommand(int argc, char ** argv)
 {
   std::string problemPath;
@@ -97,7 +97,7 @@ int validateCommand(int argc, char ** argv)
   if (problemPath.empty() || solutionPath.empty() || !readTextFile(problemPath, problemText) ||
       !readTextFile(solutionPath, solutionText))
   {
-    std::cerr << "Unable to read validation input\n";
+    std::cerr << "Не удалось прочитать входные данные проверки\n";
     return 1;
   }
   const std::string format = detectJsonFormat(problemText);
@@ -123,12 +123,12 @@ int validateCommand(int argc, char ** argv)
       std::cerr << result.error << '\n';
     return result.success ? 0 : 3;
   }
-  std::cerr << "Unsupported problem format\n";
+  std::cerr << "Неподдерживаемый формат задачи\n";
   return 3;
 }
 } // namespace
 
-/// Разбирает команду, загружает задачу, запускает solver и записывает решение с договорённым exit code.
+/// Разбирает команду, загружает задачу, запускает решатель и возвращает согласованный код.
 int main(int argc, char ** argv)
 {
   using namespace aipackaging::solver;
@@ -163,7 +163,7 @@ int main(int argc, char ** argv)
       {
         if (!readValue(argc, argv, index, value) || !parseSolverKind(value, config.solver))
         {
-          std::cerr << "Unknown solver\n";
+          std::cerr << "Неизвестный решатель\n";
           return 1;
         }
       }
@@ -194,7 +194,7 @@ int main(int argc, char ** argv)
       }
       else
       {
-        std::cerr << "Unknown option: " << option << '\n';
+        std::cerr << "Неизвестный параметр: " << option << '\n';
         printUsage();
         return 1;
       }
@@ -211,7 +211,7 @@ int main(int argc, char ** argv)
     std::string inputText;
     if (!readTextFile(inputPath, inputText))
     {
-      std::cerr << "Unable to open problem input file\n";
+      std::cerr << "Не удалось открыть входной файл задачи\n";
       return 1;
     }
     const std::string format = detectJsonFormat(inputText);
@@ -234,7 +234,7 @@ int main(int argc, char ** argv)
     }
     if (format != "aipackaging.grid_problem")
     {
-      std::cerr << "Unsupported or missing problem format\n";
+      std::cerr << "Формат задачи отсутствует или не поддерживается\n";
       return 3;
     }
     const GridProblemLoadResult loaded = loadGridProblemFromText(inputText);
@@ -254,7 +254,7 @@ int main(int argc, char ** argv)
   }
   catch (const std::exception & error)
   {
-    std::cerr << "Internal error: " << error.what() << '\n';
+    std::cerr << "Внутренняя ошибка: " << error.what() << '\n';
     return 1;
   }
 }

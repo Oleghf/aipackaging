@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://aipackaging.local/schemas/training-config-v1.schema.json",
-  "title": "AIPackaging training config v1",
+  "title": "AIPackaging: конфигурация обучения v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "version", "seed", "datasetManifestSha256", "model", "behavioralCloning", "ppo", "evaluation", "export"],

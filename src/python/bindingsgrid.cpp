@@ -27,22 +27,22 @@ py::dict actionToDict(const GridAction & action)
   return result;
 }
 
-/// Строго читает словарь действия, используемый при аудите и replay траектории.
+/// Строго читает словарь действия для аудита и повторного проигрывания траектории.
 GridAction actionFromDict(const py::dict & value)
 {
   static const std::vector<std::string> required = {"partId", "instanceIndex", "column", "row", "rotationDegrees"};
   for (const std::string & field : required)
   {
     if (!value.contains(py::str(field)))
-      throw py::value_error("action is missing required field: " + field);
+      throw py::value_error("в действии отсутствует обязательное поле: " + field);
   }
   if (value.size() != required.size())
-    throw py::value_error("action contains unknown fields");
+    throw py::value_error("действие содержит неизвестные поля");
   return {value["partId"].cast<std::string>(), value["instanceIndex"].cast<std::uint32_t>(), value["column"].cast<int>(),
           value["row"].cast<int>(), value["rotationDegrees"].cast<int>()};
 }
 
-/// Преобразует плоский C++-снимок в документированные read-only NumPy-массивы observation v1.
+/// Преобразует плоский снимок C++ в массивы наблюдения NumPy v1 только для чтения.
 py::dict observationToDict(const GridLearningObservation & observation)
 {
   const py::ssize_t rows = observation.rows;
@@ -64,7 +64,7 @@ py::dict observationToDict(const GridLearningObservation & observation)
   return result;
 }
 
-/// Преобразует постоянную часть observation в владеющие read-only NumPy-массивы.
+/// Преобразует постоянную часть наблюдения во владеющие массивы NumPy только для чтения.
 py::dict staticObservationToDict(const GridLearningStaticObservation & observation)
 {
   const py::ssize_t instances = static_cast<py::ssize_t>(observation.instanceCount);
@@ -84,7 +84,7 @@ py::dict staticObservationToDict(const GridLearningStaticObservation & observati
   return result;
 }
 
-/// Преобразует динамическую часть observation в владеющие read-only NumPy-массивы.
+/// Преобразует динамическую часть наблюдения во владеющие массивы NumPy только для чтения.
 py::dict dynamicObservationToDict(const GridLearningDynamicObservation & observation, int rows, int columns)
 {
   py::dict result;
@@ -95,7 +95,7 @@ py::dict dynamicObservationToDict(const GridLearningDynamicObservation & observa
   return result;
 }
 
-/// Формирует аудируемый info одного перехода с рангами и дельтами objective.
+/// Формирует аудируемые сведения одного перехода с рангами и изменениями целевой функции.
 template<typename StepResult>
 py::dict stepInfo(const GridLearningEnvironment & environment, const StepResult & step)
 {
@@ -116,7 +116,7 @@ py::dict stepInfo(const GridLearningEnvironment & environment, const StepResult 
   return result;
 }
 
-/// Загружает строгий grid_problem v1 и сообщает Python вызывающему точную причину отказа.
+/// Загружает строгую клеточную задачу `grid_problem` v1 и сообщает вызывающему коду Python точную причину отказа.
 GridProblem parseProblem(const std::string & problemJson)
 {
   GridProblemLoadResult loaded = loadGridProblemFromText(problemJson);
@@ -125,7 +125,7 @@ GridProblem parseProblem(const std::string & problemJson)
   return std::move(loaded.problem);
 }
 
-/// Создаёт обучаемую среду из wire JSON с отдельно настраиваемыми лимитами v1.
+/// Создаёт обучаемую среду из JSON с отдельно настраиваемыми ограничениями v1.
 std::unique_ptr<GridLearningEnvironment> createEnvironment(const std::string & problemJson, std::size_t maxSheetArea,
                                                            std::size_t maxActions)
 {
@@ -137,7 +137,7 @@ std::unique_ptr<GridLearningEnvironment> createEnvironment(const std::string & p
   return result;
 }
 
-/// Запускает M1 baseline и возвращает детерминированный wire JSON для построения датасета.
+/// Запускает базовый алгоритм M1 и возвращает детерминированный JSON для набора данных.
 // Порядок однотипных параметров закреплён именованным Python API py::arg ниже;
 // объединение их в DTO только усложнит низкоуровневую границу модуля.
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
@@ -148,7 +148,7 @@ std::string solveProblem(const std::string & problemJson, const std::string & so
   GridProblem problem = parseProblem(problemJson);
   SolverConfig config;
   if (!parseSolverKind(solverName, config.solver))
-    throw py::value_error("unknown solver: " + solverName);
+    throw py::value_error("неизвестный решатель: " + solverName);
   config.seed = seed;
   config.randomIterations = randomIterations;
   config.beamWidth = beamWidth;
@@ -165,8 +165,8 @@ std::string solveProblem(const std::string & problemJson, const std::string & so
   return saveGridSolutionToText(solution);
 }
 
-/// Проверяет пару problem/solution независимым M1-валидатором и возвращает ошибку или пустую строку.
-// Оба JSON различаются публичными именами py::arg и проходят разные strict parsers.
+/// Проверяет пару задачи и решения независимым валидатором M1 и возвращает ошибку или пустую строку.
+// Оба JSON различаются публичными именами `py::arg` и проходят разные строгие анализаторы.
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 std::string validateSolution(const std::string & problemJson, const std::string & solutionJson)
 {
@@ -178,23 +178,23 @@ std::string validateSolution(const std::string & problemJson, const std::string 
   return result.success ? std::string{} : result.error;
 }
 
-/// Сравнивает два wire-решения общим C++ objective-компаратором.
+/// Сравнивает два решения формата обмена общим компаратором целевой функции C++.
 bool isBetterSolution(const std::string & candidateJson, const std::string & referenceJson)
 {
   const GridSolutionLoadResult candidate = loadGridSolutionFromText(candidateJson);
   if (!candidate.success)
-    throw py::value_error("invalid candidate solution: " + candidate.error);
+    throw py::value_error("некорректное проверяемое решение: " + candidate.error);
   const GridSolutionLoadResult reference = loadGridSolutionFromText(referenceJson);
   if (!reference.success)
-    throw py::value_error("invalid reference solution: " + reference.error);
+    throw py::value_error("некорректное эталонное решение: " + reference.error);
   if (candidate.solution.problemId != reference.solution.problemId)
-    throw py::value_error("solutions belong to different problems");
+    throw py::value_error("решения относятся к разным задачам");
   return isBetterGridSolution(candidate.solution, reference.solution);
 }
 
 } // namespace
 
-/// Регистрирует публичный grid API без изменения имён и значений по умолчанию.
+/// Регистрирует публичный клеточный API без изменения имён и значений по умолчанию.
 void bindGrid(py::module_ & module)
 {
   py::class_<GridLearningEnvironment>(module, "GridLearningEnvironment")
@@ -226,7 +226,7 @@ void bindGrid(py::module_ & module)
       {
         SolveStatus status;
         if (!parseSolveStatus(incompleteStatus, status))
-          throw py::value_error("unknown incomplete solution status: " + incompleteStatus);
+          throw py::value_error("неизвестный статус неполного решения: " + incompleteStatus);
         return saveGridSolutionToText(environment.snapshotSolution(metadataFromDict(provenance), status));
       },
       py::arg("provenance"), py::arg("incomplete_status") = "budget_exhausted")
@@ -237,7 +237,7 @@ void bindGrid(py::module_ & module)
          {
            const std::size_t index = environment.findAction(actionFromDict(action));
            if (index == environment.actionCount())
-             throw py::value_error("action is absent from the stable catalog");
+             throw py::value_error("действие отсутствует в стабильном каталоге");
            return index;
          })
     .def_property_readonly("action_count", &GridLearningEnvironment::actionCount)

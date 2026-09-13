@@ -10,7 +10,7 @@ import numpy as np
 
 @dataclass(frozen=True)
 class PpoTransition:
-    """Хранит один on-policy переход и данные для повторной оценки PPO."""
+    """Хранит переход текущей политики и данные для повторной оценки PPO."""
 
     fixed: Mapping[str, Any]
     dynamic: Mapping[str, Any]
@@ -26,7 +26,7 @@ class PpoTransition:
 def compute_gae(
     transitions: Sequence[PpoTransition], gamma: float, gae_lambda: float
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Вычисляет GAE независимо для эпизодов и параллельных rollout-трасс."""
+    """Вычисляет GAE независимо для эпизодов и параллельных траекторий."""
 
     advantages = np.zeros(len(transitions), dtype=np.float32)
     running = 0.0
@@ -34,8 +34,8 @@ def compute_gae(
         transition = transitions[index]
         bootstrap = 0.0 if transition.terminated else 1.0
         delta = transition.reward + gamma * transition.next_value * bootstrap - transition.old_value
-        # На границе rollout-буфера critic bootstrap остаётся в delta, но GAE
-        # следующей независимой lane не должен протекать в текущую трассу.
+        # На границе буфера траектории начальная оценка критика остаётся в приращении,
+        # но GAE следующего независимого канала не должен попадать в текущую трассу.
         continuation = 0.0 if transition.terminated or transition.trace_end else 1.0
         running = delta + gamma * gae_lambda * continuation * running
         advantages[index] = running

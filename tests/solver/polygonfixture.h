@@ -9,7 +9,7 @@ namespace aipackaging::tests
 {
 using namespace solver;
 
-/// Создаёт замкнутый прямоугольный путь для независимых unit-тестов.
+/// Создаёт замкнутый прямоугольный путь для независимых модульных тестов.
 inline PolygonPath rectangle(double width, double height, double x = 0.0, double y = 0.0)
 {
   PolygonPath result;

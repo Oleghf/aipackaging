@@ -9,7 +9,7 @@ namespace
 {
 using namespace aipackaging::solver;
 
-/// Создаёт валидную задачу для round-trip проверок wire-формата.
+/// Создаёт корректную задачу для сериализации и обратного чтения формата обмена.
 GridProblem sampleProblem()
 {
   GridProblem problem;

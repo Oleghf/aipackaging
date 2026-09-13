@@ -17,7 +17,7 @@ PreviewPoolPresenter::PreviewPoolPresenter(std::shared_ptr<Board> board)
 
 //------------------------------------------------------------------------------
 /**
-  Синхронизирует preview-фигуру с доской генерации
+  Синхронизирует фигуру предварительного просмотра с доской генерации
 */
 //--
 void PreviewPoolPresenter::showPreview(const std::shared_ptr<Figure> & figure) const

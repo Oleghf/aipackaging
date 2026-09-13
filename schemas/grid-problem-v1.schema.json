@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://aipackaging.local/schemas/grid-problem-v1.schema.json",
-  "title": "AIPackaging grid problem v1",
+  "title": "AIPackaging: клеточная задача v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "version", "problemId", "sheet", "parts", "objective"],

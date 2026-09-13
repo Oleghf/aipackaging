@@ -1,4 +1,4 @@
-"""Обработчики CLI-команд генерации и проверки датасетов без ML-зависимостей."""
+"""Обработчики команд CLI для наборов данных без зависимостей машинного обучения."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from ..polygon_dataset import (
 
 
 def generate_grid(arguments: Namespace) -> dict[str, Any]:
-    """Генерирует grid_dataset по разобранным аргументам CLI и возвращает сводку."""
+    """Генерирует `grid_dataset` по аргументам CLI и возвращает сводку."""
 
     split_sizes = (
         {"train": 1, "validation": 1, "test": 1}
@@ -36,13 +36,13 @@ def generate_grid(arguments: Namespace) -> dict[str, Any]:
 
 
 def verify_grid(arguments: Namespace) -> dict[str, int]:
-    """Проверяет grid_dataset из аргументов CLI и возвращает счётчики записей."""
+    """Проверяет `grid_dataset` из аргументов CLI и возвращает счётчики записей."""
 
     return verify_dataset(arguments.path)
 
 
 def generate_polygon(arguments: Namespace) -> dict[str, Any]:
-    """Генерирует polygon_dataset v2 по аргументам CLI и возвращает сводку."""
+    """Генерирует `polygon_dataset` v2 по аргументам CLI и возвращает сводку."""
 
     sizes = (
         POLYGON_SMOKE_SPLITS
@@ -82,13 +82,13 @@ def generate_polygon(arguments: Namespace) -> dict[str, Any]:
 
 
 def verify_polygon(arguments: Namespace) -> dict[str, int]:
-    """Проверяет polygon_dataset из аргументов CLI и возвращает счётчики записей."""
+    """Проверяет `polygon_dataset` из аргументов CLI и возвращает счётчики записей."""
 
     return verify_polygon_dataset(arguments.path)
 
 
 def benchmark_polygon(arguments: Namespace) -> dict[str, Any]:
-    """Строит benchmark по frozen polygon trajectories без повторного запуска solver."""
+    """Сравнивает замороженные полигональные траектории без повторного запуска решателя."""
 
     report = benchmark_polygon_baselines(arguments.dataset, arguments.output, split=arguments.split)
     return {"output": str(arguments.output), "tasks": len(report["tasks"])}

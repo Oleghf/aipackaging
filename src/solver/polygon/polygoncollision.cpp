@@ -8,7 +8,7 @@ namespace aipackaging::solver
 {
 namespace internal
 {
-/// Возвращает знак ориентированной площади треугольника без int64-переполнения.
+/// Возвращает знак ориентированной площади треугольника без переполнения типа `int64_t`.
 Wide cross(const PolygonPoint64 & a, const PolygonPoint64 & b, const PolygonPoint64 & c)
 {
   return static_cast<Wide>(b.x - a.x) * static_cast<Wide>(c.y - a.y) -
@@ -115,7 +115,7 @@ PolygonRing64 translateRing(const PolygonRing64 & ring, std::int64_t x, std::int
 
 using namespace internal;
 
-/// Проверяет экземпляр, границы, положительное перекрытие и евклидов зазор outer proxy.
+/// Проверяет экземпляр, границы, положительное перекрытие и евклидов зазор внешнего заменяющего контура.
 bool PolygonEnvironment::canApply(const PolygonState & state, const PolygonAction & action) const
 {
   const std::size_t instancePosition = findInstance(action.partId, action.instanceIndex);

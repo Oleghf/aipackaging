@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Скрипт запускается уже внутри Ubuntu 24.04. Включение Windows Features и
+# Сценарий запускается уже внутри Ubuntu 24.04. Включение компонентов Windows и
 # первая перезагрузка выполняются заранее из повышенного PowerShell.
 sudo apt-get update
 sudo apt-get install --yes build-essential cmake ninja-build python3.12-venv

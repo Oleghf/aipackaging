@@ -28,7 +28,7 @@ void updateActiveSelection(const std::shared_ptr<SelectionModel> & selection, co
 
 //------------------------------------------------------------------------------
 /**
-	  Создает нормализованную preview-копию удаленной фигуры
+  Создаёт нормализованную копию удалённой фигуры для предварительного просмотра
 	*/
 //--
 std::shared_ptr<Figure> makePreviewFigure(const std::shared_ptr<Figure> & sourceFigure)
@@ -77,7 +77,7 @@ DeleteFigureCommand::DeleteFigureCommand(std::shared_ptr<Board> board, FigurePoo
 
 //------------------------------------------------------------------------------
 /**
-  Удаляет активную фигуру и возвращает ее в preview-пул
+  Удаляет активную фигуру и возвращает её в пул предварительного просмотра
 */
 //--
 void DeleteFigureCommand::execute()

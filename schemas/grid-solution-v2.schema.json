@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://aipackaging.local/schemas/grid-solution-v2.schema.json",
-  "title": "AIPackaging grid solution v2",
+  "title": "AIPackaging: клеточное решение v2",
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "version", "problemId", "status", "placements", "objective", "metrics", "solver", "errorMessage"],

@@ -19,24 +19,24 @@ enum class SearchStopReason : std::uint8_t
   TimedOut
 };
 
-/// Общий runtime времени, управления и диагностических счётчиков baseline-поиска.
+/// Общий механизм времени, управления и диагностических счётчиков базового поиска.
 class SearchRuntime
 {
 public:
   using Clock = std::chrono::steady_clock;
   using ClockFunction = std::function<Clock::time_point()>;
 
-  /// Создаёт runtime для конфигурации и необязательных callback текущего синхронного запуска.
+  /// Создаёт механизм выполнения для конфигурации и необязательных функций обратного вызова.
   SearchRuntime(
     const SolverConfig & config, const SearchExecutionControl & control, ClockFunction clock = [] { return Clock::now(); });
 
   /// Возвращает неизменяемую конфигурацию текущего запуска.
   const SolverConfig & config() const;
-  /// Возвращает текущее монотонное время выбранного clock provider.
+  /// Возвращает текущее монотонное время выбранного источника времени.
   Clock::time_point now() const;
-  /// Проверяет отмену и timeout и сообщает, следует ли остановить поиск.
+  /// Проверяет отмену и ограничение времени и сообщает, следует ли остановить поиск.
   bool pollStop();
-  /// Возвращает уже зафиксированную причину остановки без повторного вызова callback.
+  /// Возвращает зафиксированную причину остановки без повторного обратного вызова.
   SearchStopReason stopReason() const;
   /// Сообщает, наблюдалась ли пользовательская отмена.
   bool cancellationObserved() const;
@@ -48,7 +48,7 @@ public:
   void recordExpansion();
   /// Возвращает текущее число фактически созданных состояний.
   std::uint64_t expandedStates() const;
-  /// Синхронно публикует компактный progress-снимок вызывающему коду.
+  /// Синхронно публикует компактный снимок хода выполнения вызывающему коду.
   void report(SearchProgressStage stage, std::uint64_t completed, std::uint64_t total, std::size_t bestPlacedParts,
               std::size_t totalParts) const;
   /// Возвращает накопленные счётчики с рассчитанными временными компонентами.
@@ -65,7 +65,7 @@ private:
   SearchStopReason stopReason_ = SearchStopReason::None;
 };
 
-/// Формирует единые baseline metadata из конфигурации и сведений сборки.
+/// Формирует единые метаданные базового алгоритма из конфигурации и сведений сборки.
 SolverMetadata makeBaselineMetadata(const SolverConfig & config);
 } // namespace aipackaging::solver::detail
 

@@ -12,11 +12,11 @@ from .commands import ml as ml_commands
 
 
 def _parser() -> argparse.ArgumentParser:
-    """Создаёт строгий argparse-контракт обеих публичных команд."""
+    """Создаёт строгий контракт анализатора аргументов для публичных команд."""
 
     parser = argparse.ArgumentParser(prog="python -m aipackaging_ml")
     commands = parser.add_subparsers(dest="command", required=True)
-    generate = commands.add_parser("generate-dataset", help="сгенерировать grid_dataset v1")
+    generate = commands.add_parser("generate-dataset", help="создать клеточный набор данных `grid_dataset` v1")
     generate.add_argument("--output", type=Path, default=Path("artifacts/datasets/grid-v1"))
     generate.add_argument("--seed", type=int, default=42)
     generate.add_argument("--workers", type=int, default=1)
@@ -24,12 +24,12 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("--validation", type=int, default=dataset_commands.DEFAULT_SPLITS["validation"])
     generate.add_argument("--test", type=int, default=dataset_commands.DEFAULT_SPLITS["test"])
     generate.add_argument("--tier", choices=("small", "medium"), action="append")
-    generate.add_argument("--smoke", action="store_true", help="по одной задаче каждого split и tier")
+    generate.add_argument("--smoke", action="store_true", help="по одной задаче для каждой выборки и профиля сложности")
 
-    verify = commands.add_parser("verify-dataset", help="проверить manifest, shards и replay")
+    verify = commands.add_parser("verify-dataset", help="проверить манифест, части набора и повторное проигрывание")
     verify.add_argument("path", type=Path)
 
-    polygon_generate = commands.add_parser("generate-polygon-dataset", help="создать polygon_dataset v2")
+    polygon_generate = commands.add_parser("generate-polygon-dataset", help="создать полигональный набор данных `polygon_dataset` v2")
     polygon_generate.add_argument("--output", type=Path, default=Path("artifacts/datasets/polygon-v2"))
     polygon_generate.add_argument("--seed", type=int, default=42)
     polygon_generate.add_argument("--workers", type=int, default=1)
@@ -42,13 +42,13 @@ def _parser() -> argparse.ArgumentParser:
     polygon_generate.add_argument("--max-expanded-states", type=int, default=5_000)
     polygon_generate.add_argument("--max-attempts", type=int, default=256)
     polygon_generate.add_argument("--resume", action="store_true")
-    polygon_generate.add_argument("--smoke", action="store_true", help="по две задачи каждого split и tier")
+    polygon_generate.add_argument("--smoke", action="store_true", help="по две задачи для каждой выборки и профиля сложности")
 
-    polygon_verify = commands.add_parser("verify-polygon-dataset", help="проверить polygon_dataset v1 либо v2")
+    polygon_verify = commands.add_parser("verify-polygon-dataset", help="проверить `polygon_dataset` v1 либо v2")
     polygon_verify.add_argument("path", type=Path)
 
     polygon_benchmark = commands.add_parser(
-        "benchmark-polygon-baselines", help="сравнить сохранённые polygon baseline trajectories"
+        "benchmark-polygon-baselines", help="сравнить сохранённые траектории полигональных базовых алгоритмов"
     )
     polygon_benchmark.add_argument("--dataset", type=Path, default=Path("artifacts/datasets/polygon-v2"))
     polygon_benchmark.add_argument(
@@ -64,7 +64,7 @@ def _parser() -> argparse.ArgumentParser:
     train.add_argument("--resume", type=Path)
     train.add_argument("--smoke", action="store_true")
 
-    evaluate = commands.add_parser("evaluate", help="сравнить policy с замороженными baseline")
+    evaluate = commands.add_parser("evaluate", help="сравнить политику с замороженными результатами базовых алгоритмов")
     evaluate.add_argument("--checkpoint", type=Path, required=True)
     evaluate.add_argument("--config", type=Path, required=True)
     evaluate.add_argument("--dataset", type=Path, required=True)
@@ -73,13 +73,13 @@ def _parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--device", choices=("cuda", "cpu"), default="cpu")
     evaluate.add_argument("--smoke", action="store_true")
 
-    export = commands.add_parser("export-onnx", help="экспортировать policy bundle v1")
+    export = commands.add_parser("export-onnx", help="экспортировать комплект политики v1")
     export.add_argument("--checkpoint", type=Path, required=True)
     export.add_argument("--config", type=Path, required=True)
     export.add_argument("--output", type=Path, required=True)
     export.add_argument("--model-id", default="grid-policy-v1")
 
-    model = commands.add_parser("verify-model", help="проверить ONNX hashes и parity")
+    model = commands.add_parser("verify-model", help="проверить хеши ONNX и соответствие вычислений")
     model.add_argument("--model", type=Path, required=True)
     model.add_argument("--checkpoint", type=Path, required=True)
     model.add_argument("--config", type=Path, required=True)

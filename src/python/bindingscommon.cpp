@@ -6,7 +6,7 @@ namespace aipackaging::python
 {
 using namespace solver;
 
-/// Преобразует byte-mask C++ в настоящий NumPy bool без общего изменяемого буфера.
+/// Преобразует байтовую маску C++ в логический массив NumPy без общего изменяемого буфера.
 py::array_t<bool> readonlyBoolArray(const std::vector<std::uint8_t> & values, const std::vector<py::ssize_t> & shape)
 {
   py::array_t<bool> result(shape);
@@ -17,7 +17,7 @@ py::array_t<bool> readonlyBoolArray(const std::vector<std::uint8_t> & values, co
   return result;
 }
 
-/// Строго преобразует Python provenance в публичную C++ metadata solution v2.
+/// Строго преобразует сведения Python о происхождении в публичные служебные данные решения C++ v2.
 SolverMetadata metadataFromDict(const py::dict & value)
 {
   static const std::vector<std::string> required = {"family",           "name",      "projectVersion",    "revision",  "seed",
@@ -26,15 +26,15 @@ SolverMetadata metadataFromDict(const py::dict & value)
   for (const std::string & field : required)
   {
     if (!value.contains(py::str(field)))
-      throw py::value_error("solver provenance is missing required field: " + field);
+      throw py::value_error("в происхождении решения отсутствует обязательное поле: " + field);
   }
   if (value.size() != required.size())
-    throw py::value_error("solver provenance contains unknown fields");
+    throw py::value_error("происхождение решения содержит неизвестные поля");
 
   SolverMetadata result;
   const std::string family = value["family"].cast<std::string>();
   if (!parseSolverFamily(family, result.family))
-    throw py::value_error("unknown solver family: " + family);
+    throw py::value_error("неизвестное семейство решателя: " + family);
   result.name = value["name"].cast<std::string>();
   result.projectVersion = value["projectVersion"].cast<std::string>();
   result.revision = value["revision"].cast<std::string>();
@@ -50,7 +50,7 @@ SolverMetadata metadataFromDict(const py::dict & value)
   return result;
 }
 
-/// Настраивает описание и версию модуля из compile-time версии проекта.
+/// Настраивает описание и версию модуля из версии проекта, заданной при сборке.
 void configureModule(py::module_ & module)
 {
   module.doc() = "Низкоуровневые bindings сред раскроя AIPackaging";

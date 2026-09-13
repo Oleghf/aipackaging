@@ -1,4 +1,4 @@
-"""Интеграционные тесты иерархической policy и нативной action mask."""
+"""Интеграционные тесты иерархической политики и нативной маски действий."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ FIXTURE = Path(__file__).parent / "fixtures" / "smoke-problem.json"
 
 
 def test_greedy_and_seeded_selection_never_bypass_action_mask() -> None:
-    """Оба режима возвращают только разрешённый стабильный action index."""
+    """Оба режима возвращают только разрешённый стабильный индекс действия."""
 
     environment = GridNestingEnv.from_file(FIXTURE)
     fixed = environment.static_observation()
@@ -36,7 +36,7 @@ def test_greedy_and_seeded_selection_never_bypass_action_mask() -> None:
 
 
 def test_hybrid_runner_returns_valid_solution_v2_with_auditable_provenance() -> None:
-    """Hybrid безопасно выбирает между policy и baseline и маркирует результат."""
+    """Гибрид безопасно выбирает между политикой и базовым алгоритмом и отмечает результат."""
 
     import json
 
@@ -58,7 +58,7 @@ def test_hybrid_runner_returns_valid_solution_v2_with_auditable_provenance() -> 
 
 
 def test_neural_dead_end_is_not_reported_as_budget_exhaustion() -> None:
-    """Естественный dead-end политики получает честный no_solution_found."""
+    """Естественный тупик политики получает честный статус `no_solution_found`."""
 
     problem = {
         "format": "aipackaging.grid_problem",

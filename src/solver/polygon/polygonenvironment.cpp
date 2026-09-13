@@ -22,7 +22,7 @@ PolygonEnvironment::PolygonEnvironment(PolygonProblem problem, std::int64_t shee
 {
 }
 
-/// Возвращает подготовленные ориентации с проверкой индекса стандартным исключением vector.
+/// Возвращает подготовленные ориентации с проверкой индекса стандартным исключением вектора.
 const std::vector<PolygonOrientation> & PolygonEnvironment::orientations(std::size_t partIndex) const
 {
   return orientations_.at(partIndex);
@@ -59,7 +59,7 @@ const PolygonOrientation * PolygonEnvironment::findOrientation(std::size_t partI
   return nullptr;
 }
 
-/// Находит ориентацию размещения и выполняет целочисленный перенос outer ring.
+/// Находит ориентацию размещения и выполняет целочисленный перенос внешнего кольца.
 PolygonRing64 PolygonEnvironment::placedOuter(const PolygonPlacement & placement) const
 {
   const std::size_t instancePosition = findInstance(placement.partId, placement.instanceIndex);

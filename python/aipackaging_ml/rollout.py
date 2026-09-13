@@ -1,4 +1,4 @@
-"""Multiprocessing-исполнение нативных сред для on-policy rollout M3."""
+"""Многопроцессное выполнение нативных сред для сбора траекторий текущей политики M3."""
 
 from __future__ import annotations
 
@@ -26,10 +26,10 @@ def _worker(connection: Connection) -> None:
                     connection.send((True, (fixed, dynamic, info)))
                 elif command == "step":
                     if environment is None:
-                        raise RuntimeError("rollout worker has not been reset")
+                        raise RuntimeError("рабочий процесс траектории не был сброшен")
                     connection.send((True, environment.step_compact(payload)))
                 else:
-                    raise ValueError(f"unknown rollout worker command: {command}")
+                    raise ValueError(f"неизвестная команда рабочего процесса траектории: {command}")
             except Exception as error:  # noqa: BLE001 - ошибка должна перейти в главный процесс
                 connection.send((False, f"{type(error).__name__}: {error}"))
     finally:
@@ -40,10 +40,10 @@ class MultiprocessRolloutPool:
     """Параллельно выполняет геометрические переходы в фиксированном числе процессов."""
 
     def __init__(self, workers: int) -> None:
-        """Создаёт spawn-процессы, одинаковые на Windows и Linux."""
+        """Создаёт одинаково запускаемые в Windows и Linux рабочие процессы."""
 
         if workers < 1:
-            raise ValueError("rollout worker count must be positive")
+            raise ValueError("число рабочих процессов траекторий должно быть положительным")
         context = multiprocessing.get_context("spawn")
         self._connections: list[Connection] = []
         self._processes: list[multiprocessing.Process] = []
@@ -57,33 +57,33 @@ class MultiprocessRolloutPool:
 
     @property
     def workers(self) -> int:
-        """Возвращает число активных независимых rollout lanes."""
+        """Возвращает число активных независимых каналов сбора траекторий."""
 
         return len(self._connections)
 
     @staticmethod
     def _receive(connection: Connection) -> Any:
-        """Возвращает worker payload либо поднимает переданную диагностику."""
+        """Возвращает данные рабочего процесса либо передаёт его ошибку."""
 
         success, payload = connection.recv()
         if not success:
-            raise RuntimeError(f"rollout worker failed: {payload}")
+            raise RuntimeError(f"рабочий процесс траектории завершился ошибкой: {payload}")
         return payload
 
     def reset(self, tasks: Sequence[tuple[Mapping[str, Any], int]]) -> list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]]:
-        """Одновременно создаёт новый эпизод в каждом worker и возвращает observations."""
+        """Одновременно создаёт эпизод в каждом процессе и возвращает наблюдения."""
 
         if len(tasks) != self.workers:
-            raise ValueError("reset task count must match rollout worker count")
+            raise ValueError("число задач сброса должно совпадать с числом рабочих процессов")
         for connection, (problem, seed) in zip(self._connections, tasks, strict=True):
             connection.send(("reset", {"problem": dict(problem), "seed": seed}))
         return [self._receive(connection) for connection in self._connections]
 
     def step(self, actions: Sequence[int]) -> list[tuple[dict[str, Any], float, bool, bool, dict[str, Any]]]:
-        """Одновременно применяет по одному action index в каждом worker."""
+        """Одновременно применяет по одному индексу действия в каждом рабочем процессе."""
 
         if len(actions) != self.workers:
-            raise ValueError("action count must match rollout worker count")
+            raise ValueError("число действий должно совпадать с числом рабочих процессов")
         for connection, action in zip(self._connections, actions, strict=True):
             connection.send(("step", int(action)))
         return [self._receive(connection) for connection in self._connections]
@@ -91,11 +91,11 @@ class MultiprocessRolloutPool:
     def reset_lanes(
         self, tasks: Mapping[int, tuple[Mapping[str, Any], int]]
     ) -> dict[int, tuple[dict[str, Any], dict[str, Any], dict[str, Any]]]:
-        """Сбрасывает только перечисленные terminal lanes, сохраняя остальные."""
+        """Сбрасывает только перечисленные завершённые каналы, сохраняя остальные."""
 
         for lane, (problem, seed) in sorted(tasks.items()):
             if lane < 0 or lane >= self.workers:
-                raise IndexError("rollout lane is out of range")
+                raise IndexError("индекс канала траектории находится вне допустимого диапазона")
             self._connections[lane].send(("reset", {"problem": dict(problem), "seed": seed}))
         return {lane: self._receive(self._connections[lane]) for lane in sorted(tasks)}
 
@@ -118,7 +118,7 @@ class MultiprocessRolloutPool:
         self._processes.clear()
 
     def __enter__(self) -> "MultiprocessRolloutPool":
-        """Возвращает pool для использования через context manager."""
+        """Возвращает пул для использования через диспетчер контекста."""
 
         return self
 

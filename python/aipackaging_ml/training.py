@@ -1,4 +1,4 @@
-"""Воспроизводимое обучение hierarchical policy через BC и PPO."""
+"""Воспроизводимое обучение иерархической политики через BC и PPO."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from .training_data import ExpertEpisode, load_expert_episodes, replay_expert_st
 
 
 def configure_determinism(seed: int) -> None:
-    """Настраивает Python, NumPy и PyTorch на воспроизводимый float32-запуск."""
+    """Настраивает Python, NumPy и PyTorch на воспроизводимый запуск с 32-разрядными числами с плавающей точкой."""
 
     os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     random.seed(seed)
@@ -45,7 +45,7 @@ def _checkpoint_payload(
     step: int,
     config: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Собирает модель, optimizer и RNG state для точного продолжения запуска."""
+    """Собирает модель, оптимизатор и состояние RNG для точного продолжения запуска."""
 
     payload: dict[str, Any] = {
         "format": "aipackaging.training_checkpoint",
@@ -75,7 +75,7 @@ def save_checkpoint(
     step: int,
     config: Mapping[str, Any],
 ) -> str:
-    """Атомарно сохраняет доверенный локальный checkpoint и возвращает SHA-256."""
+    """Атомарно сохраняет доверенную локальную контрольную точку и возвращает SHA-256."""
 
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -94,13 +94,13 @@ def load_checkpoint(
     scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
     restore_rng: bool = False,
 ) -> dict[str, Any]:
-    """Загружает trusted checkpoint и опционально восстанавливает optimizer/RNG."""
+    """Загружает доверенную контрольную точку и при необходимости восстанавливает оптимизатор и RNG."""
 
-    # Checkpoint содержит optimizer и RNG state, поэтому это внутренний trusted
-    # artifact. Пользовательские .pt файлы этим API загружать нельзя.
+    # Контрольная точка содержит оптимизатор и состояние RNG, поэтому это доверенный
+    # внутренний артефакт. Пользовательские файлы с расширением `.pt` этим API загружать нельзя.
     payload = torch.load(Path(path), map_location=device, weights_only=False)
     if payload.get("format") != "aipackaging.training_checkpoint" or payload.get("version") != 1:
-        raise ValueError("unsupported training checkpoint")
+        raise ValueError("неподдерживаемая контрольная точка обучения")
     model.load_state_dict(payload["modelState"])
     if optimizer is not None:
         optimizer.load_state_dict(payload["optimizerState"])
@@ -121,7 +121,7 @@ def _validation_nll(
     device: torch.device,
     deadline: float | None = None,
 ) -> float | None:
-    """Возвращает средний NLL либо останавливается по общему wall-clock пределу."""
+    """Возвращает средний NLL либо останавливается по общему пределу фактического времени."""
 
     model.eval()
     total = 0.0
@@ -147,7 +147,7 @@ def train_behavioral_cloning(
     smoke: bool = False,
     deadline: float | None = None,
 ) -> tuple[Path, list[dict[str, Any]]]:
-    """Обучает actor имитацией expert и critic точному оставшемуся return."""
+    """Обучает политику имитацией эксперта, а критик — точной оставшейся отдаче."""
 
     settings = config["behavioralCloning"]
     optimizer = torch.optim.AdamW(model.parameters(), lr=settings["learningRate"], weight_decay=settings["weightDecay"])
@@ -225,7 +225,7 @@ def _collect_transitions(
     workers: int,
     deadline: float | None = None,
 ) -> list[PpoTransition]:
-    """Собирает фиксированное число on-policy переходов по train-задачам."""
+    """Собирает фиксированное число переходов текущей политики по обучающим задачам."""
 
     model.eval()
     lane_results: list[list[PpoTransition]] = [[] for _ in range(min(workers, count))]
@@ -238,7 +238,7 @@ def _collect_transitions(
     lanes = min(workers, count)
 
     def next_tasks(number: int) -> list[tuple[Mapping[str, Any], int]]:
-        """Выдаёт следующую детерминированную группу train-задач."""
+        """Выдаёт следующую детерминированную группу обучающих задач."""
 
         nonlocal episode_cursor
         tasks = []
@@ -276,14 +276,14 @@ def _collect_transitions(
                 else:
                     states[lane] = (fixed, next_dynamic, {})
 
-            # Pipe API требует синхронной команды каждому процессу. Терминальные
-            # lanes перезапускаются группой, а остальные сохраняют своё состояние.
+        # Программный интерфейс канала требует синхронной команды каждому процессу. Терминальные
+            # каналы перезапускаются группой, а остальные сохраняют своё состояние.
             if reset_lanes and collected < count:
                 replacements = {lane: next_tasks(1)[0] for lane in reset_lanes}
                 for lane, state in pool.reset_lanes(replacements).items():
                     states[lane] = state
-    # Трассы разных worker нельзя склеивать при обратном проходе GAE. Последняя
-    # запись каждой lane помечается границей, сохраняя critic bootstrap next_value.
+    # Трассы разных рабочих процессов нельзя склеивать при обратном проходе GAE.
+    # Последняя запись каждого канала помечается границей и сохраняет начальную оценку критика.
     for lane in lane_results:
         if lane:
             lane[-1] = replace(lane[-1], trace_end=True)
@@ -297,7 +297,7 @@ def _validation_score(
     seed: int,
     deadline: float | None = None,
 ) -> tuple[tuple[float, ...], dict[str, Any]] | None:
-    """Оценивает greedy policy либо останавливается по общему wall-clock пределу."""
+    """Оценивает жадную политику либо останавливается по пределу фактического времени."""
 
     runner = PolicyRunner(model, model_id="validation", model_sha256="0" * 64, device=device)
     solutions = []
@@ -326,7 +326,7 @@ def train_ppo(
     resume: str | Path | None = None,
     deadline: float | None = None,
 ) -> tuple[Path, list[dict[str, Any]], str]:
-    """Дообучает BC-policy clipped PPO строго по reward v1 среды."""
+    """Дообучает политику BC методом PPO с ограничением по вознаграждению v1."""
 
     settings = config["ppo"]
     optimizer = torch.optim.AdamW(model.parameters(), lr=settings["learningRate"])
@@ -345,7 +345,7 @@ def train_ppo(
     if resume is not None:
         payload = load_checkpoint(resume, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True)
         if payload["stage"] != "ppo":
-            raise ValueError("PPO resume requires a PPO checkpoint")
+            raise ValueError("для продолжения PPO требуется контрольная точка PPO")
         start_update = int(payload["step"])
 
     for update in range(start_update, updates):
@@ -440,12 +440,12 @@ def train_pipeline(
     smoke: bool = False,
     resume: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Выполняет полный BC → PPO запуск и записывает аудируемый run manifest."""
+    """Выполняет полный запуск BC → PPO и записывает проверяемый манифест запуска."""
 
     config = load_training_config(config_path)
     device = torch.device(device_name)
     if device.type == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError("canonical M3 training requires an available CUDA device")
+        raise RuntimeError("каноническое обучение M3 требует доступного устройства CUDA")
     configure_determinism(config["seed"])
     deadline = time.monotonic() + config["ppo"]["maxWallTimeSeconds"]
     run_path = Path(run_dir)

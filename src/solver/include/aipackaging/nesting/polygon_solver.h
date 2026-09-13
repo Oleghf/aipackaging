@@ -6,13 +6,13 @@
 
 namespace aipackaging::solver
 {
-/// Совместимое имя общего этапа прогресса для прежнего polygon API.
+/// Совместимое имя общего этапа хода выполнения для прежнего полигонального API.
 using PolygonProgressStage = SearchProgressStage;
 
-/// Совместимое имя общего снимка прогресса для прежнего polygon API.
+/// Совместимое имя общего снимка хода выполнения для прежнего полигонального API.
 using PolygonSolverProgress = SearchProgress;
 
-/// Совместимое имя общего execution-control для прежнего polygon API.
+/// Совместимое имя общего управления выполнением для прежнего полигонального API.
 using PolygonExecutionControl = SearchExecutionControl;
 
 /// Результат управляемого запуска с отдельным признаком пользовательской отмены.
@@ -22,12 +22,12 @@ struct PolygonSolverExecutionResult
   bool cancelled = false;
 };
 
-/// Сравнивает полигональные решения по общему full/partial objective-порядку M4.
+/// Сравнивает полигональные решения по общему порядку полных и частичных результатов M4.
 bool isBetterPolygonSolution(const PolygonSolution & candidate, const PolygonSolution & reference);
-/// Запускает baseline с поддержкой отмены, прогресса и возврата лучшего partial.
+/// Запускает базовый алгоритм с отменой, ходом выполнения и лучшим частичным решением.
 PolygonSolverExecutionResult runPolygonProblem(const PolygonProblem & problem, const SolverConfig & config,
                                                const PolygonExecutionControl & control = {});
-/// Запускает выбранный baseline над полигональной средой.
+/// Запускает выбранный базовый алгоритм над полигональной средой.
 PolygonSolution solvePolygonProblem(const PolygonProblem & problem, const SolverConfig & config = {});
 } // namespace aipackaging::solver
 

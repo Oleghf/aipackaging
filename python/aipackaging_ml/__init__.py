@@ -1,4 +1,4 @@
-"""Публичный Python API среды и политики AIPackaging с ленивым native import."""
+"""Публичный API Python среды и политики AIPackaging с отложенным импортом нативного модуля."""
 
 from __future__ import annotations
 

@@ -364,22 +364,22 @@ PackingSceneLoader::Result PackingSceneLoader::loadFromText(const std::string & 
 
     PackingSceneObject object;
     if (!stringMember(objectValue, "id", object.id) || object.id.empty())
-      return fail("Объект сцены должен иметь id");
+      return fail("Объект сцены должен иметь поле `id`");
 
     if (!objectIds.insert(object.id).second)
-      return fail("В сцене есть дублирующийся id объекта");
+      return fail("В сцене есть дублирующийся идентификатор объекта");
 
     const JsonValue * geometry = nullptr;
     if (!objectMember(objectValue, "geometry", geometry))
-      return fail("Объект сцены должен иметь geometry");
+      return fail("Объект сцены должен иметь поле `geometry`");
 
     std::string geometryType;
     if (!stringMember(*geometry, "type", geometryType) || geometryType != "cell_grid")
-      return fail("Поддерживается только geometry.type = cell_grid");
+      return fail("Поддерживается только значение `cell_grid` поля `geometry.type`");
 
     const JsonValue * cells = nullptr;
     if (!arrayMember(*geometry, "cells", cells))
-      return fail("Геометрия объекта должна содержать cells");
+      return fail("Геометрия объекта должна содержать поле `cells`");
 
     for (const JsonValue & cellValue : cells->array)
     {
@@ -389,7 +389,7 @@ PackingSceneLoader::Result PackingSceneLoader::loadFromText(const std::string & 
       PackingSceneCell cell;
       if (!readIntegerMember(cellValue, "column", cell.column) || !readIntegerMember(cellValue, "row", cell.row))
       {
-        return fail("Клетка объекта должна иметь целые column и row");
+        return fail("Клетка объекта должна иметь целые поля `column` и `row`");
       }
 
       object.cells.push_back(cell);
@@ -409,7 +409,7 @@ PackingSceneLoader::Result PackingSceneLoader::loadFromText(const std::string & 
 
     PackingSceneAction action;
     if (!stringMember(actionValue, "type", action.type) || action.type != "place")
-      return fail("Поддерживается только действие place");
+      return fail("Поддерживается только действие `place`");
 
     if (!stringMember(actionValue, "objectId", action.objectId) || !objectIds.contains(action.objectId))
       return fail("Действие сцены ссылается на неизвестный объект");
@@ -417,7 +417,7 @@ PackingSceneLoader::Result PackingSceneLoader::loadFromText(const std::string & 
     if (!numberMember(actionValue, "x", action.x) || !numberMember(actionValue, "y", action.y) || !canReadInt(action.x) ||
         !canReadInt(action.y))
     {
-      return fail("Координаты place action должны быть целыми cell units");
+      return fail("Координаты действия размещения должны быть заданы целыми клетками");
     }
 
     if (!numberMember(actionValue, "rotationDegrees", action.rotationDegrees) || action.rotationDegrees != 0.0)

@@ -1,4 +1,4 @@
-"""Строгая проверка polygon datasets v1/v2 и динамических trajectories."""
+"""Строгая проверка полигональных наборов данных v1/v2 и динамических траекторий."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from .rollout import POLYGON_SOLVERS, best_trajectory
 def _load_shards(
     root: Path, manifest: Mapping[str, Any]
 ) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], dict[str, str], dict[str, str]]:
-    """Проверяет descriptors, hashes, canonical records и уникальность идентификаторов."""
+    """Проверяет описатели, хеши, канонические записи и уникальность идентификаторов."""
 
     problems: dict[str, dict[str, Any]] = {}
     trajectories: dict[str, dict[str, Any]] = {}
@@ -38,25 +38,25 @@ def _load_shards(
         if shard["split"] not in {"train", "validation", "test"} or shard["kind"] not in {
             "problems", "trajectories"
         }:
-            raise ValueError(f"invalid shard discriminator: {shard['path']}")
+            raise ValueError(f"некорректный вид части набора: {shard['path']}")
         descriptor = (shard["split"], shard["kind"])
         if descriptor in descriptors or shard["path"] in paths:
-            raise ValueError(f"duplicate polygon shard descriptor: {shard['path']}")
+            raise ValueError(f"повторяющийся описатель части полигонального набора: {shard['path']}")
         descriptors.add(descriptor)
         paths.add(shard["path"])
         shard_path = resolve_dataset_path(root, shard["path"])
         if sha256_file(shard_path) != shard["sha256"]:
-            raise ValueError(f"invalid shard: {shard['path']}")
+            raise ValueError(f"некорректная часть набора: {shard['path']}")
         records = read_jsonl_gzip(shard_path)
         if len(records) != shard["records"]:
-            raise ValueError(f"record count mismatch: {shard['path']}")
+            raise ValueError(f"количество записей не совпадает: {shard['path']}")
         target = problems if shard["kind"] == "problems" else trajectories
         key = "problemId" if shard["kind"] == "problems" else "trajectoryId"
         for record in records:
             if key not in record:
-                raise ValueError(f"missing {key}: {shard['path']}")
+                raise ValueError(f"отсутствует {key}: {shard['path']}")
             if record[key] in target:
-                raise ValueError(f"duplicate {key}: {record[key]}")
+                raise ValueError(f"повторяется {key}: {record[key]}")
             target[record[key]] = record
             if shard["kind"] == "problems":
                 problem_splits[record[key]] = shard["split"]
@@ -65,12 +65,12 @@ def _load_shards(
 
     expected = {(split, kind) for split in ("train", "validation", "test") for kind in ("problems", "trajectories")}
     if descriptors != expected:
-        raise ValueError("polygon dataset must declare every split/kind shard")
+        raise ValueError("полигональный набор должен объявлять части всех выборок и видов")
     for trajectory_id, trajectory in trajectories.items():
         if trajectory.get("problemId") not in problems:
-            raise ValueError(f"unknown trajectory problemId: {trajectory_id}")
+            raise ValueError(f"неизвестный problemId траектории: {trajectory_id}")
         if problem_splits[trajectory["problemId"]] != trajectory_splits[trajectory_id]:
-            raise ValueError(f"trajectory is stored in the wrong split: {trajectory_id}")
+            raise ValueError(f"траектория сохранена в неверной выборке: {trajectory_id}")
     return problems, trajectories, problem_splits, trajectory_splits
 
 
@@ -81,35 +81,35 @@ def _verify_experts(
     *,
     require_solved: bool,
 ) -> None:
-    """Проверяет пять baseline на задачу и повторяет выбор expert C++-компаратором."""
+    """Проверяет пять базовых алгоритмов задачи и повторяет выбор лучшего результата компаратором C++."""
 
     if set(experts) != set(problems):
-        raise ValueError("expertTrajectoryId keys mismatch")
+        raise ValueError("набор ключей expertTrajectoryId не совпадает")
     for problem_id, expert_id in experts.items():
         candidates = [item for item in trajectories.values() if item["problemId"] == problem_id]
         if len(candidates) != len(POLYGON_SOLVERS) or {
             item["solver"]["name"] for item in candidates
         } != set(POLYGON_SOLVERS):
-            raise ValueError(f"baseline trajectory set mismatch: {problem_id}")
+            raise ValueError(f"набор траекторий базовых алгоритмов не совпадает: {problem_id}")
         solved = [item for item in candidates if item["finalSolution"]["status"] == "solved"]
         if require_solved and not solved:
-            raise ValueError(f"dataset task has no solved baseline: {problem_id}")
+            raise ValueError(f"ни один базовый алгоритм не решил задачу набора: {problem_id}")
         eligible = solved if solved else candidates
         if best_trajectory(eligible)["trajectoryId"] != expert_id:
-            raise ValueError(f"wrong expertTrajectoryId: {problem_id}")
+            raise ValueError(f"неверное значение expertTrajectoryId: {problem_id}")
 
 
 def _verify_replay_all(
     problems: Mapping[str, Mapping[str, Any]], trajectories: Mapping[str, Mapping[str, Any]]
 ) -> None:
-    """Воспроизводит каждую trajectory через native dynamic action space."""
+    """Воспроизводит каждую траекторию через нативное динамическое пространство действий."""
 
     for trajectory in trajectories.values():
         verify_replay(problems[trajectory["problemId"]], trajectory)
 
 
 def _verify_v1(root: Path, manifest: Mapping[str, Any]) -> dict[str, int]:
-    """Сохраняет строгую проверку опубликованного smoke polygon_dataset v1."""
+    """Сохраняет строгую проверку опубликованного пробного `polygon_dataset` v1."""
 
     require_keys(manifest, {
         "format", "version", "problemContractVersion", "trajectoryContractVersion", "observationVersion",
@@ -129,14 +129,14 @@ def _verify_v1(root: Path, manifest: Mapping[str, Any]) -> dict[str, int]:
         signature = hashlib.sha256(canonical_json(source).encode("utf-8")).hexdigest()
         owner = family_splits.setdefault(signature, problem_splits[problem_id])
         if owner != problem_splits[problem_id]:
-            raise ValueError(f"polygon family split leakage: {problem_id}")
+            raise ValueError(f"семейство полигонов попало в разные выборки: {problem_id}")
     _verify_replay_all(problems, trajectories)
     _verify_experts(manifest["expertTrajectoryId"], problems, trajectories, require_solved=False)
     return {"problems": len(problems), "trajectories": len(trajectories)}
 
 
 def _verify_v2(root: Path, manifest: Mapping[str, Any]) -> dict[str, int]:
-    """Проверяет tiers, metadata, family isolation, coverage и replay dataset v2."""
+    """Проверяет профили, метаданные, изоляцию семейств, покрытие и повтор данных v2."""
 
     require_keys(manifest, {
         "format", "version", "problemContractVersion", "trajectoryContractVersion", "observationVersion",
@@ -146,41 +146,41 @@ def _verify_v2(root: Path, manifest: Mapping[str, Any]) -> dict[str, int]:
     if any(manifest[name] != 1 for name in (
         "problemContractVersion", "trajectoryContractVersion", "observationVersion"
     )):
-        raise ValueError("unsupported polygon dataset component version")
+        raise ValueError("неподдерживаемая версия компонента полигонального набора")
     if isinstance(manifest["masterSeed"], bool) or not isinstance(manifest["masterSeed"], int) or manifest["masterSeed"] < 0:
-        raise ValueError("invalid polygon dataset master seed")
+        raise ValueError("некорректное главное начальное значение полигонального набора")
     if not isinstance(manifest["revision"], str) or not manifest["revision"]:
-        raise ValueError("invalid polygon dataset revision")
+        raise ValueError("некорректная ревизия полигонального набора")
     generator = manifest["generator"]
     require_keys(generator, {
         "name", "version", "implementationRevision", "mode", "tiers", "splitSizes", "variantsPerFamily",
         "maxAttempts",
     }, "generator")
     if generator["name"] != "deterministic-polygon-tiers" or generator["version"] != 2:
-        raise ValueError("unsupported polygon dataset generator")
+        raise ValueError("неподдерживаемый генератор полигонального набора")
     if generator["implementationRevision"] != POLYGON_GENERATOR_REVISION:
-        raise ValueError("unsupported polygon dataset generator revision")
+        raise ValueError("неподдерживаемая ревизия генератора полигонального набора")
     if generator["mode"] not in {"canonical", "smoke", "custom"}:
-        raise ValueError("invalid polygon dataset generator mode")
+        raise ValueError("некорректный режим генератора полигонального набора")
     if (
         generator["variantsPerFamily"] != 2
         or isinstance(generator["maxAttempts"], bool)
         or not isinstance(generator["maxAttempts"], int)
         or not 1 <= generator["maxAttempts"] <= 256
     ):
-        raise ValueError("invalid polygon family or rejection-loop parameters")
+        raise ValueError("некорректные параметры семейства полигонов или цикла отбраковки")
     declared_tiers = generator["tiers"]
     if not isinstance(declared_tiers, Mapping) or not declared_tiers:
-        raise ValueError("polygon dataset must declare at least one tier")
+        raise ValueError("полигональный набор должен объявлять хотя бы один профиль сложности")
     if any(tier not in POLYGON_PROFILES or profile != POLYGON_PROFILES[tier] for tier, profile in declared_tiers.items()):
-        raise ValueError("polygon tier profiles do not match contract v2")
+        raise ValueError("профили сложности полигонов не соответствуют контракту v2")
     split_sizes = require_keys(generator["splitSizes"], {"train", "validation", "test"}, "split sizes")
     divisor = 2 * len(declared_tiers)
     if any(
         isinstance(size, bool) or not isinstance(size, int) or size < 0 or size % divisor != 0
         for size in split_sizes.values()
     ):
-        raise ValueError("invalid polygon dataset split sizes")
+        raise ValueError("некорректные размеры выборок полигонального набора")
     budgets = require_keys(
         manifest["solverBudgets"],
         {"timeoutMs", "randomIterations", "beamWidth", "maxExpandedStates"},
@@ -190,11 +190,11 @@ def _verify_v2(root: Path, manifest: Mapping[str, Any]) -> dict[str, int]:
         isinstance(budgets[name], bool) or not isinstance(budgets[name], int) or budgets[name] < 1
         for name in ("randomIterations", "beamWidth", "maxExpandedStates")
     ):
-        raise ValueError("invalid frozen solver budgets")
+        raise ValueError("некорректные замороженные бюджеты решателей")
 
     problems, trajectories, problem_splits, _ = _load_shards(root, manifest)
     if not isinstance(manifest["problems"], Mapping) or set(manifest["problems"]) != set(problems):
-        raise ValueError("problem metadata keys mismatch")
+        raise ValueError("набор ключей метаданных задачи не совпадает")
     family_splits: dict[str, str] = {}
     family_variants: dict[tuple[str, str, int], dict[int, str]] = {}
     coverage = {tier: Counter() for tier in declared_tiers}
@@ -205,16 +205,16 @@ def _verify_v2(root: Path, manifest: Mapping[str, Any]) -> dict[str, int]:
         }, "problem metadata")
         tier = metadata["tier"]
         if tier not in declared_tiers:
-            raise ValueError(f"problem references undeclared tier: {problem_id}")
+            raise ValueError(f"задача ссылается на необъявленный профиль: {problem_id}")
         actual_hash = polygon_family_hash(problem)
         if metadata["familyHash"] != actual_hash:
-            raise ValueError(f"family hash mismatch: {problem_id}")
+            raise ValueError(f"хеш семейства не совпадает: {problem_id}")
         owner = family_splits.setdefault(actual_hash, problem_splits[problem_id])
         if owner != problem_splits[problem_id]:
-            raise ValueError(f"polygon family split leakage: {problem_id}")
+            raise ValueError(f"семейство полигонов попало в разные выборки: {problem_id}")
         actual_features = problem_features(problem)
         if metadata["features"] != actual_features:
-            raise ValueError(f"feature metadata mismatch: {problem_id}")
+            raise ValueError(f"метаданные признаков не совпадают: {problem_id}")
         coverage[tier].update(actual_features)
         validate_problem_profile(problem, tier)
 
@@ -222,44 +222,44 @@ def _verify_v2(root: Path, manifest: Mapping[str, Any]) -> dict[str, int]:
         variant = metadata["scaleVariant"]
         attempt = metadata["attempt"]
         if isinstance(family_index, bool) or not isinstance(family_index, int) or family_index < 0:
-            raise ValueError(f"invalid polygon family index: {problem_id}")
+            raise ValueError(f"некорректный индекс семейства полигонов: {problem_id}")
         if isinstance(variant, bool) or not isinstance(variant, int) or variant not in (0, 1):
-            raise ValueError(f"invalid polygon scale variant: {problem_id}")
+            raise ValueError(f"некорректный масштабный вариант полигона: {problem_id}")
         if isinstance(attempt, bool) or not isinstance(attempt, int) or not 0 <= attempt < generator["maxAttempts"]:
-            raise ValueError(f"invalid rejection attempt: {problem_id}")
+            raise ValueError(f"некорректный номер попытки отбраковки: {problem_id}")
         if isinstance(metadata["derivedSeed"], bool) or not isinstance(metadata["derivedSeed"], int):
-            raise ValueError(f"invalid derived seed: {problem_id}")
+            raise ValueError(f"некорректное производное начальное значение: {problem_id}")
         expected_seed = derive_seed(
             manifest["masterSeed"], "polygon-task-v2", tier, problem_splits[problem_id], family_index, variant, attempt
         )
         if metadata["derivedSeed"] != expected_seed:
-            raise ValueError(f"derived seed mismatch: {problem_id}")
+            raise ValueError(f"производное начальное значение не совпадает: {problem_id}")
         expected_id = (
             f"polygon-v2-{tier}-{problem_splits[problem_id]}-f{family_index:04d}-v{variant}-{expected_seed:016x}"
         )
         if problem_id != expected_id:
-            raise ValueError(f"problem id does not match metadata: {problem_id}")
+            raise ValueError(f"идентификатор задачи не соответствует метаданным: {problem_id}")
         key = (problem_splits[problem_id], tier, family_index)
         variants = family_variants.setdefault(key, {})
         if variant in variants:
-            raise ValueError(f"duplicate polygon family variant: {problem_id}")
+            raise ValueError(f"повторяющийся вариант семейства полигонов: {problem_id}")
         variants[variant] = actual_hash
 
     if any(set(variants) != {0, 1} or len(set(variants.values())) != 1 for variants in family_variants.values()):
-        raise ValueError("polygon family scale variants are incomplete or inconsistent")
+        raise ValueError("масштабные варианты семейства полигонов неполны или несогласованны")
     actual_coverage = {tier: dict(sorted(values.items())) for tier, values in coverage.items()}
     if manifest["coverage"] != actual_coverage:
-        raise ValueError("coverage does not match problems")
+        raise ValueError("покрытие не соответствует задачам")
     if generator["mode"] == "canonical" and any(set(values) != set(POLYGON_FEATURES) for values in coverage.values()):
-        raise ValueError("canonical polygon feature coverage is incomplete")
+        raise ValueError("каноническое покрытие признаков полигонов неполно")
     actual_counts = Counter(problem_splits.values())
     if any(actual_counts[split] != split_sizes[split] for split in ("train", "validation", "test")):
-        raise ValueError("split sizes do not match shards")
+        raise ValueError("размеры выборок не соответствуют частям набора")
     for trajectory in trajectories.values():
         solver = trajectory["solver"]
         problem_metadata = manifest["problems"][trajectory["problemId"]]
         if solver["revision"] != manifest["revision"] or solver["seed"] != problem_metadata["derivedSeed"]:
-            raise ValueError(f"trajectory revision or seed mismatch: {trajectory['trajectoryId']}")
+            raise ValueError(f"ревизия или начальное значение траектории не совпадает: {trajectory['trajectoryId']}")
         if any(
             solver[name] != budgets[budget_name]
             for name, budget_name in (
@@ -269,33 +269,33 @@ def _verify_v2(root: Path, manifest: Mapping[str, Any]) -> dict[str, int]:
                 ("timeoutMs", "timeoutMs"),
             )
         ):
-            raise ValueError(f"trajectory budgets mismatch: {trajectory['trajectoryId']}")
+            raise ValueError(f"бюджеты траектории не совпадают: {trajectory['trajectoryId']}")
     _verify_replay_all(problems, trajectories)
     _verify_experts(manifest["expertTrajectoryId"], problems, trajectories, require_solved=True)
     return {"problems": len(problems), "trajectories": len(trajectories), "version": 2}
 
 
 def verify_polygon_dataset(path: str | Path) -> dict[str, int]:
-    """Автоматически проверяет совместимый polygon_dataset v1 либо v2."""
+    """Автоматически проверяет совместимый `polygon_dataset` v1 либо v2."""
 
     root = Path(path)
     manifest = read_canonical_json(root / "manifest.json")
     if manifest.get("format") != "aipackaging.polygon_dataset":
-        raise ValueError("unsupported polygon_dataset manifest")
+        raise ValueError("неподдерживаемый манифест `polygon_dataset`")
     if manifest.get("version") == 1:
         return _verify_v1(root, manifest)
     if manifest.get("version") == 2:
         return _verify_v2(root, manifest)
-    raise ValueError("unsupported polygon_dataset version")
+        raise ValueError("неподдерживаемая версия `polygon_dataset`")
 
 
 def load_polygon_dataset_records(
     path: str | Path, split: str
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Возвращает проверенные manifest, задачи и trajectories выбранного split."""
+    """Возвращает проверенные манифест, задачи и траектории выбранной выборки."""
 
     if split not in {"train", "validation", "test"}:
-        raise ValueError("unknown polygon dataset split")
+        raise ValueError("неизвестная выборка полигонального набора данных")
     root = Path(path)
     verify_polygon_dataset(root)
     manifest = read_canonical_json(root / "manifest.json")

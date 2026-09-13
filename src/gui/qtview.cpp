@@ -39,8 +39,8 @@ constexpr int TOAST_DURATION_MS = 3000;
 
 //------------------------------------------------------------------------------
 /**
-  \brief Конструктор
-  \details Инициализирует виджеты, меню и связывает GUI-сигналы с application events
+  \brief Создаёт главное представление приложения.
+  \details Инициализирует виджеты, меню и связывает сигналы GUI с событиями приложения.
 */
 //---
 QtView::QtView()
@@ -320,14 +320,14 @@ void QtView::setPolygonWorkspaceActions(PolygonWorkspaceActions actions)
 }
 
 
-/// Делегирует единый snapshot полигональному виджету главного окна.
+/// Делегирует единый снимок полигональному виджету главного окна.
 void QtView::presentPolygonWorkspace(const PolygonWorkspaceSnapshot & snapshot)
 {
   polygonWorkspace_->present(snapshot);
 }
 
 
-/// Использует queued invoke, чтобы worker никогда не менял QWidget напрямую.
+/// Использует вызов через очередь, чтобы рабочий поток не менял QWidget напрямую.
 void QtView::postToPolygonUi(std::function<void()> callback)
 {
   QMetaObject::invokeMethod(this, std::move(callback), Qt::QueuedConnection);
@@ -351,7 +351,7 @@ void QtView::sendMainSceneQPainter(QPainter & qpainter)
 
 //------------------------------------------------------------------------------
 /**
-  Отправляет событие отрисовки preview-сцены
+  Отправляет событие отрисовки сцены предварительного просмотра
 */
 //---
 void QtView::sendGenerateSceneQPainter(QPainter & qpainter)
@@ -460,7 +460,7 @@ void QtView::generateChangeStateEvent()
 
 //------------------------------------------------------------------------------
 /**
-  Генерирует action events по клавиатуре
+  Создаёт события действий по вводу с клавиатуры
 */
 //---
 void QtView::keyPressEvent(QKeyEvent * event)

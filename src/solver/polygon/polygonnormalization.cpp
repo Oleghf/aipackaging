@@ -53,7 +53,7 @@ double pointLineDistance(const PolygonPointMm & point, const PolygonPointMm & st
   return std::abs(dx * (start.y - point.y) - (start.x - point.x) * dy) / length;
 }
 
-/// Делит Bézier слева направо, пока обе контрольные точки не лежат в tolerance от хорды.
+/// Делит кривую Bézier слева направо, пока обе контрольные точки не окажутся в пределах допуска от хорды.
 bool flattenBezier(const PolygonPointMm & p0, const PolygonPointMm & p1, const PolygonPointMm & p2, const PolygonPointMm & p3,
                    double tolerance, int depth, PolygonRing64 & result)
 {

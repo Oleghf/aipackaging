@@ -137,7 +137,7 @@ TEST(DrawController, DoesNotBridgeSeparateCells)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет отсутствие фантомного сегмента между разными ячейками object-фигуры
+  Проверяет отсутствие ложного сегмента между разными ячейками объектной фигуры
 */
 //--
 TEST(DrawController, ObjectFigureDoesNotProducePhantomSegments)

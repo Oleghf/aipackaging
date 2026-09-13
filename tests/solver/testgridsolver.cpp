@@ -10,7 +10,7 @@ namespace
 {
 using namespace aipackaging::solver;
 
-/// Создаёт небольшую задачу, которую обязаны решить все baseline-алгоритмы.
+/// Создаёт небольшую задачу, которую обязаны решить все базовые алгоритмы.
 GridProblem commonProblem()
 {
   GridProblem problem;

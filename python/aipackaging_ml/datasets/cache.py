@@ -1,4 +1,4 @@
-"""Атомарное хранение внутренних результатов долгой генерации датасета."""
+"""Атомарное хранение внутренних результатов длительной генерации набора данных."""
 
 from __future__ import annotations
 
@@ -44,16 +44,16 @@ def read_cache_record(
     expected_identity: Mapping[str, Any],
     expected_fingerprint: str,
 ) -> dict[str, Any]:
-    """Читает cache только при полном совпадении формата, identity и fingerprint."""
+    """Читает кэш при полном совпадении формата, идентификатора и отпечатка."""
 
     record = read_canonical_json(path)
-    require_keys(record, {"format", "version", "identity", "fingerprint", "payload"}, "dataset cache")
+    require_keys(record, {"format", "version", "identity", "fingerprint", "payload"}, "кэш набора данных")
     if record["format"] != CACHE_FORMAT or record["version"] != CACHE_VERSION:
-        raise ValueError("unsupported dataset cache format or version")
+        raise ValueError("неподдерживаемый формат или версия кэша набора данных")
     if record["identity"] != dict(expected_identity) or record["fingerprint"] != expected_fingerprint:
-        raise ValueError("dataset cache identity or fingerprint mismatch")
+        raise ValueError("идентификатор или отпечаток кэша набора данных не совпадает")
     if not isinstance(record["payload"], dict):
-        raise ValueError("dataset cache payload must be an object")
+        raise ValueError("содержимое кэша набора данных должно быть объектом")
     return record["payload"]
 
 
@@ -63,16 +63,16 @@ def read_compatible_cache_record(
     expected_identity: Mapping[str, Any],
     expected_fingerprint: str,
 ) -> dict[str, Any] | None:
-    """Возвращает совместимый cache, игнорирует устаревший и отклоняет повреждённый."""
+    """Возвращает совместимый кэш, игнорирует устаревший и отклоняет повреждённый."""
 
     record = read_canonical_json(path)
-    require_keys(record, {"format", "version", "identity", "fingerprint", "payload"}, "dataset cache")
+    require_keys(record, {"format", "version", "identity", "fingerprint", "payload"}, "кэш набора данных")
     if record["format"] != CACHE_FORMAT or record["version"] != CACHE_VERSION:
-        raise ValueError("unsupported dataset cache format or version")
+        raise ValueError("неподдерживаемый формат или версия кэша набора данных")
     if not isinstance(record["identity"], dict) or not isinstance(record["fingerprint"], str):
-        raise ValueError("dataset cache identity or fingerprint has invalid type")
+        raise ValueError("идентификатор или отпечаток кэша набора данных имеет неверный тип")
     if record["identity"] != dict(expected_identity) or record["fingerprint"] != expected_fingerprint:
         return None
     if not isinstance(record["payload"], dict):
-        raise ValueError("dataset cache payload must be an object")
+        raise ValueError("содержимое кэша набора данных должно быть объектом")
     return record["payload"]

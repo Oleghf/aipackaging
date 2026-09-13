@@ -1,4 +1,4 @@
-"""Gym-like оболочка над нативной клеточной средой без зависимости от Gymnasium."""
+"""Оболочка нативной клеточной среды с интерфейсом Gymnasium без зависимости от него."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ class GridNestingEnv:
     """Предоставляет один детерминированный эпизод клеточного раскроя v1."""
 
     def __init__(self, native_environment: _native.GridLearningEnvironment) -> None:
-        """Сохраняет уже проверенный нативный эпизод; используйте фабрики ``from_*``."""
+        """Сохраняет уже проверенный нативный эпизод; используйте фабрики `from_*`."""
 
         self._native = native_environment
         self._static_observation = native_environment.static_observation()
@@ -23,7 +23,7 @@ class GridNestingEnv:
     def from_file(
         cls, path: str | Path, *, max_sheet_area: int = 4096, max_actions: int = 1_000_000
     ) -> "GridNestingEnv":
-        """Загружает строгий ``grid_problem`` v1 из UTF-8 JSON-файла."""
+        """Загружает строгий `grid_problem` v1 из файла JSON в кодировке UTF-8."""
 
         text = Path(path).read_text(encoding="utf-8")
         return cls(_native.create_environment(text, max_sheet_area, max_actions))
@@ -39,7 +39,7 @@ class GridNestingEnv:
     def reset(self, seed: int | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
         """Сбрасывает эпизод и возвращает начальное наблюдение с диагностикой."""
 
-        # Среда детерминирована, поэтому seed принят для совместимости gym-like API
+        # Среда детерминирована, поэтому начальное значение принято для совместимости с API Gymnasium
         # и намеренно не меняет порядок постоянного каталога действий.
         observation = self._native.reset()
         return observation, {
@@ -61,34 +61,34 @@ class GridNestingEnv:
         }
 
     def step(self, action_index: int) -> tuple[dict[str, Any], float, bool, bool, dict[str, Any]]:
-        """Применяет допустимый индекс и возвращает gym-like результат перехода."""
+        """Применяет допустимый индекс и возвращает результат перехода в стиле Gymnasium."""
 
         return self._native.step(action_index)
 
     def step_compact(self, action_index: int) -> tuple[dict[str, Any], float, bool, bool, dict[str, Any]]:
-        """Применяет индекс и возвращает только динамические массивы observation v1."""
+        """Применяет индекс и возвращает только динамические массивы наблюдения v1."""
 
         return self._native.step_compact(action_index)
 
     def observation(self) -> dict[str, Any]:
-        """Возвращает независимый read-only снимок текущего observation v1."""
+        """Возвращает независимый снимок текущего наблюдения v1 только для чтения."""
 
         return self._native.observation()
 
     def static_observation(self) -> dict[str, Any]:
-        """Возвращает кэшированную неизменную часть observation текущей задачи."""
+        """Возвращает кэшированную неизменную часть наблюдения текущей задачи."""
 
         return dict(self._static_observation)
 
     def dynamic_observation(self) -> dict[str, Any]:
-        """Возвращает независимый снимок изменяемой части observation текущего состояния."""
+        """Возвращает независимый снимок изменяемой части наблюдения текущего состояния."""
 
         return self._native.dynamic_observation()
 
     def snapshot_solution(
         self, provenance: Mapping[str, Any], *, incomplete_status: str = "budget_exhausted"
     ) -> dict[str, Any]:
-        """Формирует grid_solution v2 из уже применённых действий и заданного provenance."""
+        """Формирует `grid_solution` v2 из применённых действий и заданного происхождения."""
 
         return json.loads(self._native.snapshot_solution(dict(provenance), incomplete_status))
 
@@ -98,13 +98,13 @@ class GridNestingEnv:
         return self._native.action(index)
 
     def find_action(self, action: Mapping[str, Any]) -> int:
-        """Находит стабильный индекс сериализованного размещения для replay."""
+        """Находит стабильный индекс сериализованного размещения для повторного проигрывания."""
 
         return self._native.find_action(dict(action))
 
     @property
     def action_count(self) -> int:
-        """Возвращает постоянный размер action space эпизода."""
+        """Возвращает постоянный размер пространства действий эпизода."""
 
         return self._native.action_count
 
@@ -116,7 +116,7 @@ class GridNestingEnv:
 
     @property
     def is_terminal(self) -> bool:
-        """Сообщает, закончен ли эпизод полным решением либо dead-end."""
+        """Сообщает, закончен ли эпизод полным решением либо тупиковым состоянием."""
 
         return self._native.is_terminal
 
@@ -128,7 +128,7 @@ class GridNestingEnv:
 
     @property
     def rank(self) -> int:
-        """Возвращает текущий точный смешанный ранг reward v1."""
+        """Возвращает текущий точный смешанный ранг вознаграждения v1."""
 
         return self._native.rank
 
@@ -149,30 +149,30 @@ class PolygonNestingEnv:
     """Предоставляет один эпизод полигонального раскроя с динамическими действиями."""
 
     def __init__(self, native_environment: _native.PolygonLearningEnvironment) -> None:
-        """Сохраняет уже проверенную нативную среду; используйте фабрики ``from_*``."""
+        """Сохраняет уже проверенную нативную среду; используйте фабрики `from_*`."""
 
         self._native = native_environment
 
     @classmethod
     def from_file(cls, path: str | Path) -> "PolygonNestingEnv":
-        """Загружает строгий ``polygon_problem`` v1 из UTF-8 файла."""
+        """Загружает строгий `polygon_problem` v1 из файла в кодировке UTF-8."""
 
         return cls(_native.create_polygon_environment(Path(path).read_text(encoding="utf-8")))
 
     @classmethod
     def from_dict(cls, problem: Mapping[str, Any]) -> "PolygonNestingEnv":
-        """Создаёт эпизод из JSON-совместимого словаря polygon_problem v1."""
+        """Создаёт эпизод из JSON-совместимого словаря `polygon_problem` v1."""
 
         return cls(_native.create_polygon_environment(canonical_json(problem)))
 
     def reset(self, seed: int | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Сбрасывает детерминированный эпизод и сообщает текущий размер action space."""
+        """Сбрасывает эпизод и сообщает текущий размер пространства действий."""
 
         observation = self._native.reset()
         return observation, {"seed": seed, "problemId": self.problem_id, "actionCount": self.action_count}
 
     def observation(self) -> dict[str, Any]:
-        """Возвращает независимый read-only снимок базового observation."""
+        """Возвращает независимый снимок базового наблюдения только для чтения."""
 
         return self._native.observation()
 
@@ -193,21 +193,21 @@ class PolygonNestingEnv:
         return actions[index]
 
     def find_action(self, action: Mapping[str, Any]) -> int:
-        """Находит действие в текущем динамическом каталоге для точного replay."""
+        """Находит действие в текущем каталоге для точного повторного проигрывания."""
 
         target = dict(action)
         for index, candidate in enumerate(self.actions()):
             if candidate == target:
                 return index
-        raise ValueError("action is absent from the current polygon catalog")
+        raise ValueError("действие отсутствует в текущем полигональном каталоге")
 
     def step(self, action_index: int) -> tuple[dict[str, Any], float, bool, bool, dict[str, Any]]:
-        """Применяет индекс текущего каталога и возвращает gym-like переход."""
+        """Применяет индекс текущего каталога и возвращает переход в стиле Gymnasium."""
 
         return self._native.step(action_index)
 
     def snapshot_solution(self, provenance: Mapping[str, Any]) -> dict[str, Any]:
-        """Возвращает independently validated-ready polygon_solution v1 текущего состояния."""
+        """Возвращает независимо проверенное `polygon_solution` v1 текущего состояния."""
 
         return json.loads(self._native.snapshot_solution(dict(provenance)))
 

@@ -1,4 +1,4 @@
-"""Аналитические рецепты полигональных деталей для smoke и production datasets."""
+"""Аналитические рецепты полигональных деталей для пробных и рабочих наборов данных."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def line(x: float, y: float) -> dict[str, Any]:
 
 
 def scaled_shape(kind: str, width: float, height: float) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Строит аналитический контур выбранного семейства внутри bounding box."""
+    """Строит аналитический контур семейства внутри ограничивающего прямоугольника."""
 
     holes: list[dict[str, Any]] = []
     if kind == "convex":
@@ -71,7 +71,7 @@ def scaled_shape(kind: str, width: float, height: float) -> tuple[dict[str, Any]
             line(x1, y1), line(x1, 0),
         ]}
     else:
-        raise ValueError(f"unknown polygon shape kind: {kind}")
+        raise ValueError(f"неизвестный вид полигональной фигуры: {kind}")
     return outer, holes
 
 
@@ -94,7 +94,7 @@ def scale_path(path: Mapping[str, Any], scale: float) -> dict[str, Any]:
 
 
 def shape(kind: int, scale: float) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Сохраняет прежний M4-рецепт smoke-фигуры по числовому индексу."""
+    """Сохраняет прежний рецепт пробной фигуры M4 по числовому индексу."""
 
     width = 16.0 + scale
     height = 12.0 + scale / 2.0

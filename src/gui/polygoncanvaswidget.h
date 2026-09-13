@@ -10,7 +10,7 @@ class QMouseEvent;
 class QPaintEvent;
 class QWheelEvent;
 
-/// Виджет read-only визуализации полигонального листа и проверенной раскладки.
+/// Виджет доступной только для чтения визуализации полигонального листа и проверенной раскладки.
 class PolygonCanvasWidget : public QWidget
 {
   Q_OBJECT
@@ -20,11 +20,11 @@ public:
   /// Заменяет отображаемый снимок и запрашивает перерисовку.
   void setSnapshot(const PolygonWorkspaceSnapshot & snapshot);
 
-  /// Сбрасывает пользовательский масштаб и смещение к fit-to-view.
+  /// Сбрасывает пользовательский масштаб и смещение, чтобы вписать сцену в область просмотра.
   void fitToView();
 
 protected:
-  /// Рисует лист, margin, полезный остаток, детали и отверстия.
+  /// Рисует лист, отступ, полезный остаток, детали и отверстия.
   void paintEvent(QPaintEvent * event) override;
   /// Начинает перемещение камеры левой кнопкой мыши.
   void mousePressEvent(QMouseEvent * event) override;

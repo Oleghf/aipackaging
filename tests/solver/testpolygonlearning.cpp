@@ -31,7 +31,7 @@ TEST(PolygonLearning, UsesDynamicActionsAndKeepsStateOnError)
   EXPECT_EQ(placement.channels.size(), 4U * 128U * 128U);
 }
 
-/// Проверяет terminal-контракт и запрет шага после полного решения.
+/// Проверяет контракт завершения и запрет шага после полного решения.
 TEST(PolygonLearning, TerminatesAndRejectsFurtherSteps)
 {
   std::string error;

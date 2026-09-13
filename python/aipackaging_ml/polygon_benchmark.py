@@ -1,4 +1,4 @@
-"""Совместимый публичный фасад benchmark полигональных baseline."""
+"""Совместимый публичный фасад сравнения полигональных базовых алгоритмов."""
 
 from .datasets.polygon.benchmark import benchmark_polygon_baselines, verify_polygon_benchmark
 

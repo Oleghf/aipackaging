@@ -1,6 +1,6 @@
 include(CMakeParseArguments)
 
-# Проверяет прямые и публично транзитивные зависимости одного target.
+# Проверяет прямые и публично транзитивные зависимости одной цели сборки.
 function(aipackaging_assert_target_dependencies)
   set(options ALLOW_QT)
   set(one_value_args TARGET)
@@ -59,7 +59,7 @@ function(aipackaging_assert_target_dependencies)
   endwhile()
 endfunction()
 
-# Фиксирует разрешённый граф production-targets после их создания.
+# Фиксирует разрешённый граф рабочих целей сборки после их создания.
 function(aipackaging_check_production_target_graph)
   aipackaging_assert_target_dependencies(TARGET AIPackaging_NestingCore)
   aipackaging_assert_target_dependencies(

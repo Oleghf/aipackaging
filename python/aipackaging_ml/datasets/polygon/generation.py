@@ -1,4 +1,4 @@
-"""Детерминированная генерация smoke-задач и production-семейств polygon dataset."""
+"""Детерминированная генерация пробных задач и рабочих семейств полигонального набора."""
 
 from __future__ import annotations
 
@@ -30,13 +30,13 @@ POLYGON_PROFILES: dict[str, dict[str, list[int]]] = {
 
 
 def derive_seed(*parts: object) -> int:
-    """Выводит независимый 64-битный seed из стабильной последовательности компонентов."""
+    """Выводит независимое 64-битное начальное значение из стабильной последовательности."""
 
     return int.from_bytes(hashlib.sha256(":".join(map(str, parts)).encode("utf-8")).digest()[:8], "big")
 
 
 def generate_polygon_problem(master_seed: int, split: str, index: int) -> tuple[dict[str, Any], int]:
-    """Сохраняет прежнюю генерацию одной полностью помещающейся smoke-задачи M4."""
+    """Сохраняет прежнюю генерацию одной полностью помещающейся пробной задачи M4."""
 
     seed_bytes = f"{master_seed}:polygon:{split}:{index}".encode()
     seed = int.from_bytes(hashlib.sha256(seed_bytes).digest()[:8], "big")
@@ -70,12 +70,12 @@ def family_recipe(master_seed: int, tier: str, split: str, family_index: int) ->
     """Создаёт общую топологию, повороты и количества двух вариантов семьи."""
 
     if tier not in POLYGON_PROFILES:
-        raise ValueError(f"unknown polygon tier: {tier}")
+        raise ValueError(f"неизвестный полигональный профиль: {tier}")
     profile = POLYGON_PROFILES[tier]
     rng = random.Random(derive_seed(master_seed, "polygon-family-v2", tier, split, family_index))
     type_count = rng.randint(*profile["partTypes"])
-    # Число экземпляров держится около нижней границы: пять NFP-baseline на
-    # production-наборе иначе делают подготовку данных непропорционально долгой.
+    # Число экземпляров держится около нижней границы: пять базовых алгоритмов NFP
+    # на рабочем наборе иначе делают подготовку данных непропорционально долгой.
     minimum_instances = max(type_count, profile["instances"][0])
     total_instances = rng.randint(minimum_instances, min(profile["instances"][1], minimum_instances + 3))
     quantities = [1] * type_count
@@ -88,7 +88,7 @@ def family_recipe(master_seed: int, tier: str, split: str, family_index: int) ->
     for index in range(type_count):
         kind = POLYGON_FEATURES[(feature_offset + index) % len(POLYGON_FEATURES)]
         # Базовый размер рассчитан под точные варианты 2x/3x, поэтому оба
-        # результата остаются внутри declared tier.
+        # результата остаются внутри заявленного профиля.
         width = round(rng.uniform(minimum / 2.0, maximum / 3.0), 3)
         height = round(rng.uniform(minimum / 2.0, maximum / 3.0), 3)
         if kind == "arc":
@@ -107,7 +107,7 @@ def family_recipe(master_seed: int, tier: str, split: str, family_index: int) ->
 
 
 def _path_points(path: Mapping[str, Any]) -> list[Mapping[str, Any]]:
-    """Собирает все аналитические точки пути для вычисления его bounding box."""
+    """Собирает аналитические точки пути для вычисления ограничивающего прямоугольника."""
 
     result = [path["start"]]
     for segment in path["segments"]:
@@ -118,7 +118,7 @@ def _path_points(path: Mapping[str, Any]) -> list[Mapping[str, Any]]:
 def hidden_shelf_layout(
     problem: Mapping[str, Any], extents: Mapping[str, tuple[float, float]]
 ) -> list[dict[str, Any]] | None:
-    """Строит полную скрытую раскладку bounding boxes горизонтальными полками."""
+    """Строит полную скрытую раскладку ограничивающих прямоугольников полками."""
 
     margin = float(problem["manufacturing"]["sheetMargin"])
     spacing = float(problem["manufacturing"]["partSpacing"])
@@ -162,12 +162,12 @@ def generate_family_variant(
     variant: int,
     attempt: int,
 ) -> tuple[dict[str, Any], list[dict[str, Any]] | None, int]:
-    """Создаёт одну scale-вариацию production-семьи и её скрытую раскладку."""
+    """Создаёт один масштабный вариант рабочего семейства и его скрытую раскладку."""
 
     if tier not in POLYGON_PROFILES or split not in {"train", "validation", "test"}:
-        raise ValueError("invalid polygon family address")
+        raise ValueError("некорректный адрес семейства полигонов")
     if variant not in (0, 1) or attempt < 0:
-        raise ValueError("invalid polygon family variant or attempt")
+        raise ValueError("некорректный вариант семейства полигонов или номер попытки")
     profile = POLYGON_PROFILES[tier]
     recipe = family_recipe(master_seed, tier, split, family_index)
     seed = derive_seed(master_seed, "polygon-task-v2", tier, split, family_index, variant, attempt)

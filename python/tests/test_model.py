@@ -10,7 +10,7 @@ from aipackaging_ml.model import HierarchicalGridPolicyV1
 
 
 def test_hierarchical_model_supports_variable_instance_and_candidate_counts() -> None:
-    """Encoder и positional head сохраняют документированные динамические оси."""
+    """Кодировщик и позиционная голова сохраняют документированные динамические оси."""
 
     model = HierarchicalGridPolicyV1(hidden_size=32)
     encoded = model.encode(
@@ -28,7 +28,7 @@ def test_hierarchical_model_supports_variable_instance_and_candidate_counts() ->
 
 
 def test_hierarchical_model_rejects_incompatible_hidden_width() -> None:
-    """Нечётная ширина отклоняется до создания несовместимых Linear-слоёв."""
+    """Нечётная ширина отклоняется до создания несовместимых линейных слоёв."""
 
-    with pytest.raises(ValueError, match="even integer"):
+    with pytest.raises(ValueError, match="чётным целым числом"):
         HierarchicalGridPolicyV1(hidden_size=31)

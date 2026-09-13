@@ -37,7 +37,7 @@ public:
   const std::vector<PolygonAction> & actions() const { return actions_; }
   /// Применяет действие текущего каталога и возвращает переход.
   PolygonLearningStepResult step(std::size_t actionIndex);
-  /// Возвращает полный либо текущий partial solution для независимого аудита.
+  /// Возвращает полное либо текущее частичное решение для независимой проверки.
   PolygonSolution solution(const SolverMetadata & metadata = {}) const;
   /// Сообщает, размещены ли все экземпляры.
   bool isComplete() const;
@@ -49,7 +49,7 @@ public:
 private:
   /// Принимает владеющую точную среду и строит исходный каталог.
   explicit PolygonLearningEnvironment(std::unique_ptr<PolygonEnvironment> environment);
-  /// Перестраивает каталог после изменения value-state.
+  /// Перестраивает каталог после изменения состояния.
   void rebuildActions();
 
   std::unique_ptr<PolygonEnvironment> environment_;

@@ -1,4 +1,4 @@
-"""Проверка checkpoint/resume и двухчастного ONNX bundle M3."""
+"""Проверка контрольной точки, продолжения и двухчастного комплекта ONNX M3."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ FIXTURE = Path(__file__).parent / "fixtures" / "smoke-problem.json"
 
 
 def _checkpoint(path: Path) -> tuple[HierarchicalGridPolicyV1, torch.optim.Optimizer, torch.optim.lr_scheduler.LRScheduler]:
-    """Создаёт минимальный trusted checkpoint с optimizer и scheduler state."""
+    """Создаёт минимальную доверенную контрольную точку с состоянием оптимизатора и планировщика."""
 
     config = load_training_config(CONFIG)
     model = HierarchicalGridPolicyV1(config["model"]["hiddenSize"])
@@ -38,7 +38,7 @@ def _checkpoint(path: Path) -> tuple[HierarchicalGridPolicyV1, torch.optim.Optim
 
 
 def test_checkpoint_restores_model_scheduler_and_all_cpu_rng(tmp_path: Path) -> None:
-    """Resume возвращает веса, шаг scheduler и последовательности трёх RNG."""
+    """Продолжение возвращает веса, шаг планировщика и последовательности трёх RNG."""
 
     configure_determinism(731)
     checkpoint = tmp_path / "checkpoint.pt"
@@ -70,7 +70,7 @@ def test_checkpoint_restores_model_scheduler_and_all_cpu_rng(tmp_path: Path) -> 
 
 
 def test_onnx_bundle_matches_pytorch_greedy_action_and_detects_corruption(tmp_path: Path) -> None:
-    """Оба ONNX-графа повторяют PyTorch action и защищены общим SHA-256."""
+    """Оба графа ONNX повторяют действие PyTorch и защищены общим SHA-256."""
 
     checkpoint = tmp_path / "checkpoint.pt"
     model, _, _ = _checkpoint(checkpoint)
@@ -91,5 +91,5 @@ def test_onnx_bundle_matches_pytorch_greedy_action_and_detects_corruption(tmp_pa
 
     with (bundle / "placement-head.onnx").open("ab") as stream:
         stream.write(b"corrupt")
-    with pytest.raises(ValueError, match="checksum"):
+    with pytest.raises(ValueError, match="контрольная сумма"):
         load_model_metadata(bundle)

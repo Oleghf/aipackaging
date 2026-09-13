@@ -1,4 +1,4 @@
-"""Общие примитивы канонической сериализации и проверки файлов датасета."""
+"""Общие примитивы канонической сериализации и проверки файлов набора данных."""
 
 from __future__ import annotations
 
@@ -36,14 +36,14 @@ def read_canonical_json(path: str | Path) -> dict[str, Any]:
     raw = source.read_bytes()
     value = json.loads(raw.decode("utf-8"))
     if not isinstance(value, dict):
-        raise ValueError(f"{source}: JSON root must be an object")
+        raise ValueError(f"{source}: корнем JSON должен быть объект")
     if raw != canonical_line(value):
-        raise ValueError(f"{source}: JSON document is not canonical")
+        raise ValueError(f"{source}: документ JSON представлен неканонически")
     return value
 
 
 def write_jsonl_gzip(path: str | Path, records: Iterable[Mapping[str, Any]]) -> None:
-    """Записывает canonical JSONL в gzip без timestamp и исходного имени файла."""
+    """Записывает канонический JSONL в gzip без метки времени и исходного имени файла."""
 
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -54,21 +54,21 @@ def write_jsonl_gzip(path: str | Path, records: Iterable[Mapping[str, Any]]) -> 
 
 
 def read_jsonl_gzip(path: str | Path) -> list[dict[str, Any]]:
-    """Читает canonical JSONL.gzip и отклоняет повреждённые или неканоничные записи."""
+    """Читает канонический JSONL.gzip и отклоняет повреждённые или неканоничные записи."""
 
     source = Path(path)
     compressed_bytes = source.read_bytes()
     if len(compressed_bytes) < 10 or compressed_bytes[4:8] != b"\x00\x00\x00\x00":
-        raise ValueError(f"{source}: gzip mtime must be zero")
+        raise ValueError(f"{source}: поле времени изменения формата gzip должно быть нулевым")
 
     result: list[dict[str, Any]] = []
     with gzip.open(source, "rt", encoding="utf-8", newline="") as stream:
         for line_number, line in enumerate(stream, 1):
             value = json.loads(line)
             if not isinstance(value, dict):
-                raise ValueError(f"{source}:{line_number}: JSONL record must be an object")
+                raise ValueError(f"{source}:{line_number}: запись JSONL должна быть объектом")
             if line.encode("utf-8") != canonical_line(value):
-                raise ValueError(f"{source}:{line_number}: JSONL record is not canonical")
+                raise ValueError(f"{source}:{line_number}: запись JSONL представлена неканонически")
             result.append(value)
     return result
 
@@ -88,15 +88,15 @@ def require_keys(value: Any, expected: set[str], label: str) -> Mapping[str, Any
 
     if not isinstance(value, Mapping) or set(value) != expected:
         actual = sorted(value) if isinstance(value, Mapping) else type(value).__name__
-        raise ValueError(f"{label} fields mismatch: expected {sorted(expected)}, got {actual}")
+        raise ValueError(f"{label}: ожидались поля {sorted(expected)}, получены {actual}")
     return value
 
 
 def resolve_dataset_path(root: str | Path, relative_path: str) -> Path:
-    """Разрешает относительный путь shard только внутри корневого каталога датасета."""
+    """Разрешает путь к части набора только внутри корневого каталога набора данных."""
 
     root_path = Path(root).resolve()
     candidate = (root_path / relative_path).resolve()
     if candidate == root_path or root_path not in candidate.parents:
-        raise ValueError(f"shard path escapes dataset root: {relative_path}")
+        raise ValueError(f"путь к части набора выходит за корневой каталог: {relative_path}")
     return candidate

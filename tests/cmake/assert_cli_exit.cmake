@@ -4,7 +4,7 @@ if (NOT DEFINED CLI OR NOT DEFINED INPUT OR NOT DEFINED OUTPUT OR
 endif()
 
 # Запускаем настоящий CLI-процесс, чтобы проверить внешний контракт, а не
-# внутренний результат функции solver.
+# внутренний результат функции решателя.
 execute_process(
   COMMAND "${CLI}" solve
     --input "${INPUT}"

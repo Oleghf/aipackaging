@@ -1,4 +1,4 @@
-"""Baseline rollout и выбор expert для клеточного датасета."""
+"""Запуск базовых алгоритмов и выбор экспертного результата для клеточного набора."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def best_trajectory(trajectories: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def rollout_task(task: tuple[dict[str, Any], int]) -> tuple[str, list[dict[str, Any]], str]:
-    """Строит и независимо проверяет пять baseline-траекторий одной grid-задачи."""
+    """Строит и независимо проверяет пять траекторий базовых алгоритмов клеточной задачи."""
 
     problem, seed = task
     problem_json = canonical_json(problem)

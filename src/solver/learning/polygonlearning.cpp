@@ -34,7 +34,7 @@ bool containsPoint(const PolygonRing64 & ring, const PolygonPoint64 & point)
   return inside;
 }
 
-/// Заполняет occupied и clearance каналы центровыми samples текущей раскладки.
+/// Заполняет каналы занятости и зазора выборками в центрах клеток текущей раскладки.
 void rasterState(const PolygonEnvironment & environment, const PolygonState & state, std::vector<float> & occupied,
                  std::vector<float> & clearance)
 {
@@ -81,7 +81,7 @@ void rasterState(const PolygonEnvironment & environment, const PolygonState & st
     }
 }
 
-/// Возвращает нормализованный scalar progress до единицы.
+/// Возвращает нормализованное скалярное значение хода выполнения до единицы.
 double progress(const PolygonObjectiveComponents & objective)
 {
   return objective.totalParts == 0 ? 0.0 : static_cast<double>(objective.placedParts) / objective.totalParts;
@@ -125,11 +125,11 @@ void PolygonLearningEnvironment::rebuildActions()
     std::vector<PolygonAction> candidates = environment_->enumerateCandidates(state_, instance);
     actions_.insert(actions_.end(), candidates.begin(), candidates.end());
     if (actions_.size() > 250000)
-      throw std::length_error("polygon action catalog exceeds 250000 actions");
+      throw std::length_error("каталог полигональных действий превышает 250000 записей");
   }
 }
 
-/// Восстанавливает пустой value-state и пересчитывает каталог.
+/// Восстанавливает пустое изменяемое состояние и пересчитывает каталог.
 PolygonObservation PolygonLearningEnvironment::reset()
 {
   state_ = environment_->initialState();
@@ -137,7 +137,7 @@ PolygonObservation PolygonLearningEnvironment::reset()
   return observation();
 }
 
-/// Растеризует состояние и формирует признаки экземпляров и objective.
+/// Растеризует состояние и формирует признаки экземпляров и целевой функции.
 PolygonObservation PolygonLearningEnvironment::observation() const
 {
   PolygonObservation result;
@@ -174,16 +174,16 @@ PolygonObservation PolygonLearningEnvironment::observation() const
   return result;
 }
 
-/// Собирает условный raster и только кандидаты выбранной иерархической пары.
+/// Собирает условное растровое представление и только кандидаты выбранной иерархической пары.
 PolygonPlacementObservation PolygonLearningEnvironment::placementObservation(std::size_t instancePosition,
                                                                              int rotationDegrees) const
 {
   if (instancePosition >= environment_->instances().size())
-    throw std::out_of_range("polygon instance index is outside catalog");
+    throw std::out_of_range("индекс экземпляра полигональной детали находится вне каталога");
   const auto & instance = environment_->instances()[instancePosition];
   const PolygonOrientation * orientation = environment_->findOrientation(instance.partIndex, rotationDegrees);
   if (!orientation)
-    throw std::invalid_argument("polygon rotation is not available for instance");
+    throw std::invalid_argument("поворот полигональной детали недоступен для экземпляра");
   PolygonPlacementObservation result;
   std::vector<float> occupied;
   std::vector<float> clearance;
@@ -230,17 +230,17 @@ PolygonPlacementObservation PolygonLearningEnvironment::placementObservation(std
   return result;
 }
 
-/// Применяет индекс текущего каталога, используя objective-progress как reward.
+/// Применяет индекс каталога, используя изменение целевой функции как вознаграждение.
 PolygonLearningStepResult PolygonLearningEnvironment::step(std::size_t actionIndex)
 {
   if (isTerminal())
-    throw std::logic_error("polygon episode is already terminal");
+    throw std::logic_error("полигональный эпизод уже завершён");
   if (actionIndex >= actions_.size())
-    throw std::out_of_range("polygon action index is outside current catalog");
+    throw std::out_of_range("индекс полигонального действия находится вне текущего каталога");
   const double before = progress(environment_->evaluate(state_));
   const PolygonAction action = actions_[actionIndex];
   if (!environment_->apply(state_, action))
-    throw std::invalid_argument("polygon action is no longer valid");
+    throw std::invalid_argument("полигональное действие больше не является допустимым");
   rebuildActions();
   const double after = progress(environment_->evaluate(state_));
   PolygonLearningStepResult result;
@@ -252,7 +252,7 @@ PolygonLearningStepResult PolygonLearningEnvironment::step(std::size_t actionInd
   return result;
 }
 
-/// Снимает placements и пересчитывает objective точной средой.
+/// Получает размещения и пересчитывает целевую функцию точной средой.
 PolygonSolution PolygonLearningEnvironment::solution(const SolverMetadata & metadata) const
 {
   PolygonSolution result;
@@ -264,13 +264,13 @@ PolygonSolution PolygonLearningEnvironment::solution(const SolverMetadata & meta
   return result;
 }
 
-/// Сравнивает число применённых placements с числом обязательных экземпляров.
+/// Сравнивает число применённых размещений с числом обязательных экземпляров.
 bool PolygonLearningEnvironment::isComplete() const
 {
   return state_.placements.size() == environment_->instances().size();
 }
 
-/// Завершает эпизод при полноте либо пустом динамическом action space.
+/// Завершает эпизод при полноте либо пустом динамическом пространстве действий.
 bool PolygonLearningEnvironment::isTerminal() const
 {
   return isComplete() || actions_.empty();

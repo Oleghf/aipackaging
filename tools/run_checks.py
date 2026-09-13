@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def run(command: list[str], *, expect_failure: str | None = None) -> int:
-    """Выполняет команду и возвращает её код, учитывая отрицательный self-test."""
+    """Выполняет команду и возвращает её код, учитывая отрицательный самотест."""
 
     print("+", subprocess.list2cmdline(command), flush=True)
     completed = subprocess.run(
@@ -30,10 +30,10 @@ def run(command: list[str], *, expect_failure: str | None = None) -> int:
         print(completed.stdout, end="")
         print(completed.stderr, end="", file=sys.stderr)
         if completed.returncode == 0:
-            print("Expected command to fail, but it succeeded.", file=sys.stderr)
+            print("Ожидалась ошибка команды, но команда завершилась успешно.", file=sys.stderr)
             return 1
         if expect_failure not in completed.stdout + completed.stderr:
-            print(f"Expected failure marker was not found: {expect_failure}", file=sys.stderr)
+            print(f"Не найден ожидаемый признак ошибки: {expect_failure}", file=sys.stderr)
             return 1
         return 0
     return completed.returncode
@@ -61,7 +61,7 @@ def semantic_cli_command(build_dir: str) -> list[str]:
 
 
 def architecture_checks() -> int:
-    """Проверяет include/import-граф и отрицательные тесты правил CMake."""
+    """Проверяет граф включений и импортов, а также отрицательные тесты правил CMake."""
 
     result = run_sequence(
         [
@@ -85,7 +85,7 @@ def architecture_checks() -> int:
 
 
 def headless_checks() -> int:
-    """Конфигурирует, собирает и тестирует headless preset текущей ОС."""
+    """Проверяет предустановку сборки без графического интерфейса для текущей ОС."""
 
     system = platform.system()
     if system == "Windows":
@@ -93,7 +93,7 @@ def headless_checks() -> int:
     elif system == "Linux":
         preset = "linux-headless-tests"
     else:
-        print(f"Headless runner does not define a preset for {system}.", file=sys.stderr)
+        print(f"Для ОС {system} нет предустановки проверки без графического интерфейса.", file=sys.stderr)
         return 1
     return run_sequence(
         [
@@ -106,7 +106,7 @@ def headless_checks() -> int:
 
 
 def nesting_checks() -> int:
-    """Собирает только Core, SolverImpl, CLI и их тесты без legacy и Qt."""
+    """Собирает только ядро, решатель, CLI и их тесты без унаследованного кода и Qt."""
 
     system = platform.system()
     if system == "Windows":
@@ -114,7 +114,7 @@ def nesting_checks() -> int:
     elif system == "Linux":
         preset = "linux-nesting-tests"
     else:
-        print(f"Nesting runner does not define a preset for {system}.", file=sys.stderr)
+        print(f"Для ОС {system} нет предустановки проверки ядра раскроя.", file=sys.stderr)
         return 1
     return run_sequence(
         [
@@ -127,22 +127,22 @@ def nesting_checks() -> int:
 
 
 def python_checks() -> int:
-    """Запускает полный pytest в уже подготовленном Python-окружении."""
+    """Запускает полный набор тестов pytest в подготовленном окружении Python."""
 
     return run([sys.executable, "-m", "pytest"])
 
 
 def desktop_checks(qt_dir: str | None) -> int:
-    """Конфигурирует и тестирует Windows desktop, не сохраняя локальный Qt-путь."""
+    """Проверяет настольное приложение Windows, не сохраняя локальный путь Qt."""
 
     if platform.system() != "Windows":
-        print("Desktop checks are currently supported only on Windows.", file=sys.stderr)
+        print("Проверка настольного приложения сейчас поддерживается только в Windows.", file=sys.stderr)
         return 1
     configure = ["cmake", "--preset", "windows-tests"]
     if qt_dir:
         configure.append(f"-DQt6_DIR={qt_dir}")
     elif not (os.environ.get("Qt6_DIR") or os.environ.get("CMAKE_PREFIX_PATH")):
-        print("Qt path was not provided; CMake will use its normal package search.", flush=True)
+        print("Путь Qt не указан; CMake выполнит обычный поиск пакета.", flush=True)
     return run_sequence(
         [
             configure,
@@ -157,12 +157,21 @@ def main() -> int:
     """Выбирает контур проверки по подкоманде CLI."""
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("check", choices=["architecture", "nesting", "headless", "python", "desktop", "all"])
-    parser.add_argument("--qt-dir", help="Каталог с Qt6Config.cmake для desktop-проверки")
+    parser.add_argument(
+        "check",
+        choices=["architecture", "language", "nesting", "headless", "python", "desktop", "all"],
+    )
+    parser.add_argument("--qt-dir", help="Каталог с Qt6Config.cmake для проверки настольного приложения")
     arguments = parser.parse_args()
 
     actions = {
         "architecture": architecture_checks,
+        "language": lambda: run_sequence(
+            [
+                [sys.executable, "tools/language/check_russian_prose.py"],
+                [sys.executable, "-m", "unittest", "discover", "-s", "tools/language/tests", "-v"],
+            ]
+        ),
         "nesting": nesting_checks,
         "headless": headless_checks,
         "python": python_checks,
@@ -170,7 +179,7 @@ def main() -> int:
     }
     if arguments.check != "all":
         return actions[arguments.check]()
-    for name in ("architecture", "nesting", "headless", "python", "desktop"):
+    for name in ("language", "architecture", "nesting", "headless", "python", "desktop"):
         result = actions[name]()
         if result:
             return result

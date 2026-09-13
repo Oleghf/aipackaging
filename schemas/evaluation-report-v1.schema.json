@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://aipackaging.local/schemas/evaluation-report-v1.schema.json",
-  "title": "AIPackaging evaluation report v1",
+  "title": "AIPackaging: отчёт об оценке v1",
   "type": "object", "additionalProperties": false,
   "required": ["format", "version", "split", "seed", "datasetManifestSha256", "checkpointSha256", "rollouts", "summaries", "hybridVsRandom", "qualityGatePassed", "comparisons"],
   "properties": {

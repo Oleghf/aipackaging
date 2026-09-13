@@ -26,7 +26,7 @@ void updateActiveSelection(const std::shared_ptr<SelectionModel> & selection, co
 
 //------------------------------------------------------------------------------
 /**
-	  Создает копию preview-фигуры для основной доски
+  Создаёт копию фигуры предварительного просмотра для основной доски
 	*/
 //--
 std::shared_ptr<Figure> makeMainBoardFigure(const std::shared_ptr<Figure> & sourceFigure)
@@ -67,7 +67,7 @@ PlacePreviewFigureCommand::PlacePreviewFigureCommand(std::shared_ptr<Board> boar
 
 //------------------------------------------------------------------------------
 /**
-  Забирает preview из пула и размещает фигуру на основной доске
+  Забирает предварительный просмотр из пула и размещает фигуру на основной доске
 */
 //--
 void PlacePreviewFigureCommand::execute()

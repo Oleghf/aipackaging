@@ -60,7 +60,7 @@ def layer_for(path: Path, layer_roots: dict[str, Path], header_owners: dict[Path
 
 
 def collect_headers(root: Path, layer_roots: dict[str, Path], header_owners: dict[Path, str], ignored: set[str]):
-    """Строит индекс внутренних заголовков и выявляет неоднозначные basename."""
+    """Строит индекс внутренних заголовков и выявляет неоднозначные базовые имена."""
 
     by_basename: dict[str, list[tuple[Path, str]]] = {}
     by_relative: dict[str, tuple[Path, str]] = {}
@@ -91,7 +91,7 @@ def resolve_internal_include(
     by_basename: dict[str, list[tuple[Path, str]]],
     by_relative: dict[str, tuple[Path, str]],
 ) -> tuple[Path, str] | None:
-    """Разрешает include в один внутренний заголовок, если это возможно."""
+    """Сопоставляет директиву включения с одним внутренним заголовком, если это возможно."""
 
     normalized_include = include.replace("\\", "/")
     if normalized_include in by_relative:
@@ -103,7 +103,7 @@ def resolve_internal_include(
 
 
 def scan_cpp(root: Path, rules: dict) -> list[Violation]:
-    """Проверяет C++ include-граф по слоям и внешним библиотекам."""
+    """Проверяет граф включений C++ по слоям и внешним библиотекам."""
 
     ignored = set(rules["ignoredDirectories"])
     layer_roots = {name: root / value for name, value in rules["layers"].items()}
@@ -171,7 +171,7 @@ def scan_cpp(root: Path, rules: dict) -> list[Violation]:
 
 
 def scan_python(root: Path, rules: dict) -> list[Violation]:
-    """Проверяет внутренние Python imports и границу необязательного PyTorch."""
+    """Проверяет внутренние импорты Python и границу необязательного PyTorch."""
 
     ignored = set(rules["ignoredDirectories"])
     python_rules = rules["python"]
@@ -228,7 +228,7 @@ def scan_python(root: Path, rules: dict) -> list[Violation]:
 
 
 def _python_group(module: str, module_groups: dict[str, str]) -> str | None:
-    """Определяет владельца модуля по самому длинному совпавшему prefix правила."""
+    """Определяет владельца модуля по самому длинному совпавшему префиксу правила."""
 
     matches = [prefix for prefix in module_groups if module == prefix or module.startswith(prefix + ".")]
     if not matches:
@@ -237,7 +237,7 @@ def _python_group(module: str, module_groups: dict[str, str]) -> str | None:
 
 
 def _resolve_python_imports(source: Path, python_root: Path, node: ast.AST) -> list[str]:
-    """Возвращает полные имена внутренних модулей для относительных и package-import."""
+    """Возвращает полные имена внутренних модулей для относительных импортов и импорта из пакета."""
 
     if isinstance(node, ast.Import):
         prefix = python_root.name + "."
@@ -262,8 +262,8 @@ def _resolve_python_imports(source: Path, python_root: Path, node: ast.AST) -> l
         if node.module:
             base.extend(node.module.split("."))
 
-    # ``from package import module`` должен указывать на дочерний module, а
-    # импорт функции из обычного модуля — на сам module.
+            # Конструкция `from package import module` должна указывать на дочерний модуль, а
+            # импорт функции из обычного модуля — на сам модуль.
     result = []
     for alias in node.names:
         child = [*base, alias.name]
@@ -293,11 +293,11 @@ def main() -> int:
     rules_path = arguments.rules.resolve() if arguments.rules else Path(__file__).with_name("architecture-rules.json")
     violations = check_repository(root, rules_path)
     for violation in violations:
-        print(f"{normalized(violation.path, root)}:{violation.line}: architecture: {violation.message}")
+        print(f"{normalized(violation.path, root)}:{violation.line}: архитектура: {violation.message}")
     if violations:
-        print(f"Architecture check failed: {len(violations)} violation(s).")
+        print(f"Проверка архитектуры не пройдена: нарушений — {len(violations)}.")
         return 1
-    print("Architecture check passed.")
+    print("Проверка архитектуры пройдена.")
     return 0
 
 

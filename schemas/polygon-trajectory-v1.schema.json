@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://aipackaging.local/schemas/polygon-trajectory-v1.schema.json",
-  "title": "AIPackaging polygon trajectory v1",
+  "title": "AIPackaging: полигональная траектория v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "version", "trajectoryId", "problemId", "solver", "actionIndices", "steps", "finalSolution"],

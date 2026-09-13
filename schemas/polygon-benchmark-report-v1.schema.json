@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://aipackaging.local/schemas/polygon-benchmark-report-v1.schema.json",
-  "title": "AIPackaging polygon baseline benchmark report v1",
+  "title": "AIPackaging: отчёт сравнения полигональных базовых алгоритмов v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "version", "datasetManifestSha256", "datasetVersion", "revision", "split", "solverBudgets", "summaries", "tasks"],

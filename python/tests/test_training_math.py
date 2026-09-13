@@ -16,7 +16,7 @@ def _transition(reward: float, value: float, next_value: float, terminated: bool
 
 
 def test_gae_resets_at_terminal_and_returns_critic_targets() -> None:
-    """Terminal-переход не протягивает advantage следующего эпизода назад."""
+    """Завершающий переход не протягивает преимущество следующего эпизода назад."""
 
     transitions = [
         _transition(1.0, 0.5, 0.25, False),
@@ -29,7 +29,7 @@ def test_gae_resets_at_terminal_and_returns_critic_targets() -> None:
 
 
 def test_gae_keeps_bootstrap_but_stops_at_parallel_trace_boundary() -> None:
-    """Конец rollout lane использует next value без утечки из соседней lane."""
+    """Конец канала траектории использует следующее значение без утечки из соседнего канала."""
 
     first_lane = PpoTransition({}, {}, 0, 0.0, 0.5, 1.0, 0.25, False, True)
     second_lane = PpoTransition({}, {}, 0, 0.0, 10.0, 20.0, 0.0, True)

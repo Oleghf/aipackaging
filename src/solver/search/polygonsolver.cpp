@@ -17,14 +17,14 @@ using detail::PlacementPolicy;
 using detail::SearchRuntime;
 using detail::SearchStopReason;
 
-/// Сравнивает polygon-размещения для последнего воспроизводимого tie-break.
+/// Сравнивает полигональные размещения для последнего воспроизводимого разрешения равенства.
 bool actionLess(const PolygonPlacement & lhs, const PolygonPlacement & rhs)
 {
   return std::tie(lhs.partId, lhs.instanceIndex, lhs.rotationDegrees, lhs.x, lhs.y) <
          std::tie(rhs.partId, rhs.instanceIndex, rhs.rotationDegrees, rhs.x, rhs.y);
 }
 
-/// Быстро находит точный usedLength без вычисления растровых secondary-метрик.
+/// Быстро находит точную занятую длину без вычисления растровых вторичных метрик.
 std::int64_t usedLength(const PolygonEnvironment & environment, const PolygonState & state)
 {
   std::int64_t right = environment.sheetMargin();
@@ -34,7 +34,7 @@ std::int64_t usedLength(const PolygonEnvironment & environment, const PolygonSta
   return state.placements.empty() ? 0 : right - environment.sheetMargin();
 }
 
-/// Сравнивает polygon-состояния по полноте, partial-полезности, objective и placements.
+/// Сравнивает полигональные состояния по полноте, частичной полезности, цели и размещениям.
 bool betterState(const PolygonEnvironment & environment, const PolygonState & lhs, const PolygonState & rhs)
 {
   const bool leftComplete = lhs.placements.size() == environment.instances().size();
@@ -59,7 +59,7 @@ bool betterState(const PolygonEnvironment & environment, const PolygonState & lh
                                       actionLess);
 }
 
-/// Адаптирует PolygonEnvironment к общему lifecycle, сохраняя динамический NFP action space.
+/// Адаптирует PolygonEnvironment к общему жизненному циклу с динамическими действиями NFP.
 class PolygonSearchAdapter
 {
 public:
@@ -72,22 +72,22 @@ public:
   {
   }
 
-  /// Возвращает пустое состояние polygon-среды.
+  /// Возвращает пустое состояние полигональной среды.
   State initialState() const { return environment_.initialState(); }
   /// Возвращает число обязательных полигональных экземпляров.
   std::size_t instanceCount() const { return environment_.instances().size(); }
-  /// Возвращает точную площадь экземпляра в квадратных микронах для ordering.
+  /// Возвращает точную площадь экземпляра в квадратных микронах для упорядочивания.
   std::uint64_t instanceArea(std::size_t index) const { return environment_.instances()[index].area; }
-  /// Возвращает максимальный габарит экземпляра в микронах для ordering.
+  /// Возвращает максимальный габарит экземпляра в микронах для упорядочивания.
   std::int64_t instanceMaxDimension(std::size_t index) const { return environment_.instances()[index].maxDimension; }
-  /// Возвращает стабильный ID типа детали для общего ordering.
+  /// Возвращает стабильный идентификатор типа детали для общего упорядочивания.
   const std::string & instancePartId(std::size_t index) const
   {
     return environment_.problem().parts[environment_.instances()[index].partIndex].id;
   }
   /// Возвращает публичный индекс экземпляра внутри типа детали.
   std::uint32_t instanceIndex(std::size_t index) const { return environment_.instances()[index].instanceIndex; }
-  /// Сообщает, размещён ли экземпляр в переданном polygon state.
+  /// Сообщает, размещён ли экземпляр в переданном полигональном состоянии.
   bool isPlaced(const State & state, std::size_t index) const { return state.placedInstances[index] != 0; }
   /// Сообщает, принадлежат ли два экземпляра одному полигональному типу.
   bool samePart(std::size_t lhs, std::size_t rhs) const
@@ -103,13 +103,13 @@ public:
   {
     return environment_.enumerateCandidates(state, instance);
   }
-  /// Проверяет NFP-кандидат точными правилами границ, пересечений и clearance.
+  /// Проверяет вариант NFP точными правилами границ, пересечений и зазора.
   bool valid(const State & state, const Action & action) const { return environment_.canApply(state, action); }
-  /// Применяет уже проверенный polygon-кандидат к копии состояния.
+  /// Применяет уже проверенный полигональный вариант к копии состояния.
   void apply(State & state, const Action & action) const { environment_.apply(state, action); }
-  /// Сравнивает состояния по принятому polygon objective.
+  /// Сравнивает состояния по принятой полигональной целевой функции.
   bool better(const State & candidate, const State & reference) const { return betterState(environment_, candidate, reference); }
-  /// Сохраняет прежнюю polygon-семантику проверки beam budget до validation.
+  /// Сохраняет полигональную семантику проверки бюджета лучевого поиска до валидации.
   bool budgetBeforeValidation() const { return true; }
 
   /// Применяет первый допустимый кандидат уже отсортированного NFP-каталога.
@@ -118,8 +118,8 @@ public:
     const auto generationStarted = runtime.now();
     const std::vector<Action> actions = candidates(state, instance);
     runtime.recordCandidateGeneration(generationStarted, actions.size());
-    // PolygonEnvironment уже ранжирует кандидаты по usedLength/Y/X/rotation,
-    // поэтому дополнительная сортировка в search-слое изменила бы action order.
+    // `PolygonEnvironment` уже ранжирует варианты по занятой длине, координатам и повороту,
+    // поэтому дополнительная сортировка в слое поиска изменила бы порядок действий.
     for (const Action & action : actions)
     {
       if (runtime.pollStop())
@@ -140,7 +140,7 @@ private:
   const PolygonEnvironment & environment_;
 };
 
-/// Преобразует SolverKind в общий ordering последовательного polygon-поиска.
+/// Преобразует `SolverKind` в общее упорядочивание последовательного полигонального поиска.
 PartOrdering orderedPolicy(SolverKind solver)
 {
   if (solver == SolverKind::InputFirstFit)
@@ -151,7 +151,7 @@ PartOrdering orderedPolicy(SolverKind solver)
 }
 } // namespace
 
-/// Сравнивает полноту, partial-полезность, остаток и placements.
+/// Сравнивает полноту, частичную полезность, остаток и размещения.
 bool isBetterPolygonSolution(const PolygonSolution & candidate, const PolygonSolution & reference)
 {
   if (candidate.complete() != reference.complete())
@@ -170,7 +170,7 @@ bool isBetterPolygonSolution(const PolygonSolution & candidate, const PolygonSol
                                       reference.placements.end(), actionLess);
 }
 
-/// Проверяет задачу, запускает общий lifecycle через polygon-адаптер и независимо валидирует результат.
+/// Проверяет задачу, запускает общий жизненный цикл через полигональный адаптер и независимо проверяет результат.
 PolygonSolverExecutionResult runPolygonProblem(const PolygonProblem & problem, const SolverConfig & config,
                                                const PolygonExecutionControl & control)
 {
@@ -224,7 +224,7 @@ PolygonSolverExecutionResult runPolygonProblem(const PolygonProblem & problem, c
   return {std::move(solution), runtime.cancellationObserved()};
 }
 
-/// Делегирует обычный синхронный запуск управляемому API без внешних callback.
+/// Делегирует обычный синхронный запуск управляемому API без внешних обратных вызовов.
 PolygonSolution solvePolygonProblem(const PolygonProblem & problem, const SolverConfig & config)
 {
   return runPolygonProblem(problem, config).solution;

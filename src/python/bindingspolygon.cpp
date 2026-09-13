@@ -33,15 +33,15 @@ PolygonAction polygonActionFromDict(const py::dict & value)
   static const std::vector<std::string> required = {"partId", "instanceIndex", "xMicrometers", "yMicrometers", "rotationDegrees"};
   for (const std::string & field : required)
     if (!value.contains(py::str(field)))
-      throw py::value_error("polygon action is missing required field: " + field);
+      throw py::value_error("в полигональном действии отсутствует обязательное поле: " + field);
   if (value.size() != required.size())
-    throw py::value_error("polygon action contains unknown fields");
+    throw py::value_error("полигональное действие содержит неизвестные поля");
   return {value["partId"].cast<std::string>(), value["instanceIndex"].cast<std::uint32_t>(),
           value["xMicrometers"].cast<std::int64_t>(), value["yMicrometers"].cast<std::int64_t>(),
           value["rotationDegrees"].cast<int>()};
 }
 
-/// Преобразует базовое полигональное наблюдение в read-only NumPy-массивы.
+/// Преобразует базовое полигональное наблюдение в доступные только для чтения массивы NumPy.
 py::dict polygonObservationToDict(const PolygonObservation & observation)
 {
   py::dict result;
@@ -53,7 +53,7 @@ py::dict polygonObservationToDict(const PolygonObservation & observation)
   return result;
 }
 
-/// Преобразует условное placement-наблюдение и его динамические действия.
+/// Преобразует условное наблюдение размещения и его динамические действия.
 py::dict polygonPlacementObservationToDict(const PolygonPlacementObservation & observation)
 {
   py::dict result;
@@ -67,7 +67,7 @@ py::dict polygonPlacementObservationToDict(const PolygonPlacementObservation & o
   return result;
 }
 
-/// Загружает strict polygon_problem v1 для низкоуровневого Python API.
+/// Загружает строгий `polygon_problem` v1 для низкоуровневого API Python.
 PolygonProblem parsePolygonProblem(const std::string & problemJson)
 {
   PolygonProblemLoadResult loaded = loadPolygonProblemFromText(problemJson);
@@ -76,7 +76,7 @@ PolygonProblem parsePolygonProblem(const std::string & problemJson)
   return std::move(loaded.problem);
 }
 
-/// Создаёт динамическую полигональную среду из wire JSON.
+/// Создаёт динамическую полигональную среду из JSON формата обмена.
 std::unique_ptr<PolygonLearningEnvironment> createPolygonEnvironment(const std::string & problemJson)
 {
   PolygonProblem problem = parsePolygonProblem(problemJson);
@@ -87,7 +87,7 @@ std::unique_ptr<PolygonLearningEnvironment> createPolygonEnvironment(const std::
   return environment;
 }
 
-/// Запускает полигональный baseline и возвращает воспроизводимый wire JSON.
+/// Запускает полигональный базовый алгоритм и возвращает воспроизводимый JSON.
 std::string solvePolygonProblemJson(const std::string & problemJson, const std::string & solverName, std::uint64_t seed,
                                     std::size_t randomIterations, std::size_t beamWidth, std::size_t maxExpandedStates,
                                     std::uint64_t timeoutMs)
@@ -95,7 +95,7 @@ std::string solvePolygonProblemJson(const std::string & problemJson, const std::
   const PolygonProblem problem = parsePolygonProblem(problemJson);
   SolverConfig config;
   if (!parseSolverKind(solverName, config.solver))
-    throw py::value_error("unknown solver: " + solverName);
+    throw py::value_error("неизвестный решатель: " + solverName);
   config.seed = seed;
   config.randomIterations = randomIterations;
   config.beamWidth = beamWidth;
@@ -109,7 +109,7 @@ std::string solvePolygonProblemJson(const std::string & problemJson, const std::
   return savePolygonSolutionToText(solution);
 }
 
-/// Проверяет strict problem/solution полигональным C++-валидатором.
+/// Проверяет строгую задачу или решение полигональным валидатором C++.
 std::string validatePolygonSolutionJson(const std::string & problemJson, const std::string & solutionJson)
 {
   const PolygonProblem problem = parsePolygonProblem(problemJson);
@@ -120,7 +120,7 @@ std::string validatePolygonSolutionJson(const std::string & problemJson, const s
   return validation.success ? std::string{} : validation.error;
 }
 
-/// Сравнивает два polygon_solution общим C++ objective-порядком.
+/// Сравнивает два полигональных решения `polygon_solution` общим порядком целевой функции C++.
 bool isBetterPolygonSolutionJson(const std::string & candidateJson, const std::string & referenceJson)
 {
   const PolygonSolutionLoadResult candidate = loadPolygonSolutionFromText(candidateJson);
@@ -128,11 +128,11 @@ bool isBetterPolygonSolutionJson(const std::string & candidateJson, const std::s
   if (!candidate.success || !reference.success)
     throw py::value_error(candidate.success ? reference.error : candidate.error);
   if (candidate.solution.problemId != reference.solution.problemId)
-    throw py::value_error("polygon solutions belong to different problems");
+    throw py::value_error("полигональные решения относятся к разным задачам");
   return isBetterPolygonSolution(candidate.solution, reference.solution);
 }
 
-/// Последовательно применяет скрытые placements и принимает только полную точную раскладку.
+/// Последовательно применяет скрытые размещения и принимает только полную точную раскладку.
 py::dict validateHiddenPolygonLayout(const std::string & problemJson, const py::list & placements)
 {
   const PolygonProblem problem = parsePolygonProblem(problemJson);
@@ -146,16 +146,16 @@ py::dict validateHiddenPolygonLayout(const std::string & problemJson, const py::
   for (const py::handle value : placements)
   {
     if (!py::isinstance<py::dict>(value))
-      throw py::value_error("hidden polygon placement must be an object");
+      throw py::value_error("скрытое полигональное размещение должно быть объектом");
     const PolygonAction action = polygonActionFromDict(py::reinterpret_borrow<py::dict>(value));
-    // Применение через среду повторяет production-проверки экземпляра, поворота,
-    // границ, margin, spacing и положительного пересечения.
+    // Применение через среду повторяет рабочие проверки экземпляра, поворота,
+    // границ, отступа от листа, зазора между деталями и положительного пересечения.
     if (!environment->apply(state, action))
-      throw py::value_error("hidden polygon placement is invalid at index " + std::to_string(index));
+      throw py::value_error("скрытое полигональное размещение некорректно по индексу " + std::to_string(index));
     ++index;
   }
   if (state.placements.size() != environment->instances().size())
-    throw py::value_error("hidden polygon layout is incomplete");
+    throw py::value_error("скрытая полигональная раскладка неполна");
 
   const PolygonObjectiveComponents objective = environment->evaluate(state);
   py::dict result;
@@ -169,7 +169,7 @@ py::dict validateHiddenPolygonLayout(const std::string & problemJson, const py::
 
 } // namespace
 
-/// Регистрирует публичный polygon API без изменения имён и значений по умолчанию.
+/// Регистрирует публичный полигональный API без изменения имён и значений по умолчанию.
 void bindPolygon(py::module_ & module)
 {
   py::class_<PolygonLearningEnvironment>(module, "PolygonLearningEnvironment")

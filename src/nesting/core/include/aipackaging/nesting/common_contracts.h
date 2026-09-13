@@ -70,7 +70,7 @@ struct ValidationResult
   std::string error;
 };
 
-/// Возвращает стабильное строковое имя статуса для wire-форматов и CLI.
+/// Возвращает стабильное строковое имя статуса для форматов обмена и CLI.
 std::string toString(SolveStatus status);
 /// Возвращает стабильное строковое имя семейства решателя.
 std::string toString(SolverFamily family);

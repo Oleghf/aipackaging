@@ -56,9 +56,9 @@ public:
 
   /// Устанавливает обработчики действий полигональной вкладки.
   void setPolygonWorkspaceActions(PolygonWorkspaceActions actions) override;
-  /// Передаёт presentation-снимок полигональному виджету.
+  /// Передаёт снимок модели представления полигональному виджету.
   void presentPolygonWorkspace(const PolygonWorkspaceSnapshot & snapshot) override;
-  /// Ставит callback в очередь главного Qt-потока.
+  /// Ставит функцию обратного вызова в очередь главного потока Qt.
   void postToPolygonUi(std::function<void()> callback) override;
 
 private slots:

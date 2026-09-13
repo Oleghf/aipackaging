@@ -8,7 +8,7 @@
 
 namespace aipackaging::solver
 {
-/// Доступные реализации baseline-решателей раскроя.
+/// Доступные реализации базовых решателей раскроя.
 enum class SolverKind : std::uint8_t
 {
   InputFirstFit,
@@ -29,7 +29,7 @@ struct SolverConfig
   std::uint64_t timeoutMs = 30000;
 };
 
-/// Этап выполнения baseline, определяющий смысл счётчика прогресса.
+/// Этап выполнения базового алгоритма, определяющий смысл счётчика хода работы.
 enum class SearchProgressStage : std::uint8_t
 {
   Instances,
@@ -48,16 +48,16 @@ struct SearchProgress
   std::uint64_t expandedStates = 0;
 };
 
-/// Необязательные callback управления синхронным запуском baseline.
+/// Необязательные функции управления синхронным запуском базового алгоритма.
 struct SearchExecutionControl
 {
-  /// Возвращает true, когда вызывающий код просит остановиться до следующей безопасной мутации.
+  /// Возвращает истину, когда вызывающий код просит остановиться до следующего безопасного изменения.
   std::function<bool()> cancellationRequested;
-  /// Синхронно принимает progress в потоке решателя; исключения callback передаются вызывающему коду.
+  /// Принимает ход выполнения в потоке решателя; исключения функции передаются вызывающему коду.
   std::function<void(const SearchProgress &)> progress;
 };
 
-/// Возвращает стабильное строковое имя алгоритма для wire-форматов и CLI.
+/// Возвращает стабильное строковое имя алгоритма для форматов обмена и CLI.
 std::string toString(SolverKind solver);
 /// Преобразует публичное строковое имя в вид решателя.
 bool parseSolverKind(const std::string & value, SolverKind & solver);

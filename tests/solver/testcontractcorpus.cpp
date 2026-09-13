@@ -15,7 +15,7 @@ namespace
 using nlohmann::json;
 using namespace aipackaging::solver;
 
-/// Читает текст fixture целиком, чтобы передать его существующему strict parser.
+/// Читает тестовый пример целиком и передаёт существующему строгому анализатору.
 std::string readText(const std::filesystem::path & path)
 {
   std::ifstream stream(path, std::ios::binary);
@@ -26,7 +26,7 @@ std::string readText(const std::filesystem::path & path)
   return buffer.str();
 }
 
-/// Проверяет один grid_problem через тот же parser и валидатор, что использует CLI.
+/// Проверяет одну задачу `grid_problem` через тот же синтаксический анализатор и валидатор, что использует CLI.
 void checkGridProblem(const json & item, const std::filesystem::path & corpusRoot)
 {
   const GridProblemLoadResult loaded = loadGridProblemFromText(readText(corpusRoot / item.at("file").get<std::string>()));
@@ -38,7 +38,7 @@ void checkGridProblem(const json & item, const std::filesystem::path & corpusRoo
   EXPECT_EQ(item.at("expectedDomain").get<bool>(), domainAccepted);
 }
 
-/// Проверяет grid_solution отдельно на wire-разбор и соответствие связанной задаче.
+/// Проверяет `grid_solution` на разбор формата обмена и соответствие задаче.
 void checkGridSolution(const json & item, const std::filesystem::path & corpusRoot)
 {
   const GridSolutionLoadResult solution = loadGridSolutionFromText(readText(corpusRoot / item.at("file").get<std::string>()));
@@ -51,7 +51,7 @@ void checkGridSolution(const json & item, const std::filesystem::path & corpusRo
   EXPECT_EQ(item.at("expectedDomain").get<bool>(), domainAccepted);
 }
 
-/// Проверяет один polygon_problem после аппроксимации и нормализации геометрии.
+/// Проверяет одну задачу `polygon_problem` после аппроксимации и нормализации геометрии.
 void checkPolygonProblem(const json & item, const std::filesystem::path & corpusRoot)
 {
   const PolygonProblemLoadResult loaded = loadPolygonProblemFromText(readText(corpusRoot / item.at("file").get<std::string>()));
@@ -63,7 +63,7 @@ void checkPolygonProblem(const json & item, const std::filesystem::path & corpus
   EXPECT_EQ(item.at("expectedDomain").get<bool>(), domainAccepted);
 }
 
-/// Проверяет polygon_solution точным валидатором относительно связанной задачи.
+/// Проверяет решение `polygon_solution` точным валидатором относительно связанной задачи.
 void checkPolygonSolution(const json & item, const std::filesystem::path & corpusRoot)
 {
   const PolygonSolutionLoadResult solution =
@@ -79,7 +79,7 @@ void checkPolygonSolution(const json & item, const std::filesystem::path & corpu
 }
 } // namespace
 
-/// Проигрывает общий manifest через C++ parsers и независимые domain validators.
+/// Проигрывает общий манифест через анализаторы C++ и доменные валидаторы.
 TEST(ContractCorpus, ClassifiesAllCasesWithCppContracts)
 {
   const std::filesystem::path corpusRoot = AIPACKAGING_CONTRACT_CORPUS_DIR;

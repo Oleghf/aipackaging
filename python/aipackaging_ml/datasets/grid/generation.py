@@ -1,4 +1,4 @@
-"""Детерминированная генерация гарантированно размещаемых polyomino-задач."""
+"""Детерминированная генерация гарантированно размещаемых задач с полимино."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Any, Iterable
 
 @dataclass(frozen=True)
 class GenerationProfile:
-    """Задаёт закрытые диапазоны одного публичного tier генератора v1."""
+    """Задаёт закрытые диапазоны одного публичного профиля генератора v1."""
 
     sheet_min: int
     sheet_max: int
@@ -32,7 +32,7 @@ PROFILES = {
 
 
 def derive_seed(master_seed: int, tier: str, split: str, index: int, attempt: int) -> int:
-    """Выводит независимый 64-битный seed задачи из её стабильного адреса."""
+    """Выводит независимое 64-битное начальное значение из стабильного адреса задачи."""
 
     source = f"{master_seed}|{tier}|{split}|{index}|{attempt}".encode("utf-8")
     return int.from_bytes(hashlib.sha256(source).digest()[:8], "big")
@@ -48,7 +48,7 @@ def _normalize(cells: Iterable[tuple[int, int]]) -> tuple[tuple[int, int], ...]:
 
 
 def _rotate(cells: Iterable[tuple[int, int]]) -> tuple[tuple[int, int], ...]:
-    """Поворачивает polyomino на 90 градусов и повторно нормализует его."""
+    """Поворачивает полимино на 90 градусов и повторно нормализует его."""
 
     return _normalize((-row, column) for column, row in cells)
 
@@ -66,7 +66,7 @@ def unique_orientations(cells: Iterable[tuple[int, int]]) -> tuple[tuple[tuple[i
 
 
 def _has_hole(cells: tuple[tuple[int, int], ...]) -> bool:
-    """Ищет ограниченную пустую 4-связную компоненту внутри bounding box формы."""
+    """Ищет ограниченную пустую 4-связную компоненту внутри ограничивающей рамки формы."""
 
     occupied = set(cells)
     width = max(column for column, _ in cells) + 1
@@ -101,18 +101,18 @@ def grow_polyomino(rng: random.Random, area: int) -> tuple[tuple[int, int], ...]
         normalized = _normalize(cells)
         if not _has_hole(normalized):
             return normalized
-    raise RuntimeError("не удалось вырастить polyomino без отверстий")
+    raise RuntimeError("не удалось вырастить полимино без отверстий")
 
 
 def family_hash(problem: dict[str, Any]) -> str:
-    """Вычисляет rotation-invariant hash набора фигур и их количеств."""
+    """Вычисляет хеш набора фигур и их количеств, неизменный к повороту."""
 
     signatures = []
     for part in problem["parts"]:
         cells = tuple((cell["column"], cell["row"]) for cell in part["cells"])
         canonical_shape = min(unique_orientations(cells))
         # Семейство определяется только геометрией набора типов: изменение
-        # количества экземпляров не должно позволять форме перейти в другой split.
+        # количества экземпляров не должно позволять форме перейти в другую выборку.
         signatures.append(canonical_shape)
     payload = json.dumps(sorted(signatures), ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -121,7 +121,7 @@ def family_hash(problem: dict[str, Any]) -> str:
 def _try_place(
     occupied: set[tuple[int, int]], cells: tuple[tuple[int, int], ...], columns: int, rows: int
 ) -> set[tuple[int, int]] | None:
-    """Находит первое допустимое скрытое размещение по row/column/orientation."""
+    """Находит первое допустимое скрытое размещение по строке, столбцу и ориентации."""
 
     for orientation in unique_orientations(cells):
         width = max(column for column, _ in orientation) + 1
@@ -138,7 +138,7 @@ def generate_problem(master_seed: int, tier: str, split: str, index: int, attemp
     """Создаёт одну задачу профиля; скрытая раскладка гарантирует её разрешимость."""
 
     if tier not in PROFILES:
-        raise ValueError(f"неизвестный tier: {tier}")
+        raise ValueError(f"неизвестный профиль сложности: {tier}")
     profile = PROFILES[tier]
     rng = random.Random(derive_seed(master_seed, tier, split, index, attempt))
     columns = rng.randint(profile.sheet_min, profile.sheet_max)
@@ -147,7 +147,7 @@ def generate_problem(master_seed: int, tier: str, split: str, index: int, attemp
     type_count = rng.randint(profile.type_min, profile.type_max)
 
     # Для крупных листов генерация смещает площадь вверх, иначе физически нельзя
-    # достигнуть нижней границы utilization при лимите в 30 экземпляров.
+    # достигнуть нижней границы использования материала при лимите в 30 экземпляров.
     minimum_average = profile.utilization_min * sheet_area / profile.instance_max
     areas = [
         rng.randint(max(profile.part_area_min, int(minimum_average)), profile.part_area_max)
@@ -171,7 +171,7 @@ def generate_problem(master_seed: int, tier: str, split: str, index: int, attemp
     target = rng.uniform(profile.utilization_min, profile.utilization_max) * sheet_area
     candidates = list(range(type_count))
     rng.shuffle(candidates)
-    # Каждый тип обязан войти хотя бы один раз, чтобы parts не содержал quantity=0.
+    # Каждый тип обязан войти хотя бы один раз, чтобы список деталей не содержал нулевое количество.
     order = candidates + [rng.randrange(type_count) for _ in range(profile.instance_max - type_count)]
     for type_index in order:
         placed = _try_place(occupied, shapes[type_index], columns, rows)
@@ -215,7 +215,7 @@ def generate_problem(master_seed: int, tier: str, split: str, index: int, attemp
 def generate_unique_problem(
     master_seed: int, tier: str, split: str, index: int, family_splits: dict[str, str]
 ) -> tuple[dict[str, Any], int]:
-    """Повторяет адресуемые попытки до валидного профиля без split leakage."""
+    """Повторяет адресуемые попытки до корректного профиля без утечки между выборками."""
 
     for attempt in range(10_000):
         try:

@@ -32,7 +32,7 @@ bool onlyKeys(const Json & value, std::initializer_list<std::string_view> keys)
   return true;
 }
 
-/// Проверяет каноническую 64-символьную hex-запись SHA-256 из provenance модели.
+/// Проверяет каноническую 64-символьную шестнадцатеричную запись SHA-256 из сведений о происхождении модели.
 bool validSha256(const std::string & value)
 {
   return value.size() == 64 &&
@@ -48,7 +48,7 @@ bool readString(const Json & object, const char * key, std::string & result)
   return true;
 }
 
-/// Читает обязательное целое поле после проверки диапазона int.
+/// Читает обязательное целое поле после проверки диапазона типа `int`.
 bool readInt(const Json & object, const char * key, int & result)
 {
   if (!object.contains(key) || !object.at(key).is_number_integer())
@@ -67,7 +67,7 @@ bool readInt(const Json & object, const char * key, int & result)
   }
 }
 
-/// Читает обязательное неотрицательное целое поле после проверки диапазона size_t.
+/// Читает обязательное неотрицательное целое поле после проверки диапазона типа `size_t`.
 bool readSize(const Json & object, const char * key, std::size_t & result)
 {
   if (!object.contains(key) || !object.at(key).is_number_integer())
@@ -116,7 +116,7 @@ GridSolutionLoadResult solutionFailure(const std::string & message)
   return {false, {}, message};
 }
 
-/// Собирает каноническое JSON-дерево задачи из публичных value-типов.
+/// Собирает каноническое дерево JSON задачи из публичных типов-значений.
 Json problemJson(const GridProblem & problem)
 {
   Json parts = Json::array();
@@ -136,7 +136,7 @@ Json problemJson(const GridProblem & problem)
           {"objective", {{"type", problem.objective.type}, {"version", problem.objective.version}}}};
 }
 
-/// Собирает каноническое JSON-дерево решения со всеми метриками и metadata.
+/// Собирает каноническое дерево JSON решения со всеми метриками и служебными сведениями.
 Json solutionJson(const GridSolution & solution)
 {
   Json placements = Json::array();
@@ -212,7 +212,7 @@ Json solutionJson(const GridSolution & solution)
 }
 } // namespace
 
-/// Разбирает JSON, строго проверяет поля schema v1 и затем запускает доменную валидацию задачи.
+/// Разбирает JSON, строго проверяет поля схемы v1 и затем запускает предметную проверку задачи.
 GridProblemLoadResult loadGridProblemFromText(const std::string & text)
 {
   Json root;
@@ -315,7 +315,7 @@ std::string saveGridProblemToText(const GridProblem & problem)
   return problemJson(problem).dump(2) + '\n';
 }
 
-/// Разбирает grid_solution v1/v2 и проверяет его структуру без знания исходной задачи.
+/// Разбирает `grid_solution` v1/v2 и проверяет его структуру без знания исходной задачи.
 GridSolutionLoadResult loadGridSolutionFromText(const std::string & text)
 {
   Json root;
@@ -364,8 +364,8 @@ GridSolutionLoadResult loadGridSolutionFromText(const std::string & text)
     solution.placements.push_back(std::move(placement));
   }
 
-  // Геометрическое соответствие objective исходной задаче намеренно проверяет
-  // validateGridSolution: загрузчик отвечает только за wire-контракт.
+  // Геометрическое соответствие целевой функции исходной задаче намеренно проверяет
+  // `validateGridSolution`: загрузчик отвечает только за контракт формата обмена.
   if (!root.contains("objective") ||
       !onlyKeys(root.at("objective"), {"usedLength", "primaryRemnantWidth", "largestExtraRectangleArea", "fragmentationPenalty",
                                        "placedParts", "totalParts", "placedCells", "totalPartCells", "materialUtilization"}))

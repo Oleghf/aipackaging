@@ -1,6 +1,6 @@
 #include "bindingsinternal.h"
 
-/// Создаёт модуль и делегирует регистрацию независимым grid/polygon адаптерам.
+/// Создаёт модуль и делегирует регистрацию независимым клеточному и полигональному адаптерам.
 PYBIND11_MODULE(_aipackaging_solver, module)
 {
   aipackaging::python::configureModule(module);

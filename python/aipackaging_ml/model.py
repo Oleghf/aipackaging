@@ -1,4 +1,4 @@
-"""Иерархическая actor-critic модель клеточного раскроя M3."""
+"""Иерархическая модель «исполнитель-критик» для клеточного раскроя M3."""
 
 from __future__ import annotations
 
@@ -19,14 +19,14 @@ class EncodedGridState(NamedTuple):
 
 
 class GridStateEncoder(nn.Module):
-    """Кодирует лист, геометрию экземпляров и objective для первых двух решений."""
+    """Кодирует лист, геометрию экземпляров и целевую функцию первых двух решений."""
 
     def __init__(self, hidden_size: int = 128) -> None:
-        """Создаёт encoder фиксированной ширины со shared weights для всех деталей."""
+        """Создаёт кодировщик фиксированной ширины с общими весами для всех деталей."""
 
         super().__init__()
         if hidden_size < 2 or hidden_size % 2 != 0:
-            raise ValueError("hidden_size must be an even integer of at least 2")
+            raise ValueError("`hidden_size` должен быть чётным целым числом не меньше 2")
         half = hidden_size // 2
         self.sheet_encoder = nn.Sequential(
             nn.Conv2d(1, 32, 3, padding=1),
@@ -53,9 +53,9 @@ class GridStateEncoder(nn.Module):
         self.value_head = nn.Sequential(nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, 1))
 
     def forward(self, occupancy: Tensor, part_masks: Tensor, part_features: Tensor, objective: Tensor) -> EncodedGridState:
-        """Возвращает embeddings, logits экземпляров/поворотов и оценку состояния."""
+        """Возвращает вложения, логиты экземпляров и поворотов, а также оценку состояния."""
 
-        # Внешний контракт не содержит batch dimension: один эпизод имеет
+        # Внешний контракт не содержит пакетного измерения: один эпизод имеет
         # переменное число экземпляров и собственные размеры листа/деталей.
         sheet = self.sheet_encoder(occupancy.unsqueeze(0).unsqueeze(0)).flatten()
         count, rotations, rows, columns = part_masks.shape
@@ -82,7 +82,7 @@ class GridPlacementHead(nn.Module):
         self.scorer = nn.Sequential(nn.Linear(hidden_size * 3, hidden_size), nn.Tanh(), nn.Linear(hidden_size, 1))
 
     def forward(self, state_embedding: Tensor, orientation_embedding: Tensor, candidate_features: Tensor) -> Tensor:
-        """Возвращает один logit для каждой переданной позиции в стабильном порядке."""
+        """Возвращает один логит для каждой переданной позиции в стабильном порядке."""
 
         count = candidate_features.shape[0]
         candidates = self.candidate_encoder(candidate_features)
@@ -92,10 +92,10 @@ class GridPlacementHead(nn.Module):
 
 
 class HierarchicalGridPolicyV1(nn.Module):
-    """Объединяет encoder, иерархические actor heads и critic политики v1."""
+    """Объединяет кодировщик, иерархические головы политики и критик политики v1."""
 
     def __init__(self, hidden_size: int = 128) -> None:
-        """Создаёт policy с заданной шириной скрытого представления."""
+        """Создаёт политику с заданной шириной скрытого представления."""
 
         super().__init__()
         self.hidden_size = hidden_size
@@ -103,7 +103,7 @@ class HierarchicalGridPolicyV1(nn.Module):
         self.placement_head = GridPlacementHead(hidden_size)
 
     def encode(self, occupancy: Tensor, part_masks: Tensor, part_features: Tensor, objective: Tensor) -> EncodedGridState:
-        """Делегирует кодирование состояния encoder-части экспортируемой модели."""
+        """Делегирует кодирование состояния кодирующей части экспортируемой модели."""
 
         return self.encoder(occupancy, part_masks, part_features, objective)
 

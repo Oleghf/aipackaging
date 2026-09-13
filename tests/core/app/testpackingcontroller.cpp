@@ -230,7 +230,7 @@ TEST(PackingActionMapper, MapsMoveAndRotateActionsToCommands)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет показ preview-фигуры на доске генерации
+  Проверяет показ фигуры предварительного просмотра на доске генерации
 */
 //--
 TEST(PreviewPoolPresenter, ShowsPreviewOnGeneratorBoard)
@@ -248,7 +248,7 @@ TEST(PreviewPoolPresenter, ShowsPreviewOnGeneratorBoard)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет очистку доски генерации при отсутствии preview-фигуры
+  Проверяет очистку доски генерации при отсутствии фигуры предварительного просмотра
 */
 //--
 TEST(PreviewPoolPresenter, ClearsGeneratorBoardWithoutPreview)
@@ -380,7 +380,7 @@ TEST(PlacementValidator, RejectsEmptyCandidateFigure)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет успешный результат автоматической стратегии для валидной preview-фигуры
+  Проверяет успешный результат автоматической стратегии для корректной фигуры предварительного просмотра
 */
 //--
 TEST(PreviewAutomaticPlacementStrategy, ValidPreviewReturnsCommandAndOk)
@@ -405,7 +405,7 @@ TEST(PreviewAutomaticPlacementStrategy, ValidPreviewReturnsCommandAndOk)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет отказ автоматической стратегии при выходе preview-фигуры за границы доски
+  Проверяет отказ автоматической стратегии при выходе фигуры предварительного просмотра за границы доски
 */
 //--
 TEST(PreviewAutomaticPlacementStrategy, OutOfBoundsPreviewReturnsFailure)
@@ -457,7 +457,7 @@ TEST(PreviewAutomaticPlacementStrategy, IntersectingPreviewReturnsFailure)
 
 //------------------------------------------------------------------------------
 /**
-  Checks first-fit placement at board origin
+  Проверяет первое допустимое размещение в начале координат доски
 */
 //--
 TEST(FirstFitAutomaticPlacementStrategy, PlacesPreviewAtOriginOnEmptyBoard)
@@ -651,7 +651,7 @@ TEST(AutoPackCommand, ExecuteUndoRedoTreatsAutoPackAsSingleCommand)
 
 //------------------------------------------------------------------------------
 /**
-  Checks default packing mode
+  Проверяет режим раскроя по умолчанию
 */
 //--
 TEST(PackingController, DefaultsToManualMode)
@@ -664,7 +664,7 @@ TEST(PackingController, DefaultsToManualMode)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет нормализацию геометрии и placement в snapshot сцены упаковки
+  Проверяет нормализацию геометрии и размещения в снимке сцены упаковки
 */
 //--
 TEST(PackingController, PackingSceneSnapshotNormalizesGeometryAndPlacement)
@@ -696,7 +696,7 @@ TEST(PackingController, PackingSceneSnapshotNormalizesGeometryAndPlacement)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет, что snapshot сцены не включает оставшийся пул
+  Проверяет, что снимок сцены не включает оставшийся пул
 */
 //--
 TEST(PackingController, PackingSceneSnapshotDoesNotIncludeRemainingPool)
@@ -713,7 +713,7 @@ TEST(PackingController, PackingSceneSnapshotDoesNotIncludeRemainingPool)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет загрузку валидной сцены с заменой текущей packing-сессии
+  Проверяет загрузку корректной сцены с заменой текущего сеанса раскроя
 */
 //--
 TEST(PackingController, LoadSceneSnapshotReplacesBoardAndClearsPoolActiveSelection)
@@ -811,7 +811,7 @@ TEST(PackingController, LoadSceneSnapshotRejectsIntersectingScene)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет отказ при дробных координатах действия snapshot
+  Проверяет отказ при дробных координатах действия в снимке
 */
 //--
 TEST(PackingController, LoadSceneSnapshotRejectsFractionalActionCoordinates)
@@ -832,7 +832,7 @@ TEST(PackingController, LoadSceneSnapshotRejectsFractionalActionCoordinates)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет отказ при координатах действия snapshot вне диапазона int
+  Проверяет отказ при координатах действия в снимке вне диапазона типа `int`
 */
 //--
 TEST(PackingController, LoadSceneSnapshotRejectsOutOfRangeActionCoordinates)
@@ -853,7 +853,7 @@ TEST(PackingController, LoadSceneSnapshotRejectsOutOfRangeActionCoordinates)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет отказ, если сумма локальной клетки и смещения выходит за диапазон int
+  Проверяет отказ, если сумма локальной клетки и смещения выходит за диапазон типа `int`
 */
 //--
 TEST(PackingController, LoadSceneSnapshotRejectsCellOffsetOverflow)
@@ -1250,7 +1250,7 @@ TEST(MainController, SaveShowsInfoMessageForValidPath)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет, что Save сохраняет JSON сцены упаковки, а не OBJECT пул
+  Проверяет, что команда сохранения записывает JSON сцены раскроя, а не пул объектов
 */
 //--
 TEST(MainController, SaveWritesPlacedSceneAsJson)
@@ -1288,7 +1288,7 @@ TEST(MainController, SaveWritesPlacedSceneAsJson)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет, что Save не сохраняет невалидную сцену
+  Проверяет, что команда сохранения не записывает некорректную сцену
 */
 //--
 TEST(MainController, SaveRejectsInvalidPackingScene)
@@ -1321,7 +1321,7 @@ TEST(MainController, SaveRejectsInvalidPackingScene)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет, что Save после Delete не сохраняет возвращённую preview-фигуру как размещённую
+  Проверяет, что сохранение после удаления не записывает возвращённую фигуру предварительного просмотра как размещённую
 */
 //--
 TEST(MainController, SaveAfterDeleteDoesNotPersistReturnedPreview)
@@ -1356,7 +1356,7 @@ TEST(MainController, SaveAfterDeleteDoesNotPersistReturnedPreview)
 
 //------------------------------------------------------------------------------
 /**
-  Checks command-driven AutoPlace statistics and history flow
+  Проверяет статистику и историю автоматического размещения, выполняемого командами
 */
 //--
 TEST(MainController, AutoPlaceActionUpdatesStatisticsAndSupportsUndoRedo)
@@ -1390,7 +1390,7 @@ TEST(MainController, AutoPlaceActionUpdatesStatisticsAndSupportsUndoRedo)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет warning-сообщение при невозможности автоматического размещения
+  Проверяет предупреждение при невозможности автоматического размещения
 */
 //--
 TEST(MainController, AutoPackAllUpdatesStatisticsShowsSummaryAndSupportsSingleUndo)
@@ -1476,7 +1476,7 @@ TEST(MainController, AutomaticFailureShowsWarningMessage)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет warning после ручной команды, которая оставляет активную фигуру в невалидной позиции
+  Проверяет предупреждение после ручной команды, которая оставляет активную фигуру в некорректной позиции
 */
 //--
 TEST(MainController, ManualInvalidPlacementShowsWarningMessage)
@@ -1506,7 +1506,7 @@ TEST(MainController, ManualInvalidPlacementShowsWarningMessage)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет warning при попытке взять следующую фигуру, пока активная фигура невалидна
+  Проверяет предупреждение при попытке взять следующую фигуру, пока активная фигура некорректна
 */
 //--
 TEST(MainController, BlockedManualAcquireShowsWarningMessage)
@@ -1537,7 +1537,7 @@ TEST(MainController, BlockedManualAcquireShowsWarningMessage)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет появление preview после загрузки пула
+  Проверяет появление предварительного просмотра после загрузки пула
 */
 //--
 TEST(PackingController, LoadPoolShowsPreviewOnGeneratorBoard)
@@ -1584,7 +1584,7 @@ TEST(PackingController, MousePressWithPreviewReturnsCreateCommandForMainBoard)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет отсутствие fallback при пустом пуле
+  Проверяет отсутствие резервного сценария при пустом пуле
 */
 //--
 TEST(PackingController, UndoRestoresPreviewPoolStateAfterAcquire)
@@ -1620,7 +1620,7 @@ TEST(PackingController, UndoRestoresPreviewPoolStateAfterAcquire)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет отсутствие fallback при пустом пуле
+  Проверяет отсутствие резервного сценария при пустом пуле
 */
 //--
 TEST(PackingController, MousePressWithoutPoolReturnsNullptr)
@@ -1634,7 +1634,7 @@ TEST(PackingController, MousePressWithoutPoolReturnsNullptr)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет появление следующей preview после выдачи фигуры
+  Проверяет появление следующего предварительного просмотра после выдачи фигуры
 */
 //--
 TEST(PackingController, TakePreviewPromotesNextFigure)
@@ -1659,7 +1659,7 @@ TEST(PackingController, TakePreviewPromotesNextFigure)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет выделение активной фигуры, если в пуле осталась preview-фигура
+  Проверяет выделение активной фигуры, если в пуле осталась фигура предварительного просмотра
 */
 //--
 TEST(PackingController, PlacementSelectsActiveFigureWhenPoolHasNextPreview)
@@ -1687,7 +1687,7 @@ TEST(PackingController, PlacementSelectsActiveFigureWhenPoolHasNextPreview)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет сохранение текущего сценария получения preview в ручном режиме
+  Проверяет сохранение текущего сценария получения предварительного просмотра в ручном режиме
 */
 //--
 TEST(PackingController, ManualModeKeepsMouseAcquireFlow)
@@ -1781,7 +1781,7 @@ TEST(PackingController, EmptyPoolMousePressKeepsNoActiveFigure)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет нормализацию preview-фигуры верхнего ряда при размещении на основной доске
+  Проверяет нормализацию фигуры предварительного просмотра из верхнего ряда при размещении на основной доске
 */
 //--
 TEST(PlacePreviewFigureCommand, ManualPlacementNormalizesLoadedTopRowFigure)
@@ -1846,7 +1846,7 @@ TEST(PackingController, ManualPlacementOfLoadedTopRowDoesNotBecomeInvalid)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет размещение последней фигуры после продвижения preview
+  Проверяет размещение последней фигуры после продвижения предварительного просмотра
 */
 //--
 TEST(PackingController, TwoFigurePoolPlacesLastFigureAndClearsGenerator)
@@ -1877,7 +1877,7 @@ TEST(PackingController, TwoFigurePoolPlacesLastFigureAndClearsGenerator)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет размещение заранее подготовленной фигуры без preview в пуле
+  Проверяет размещение заранее подготовленной фигуры без предварительного просмотра в пуле
 */
 //--
 TEST(PlacePreviewFigureCommand, ExecutesPrebuiltPlacementWithoutPreview)
@@ -1902,7 +1902,7 @@ TEST(PlacePreviewFigureCommand, ExecutesPrebuiltPlacementWithoutPreview)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет, что заранее подготовленная фигура по умолчанию не забирает preview из пула
+  Проверяет, что заранее подготовленная фигура по умолчанию не забирает предварительный просмотр из пула
 */
 //--
 TEST(PlacePreviewFigureCommand, PrebuiltPlacementPreservesPreviewByDefault)
@@ -1932,7 +1932,7 @@ TEST(PlacePreviewFigureCommand, PrebuiltPlacementPreservesPreviewByDefault)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет явное потребление preview и восстановление состояния пула при undo/redo
+  Проверяет явное потребление предварительного просмотра и восстановление состояния пула при отмене и повторе
 */
 //--
 TEST(PlacePreviewFigureCommand, ExplicitConsumePreviewRestoresPoolStateOnUndoRedo)
@@ -1967,7 +1967,7 @@ TEST(PlacePreviewFigureCommand, ExplicitConsumePreviewRestoresPoolStateOnUndoRed
 
 //------------------------------------------------------------------------------
 /**
-  Checks one-shot AutoPlace action from manual mode
+  Проверяет однократное действие AutoPlace из ручного режима
 */
 //--
 TEST(PackingController, AutoPlaceActionReturnsPlacementCommandInManualMode)
@@ -2042,7 +2042,7 @@ TEST(PackingController, AutoPackAllFailureDoesNotMutateBoardOrPool)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет автоматический режим через стратегию размещения preview
+  Проверяет автоматический режим через стратегию размещения предварительного просмотра
 */
 //--
 TEST(PackingController, AutomaticModeUsesStrategyForValidPreview)
@@ -2067,7 +2067,7 @@ TEST(PackingController, AutomaticModeUsesStrategyForValidPreview)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет отказ автоматического режима при невалидной preview-фигуре
+  Проверяет отказ автоматического режима при некорректной фигуре предварительного просмотра
 */
 //--
 TEST(PackingController, AutomaticModeReturnsNullptrForInvalidPreview)
@@ -2229,7 +2229,7 @@ TEST(PackingController, ManualIntersectionCreatesWarningMessage)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет блокировку получения следующей preview-фигуры при невалидной активной фигуре
+  Проверяет блокировку получения следующей фигуры предварительного просмотра при некорректной активной фигуре
 */
 //--
 TEST(PackingController, InvalidActiveFigureBlocksNextAcquire)
@@ -2268,7 +2268,7 @@ TEST(PackingController, InvalidActiveFigureBlocksNextAcquire)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет разрешение получения следующей preview-фигуры при валидной активной фигуре
+  Проверяет разрешение получения следующей фигуры предварительного просмотра при корректной активной фигуре
 */
 //--
 TEST(PackingController, ReloadPoolClearsStaleInvalidActiveFigure)
@@ -2301,7 +2301,7 @@ TEST(PackingController, ReloadPoolClearsStaleInvalidActiveFigure)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет разрешение получения следующей preview-фигуры при валидной активной фигуре
+  Проверяет разрешение получения следующей фигуры предварительного просмотра при корректной активной фигуре
 */
 //--
 TEST(PackingController, ValidActiveFigureAllowsNextAcquire)
@@ -2341,7 +2341,7 @@ TEST(PackingController, EmptyPoolAcquireStaysSilent)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет получение следующей preview-фигуры после возврата активной фигуры в валидную позицию
+  Проверяет получение следующей фигуры предварительного просмотра после возврата активной фигуры в корректную позицию
 */
 //--
 TEST(PackingController, FixedActiveFigureAllowsNextAcquire)
@@ -2409,7 +2409,7 @@ TEST(DeleteFigureCommand, ExecuteRemovesActiveFigureAndClearsSelection)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет возврат удаленной фигуры в preview с нормализованными координатами
+  Проверяет возврат удалённой фигуры в предварительный просмотр с нормализованными координатами
 */
 //--
 TEST(DeleteFigureCommand, ExecuteReturnsNormalizedFigureAsPreview)
@@ -2441,7 +2441,7 @@ TEST(DeleteFigureCommand, ExecuteReturnsNormalizedFigureAsPreview)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет undo после удаления фигуры
+  Проверяет отмену после удаления фигуры
 */
 //--
 TEST(DeleteFigureCommand, UndoRestoresBoardActiveSelectionAndPool)
@@ -2476,7 +2476,7 @@ TEST(DeleteFigureCommand, UndoRestoresBoardActiveSelectionAndPool)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет redo после удаления фигуры
+  Проверяет повтор после удаления фигуры
 */
 //--
 TEST(DeleteFigureCommand, RedoDeletesAgainAndRestoresPreviewState)
@@ -2558,7 +2558,7 @@ TEST(PackingController, ActionWithoutActiveFigureReturnsNullptr)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет сопоставление действия Up команде перемещения
+  Проверяет сопоставление действия вверх команде перемещения
 */
 //--
 TEST(PackingController, UpActionReturnsMoveCommandAndMovesFigureUp)
@@ -2581,7 +2581,7 @@ TEST(PackingController, UpActionReturnsMoveCommandAndMovesFigureUp)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет сопоставление действия Rotate команде поворота
+  Проверяет сопоставление действия поворота соответствующей команде
 */
 //--
 TEST(PackingController, RotateActionReturnsRotateCommandAndRotatesFigure)
@@ -2640,7 +2640,7 @@ TEST(PackagingState, DelegatesMousePressFlowToPackingController)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет делегирование сценария Action из состояния упаковки
+  Проверяет делегирование действия из состояния упаковки
 */
 //--
 TEST(PackagingState, DelegatesActionFlowToPackingController)

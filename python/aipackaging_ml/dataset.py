@@ -1,4 +1,4 @@
-"""Совместимый публичный фасад клеточного dataset pipeline v1."""
+"""Совместимый публичный фасад клеточного конвейера набора данных v1."""
 
 from .datasets.grid.pipeline import DEFAULT_SPLITS, generate_dataset
 from .datasets.grid.rollout import SOLVERS

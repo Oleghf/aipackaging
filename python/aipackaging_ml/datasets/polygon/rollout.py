@@ -1,4 +1,4 @@
-"""Baseline rollout и выбор expert для полигонального датасета."""
+"""Запуск базовых алгоритмов и выбор экспертного результата для полигонального набора."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def best_trajectory(trajectories: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _freeze_time_metrics(solution: dict[str, Any]) -> None:
-    """Обнуляет машинно-зависимые времена перед сохранением frozen trajectory."""
+    """Обнуляет машинно-зависимые времена перед сохранением замороженной траектории."""
 
     for name in ("candidateGenerationTimeUs", "validationTimeUs", "searchTimeUs", "totalTimeUs"):
         solution["metrics"][name] = 0
@@ -36,7 +36,7 @@ def _freeze_time_metrics(solution: dict[str, Any]) -> None:
 def rollout_problem(
     problem: dict[str, Any], seed: int, budgets: dict[str, int], *, require_solved: bool
 ) -> tuple[list[dict[str, Any]], str]:
-    """Строит пять валидных baseline-траекторий с заданными frozen budgets."""
+    """Строит пять корректных траекторий базовых алгоритмов с заданными бюджетами."""
 
     wire = canonical_json(problem)
     trajectories = []
@@ -86,13 +86,13 @@ def rollout_problem(
 
     solved = [item for item in trajectories if item["finalSolution"]["status"] == "solved"]
     if require_solved and not solved:
-        raise RuntimeError("no baseline found a complete solution")
+        raise RuntimeError("ни один базовый алгоритм не нашёл полного решения")
     eligible = solved if solved else trajectories
     return trajectories, best_trajectory(eligible)["trajectoryId"]
 
 
 def rollout_task(task: tuple[dict[str, Any], int]) -> tuple[str, list[dict[str, Any]], str]:
-    """Строит и независимо перепроверяет пять baseline-траекторий polygon-задачи."""
+    """Строит и независимо проверяет пять траекторий базовых алгоритмов полигональной задачи."""
 
     problem, seed = task
     budgets = {"timeoutMs": 0, "randomIterations": 8, "beamWidth": 4, "maxExpandedStates": 100}

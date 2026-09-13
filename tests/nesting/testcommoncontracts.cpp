@@ -3,7 +3,7 @@
 
 namespace aipackaging::solver
 {
-/// Проверяет неизменные строковые значения и обратное преобразование общих enum.
+/// Проверяет неизменные строковые значения и обратное преобразование общих перечислений.
 TEST(NestingCoreContracts, ConvertsCommonEnumsWithoutSolverImplementation)
 {
   SolveStatus status = SolveStatus::InvalidProblem;

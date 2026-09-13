@@ -1,4 +1,4 @@
-"""CPU-инференс экспортированной ONNX policy с точным action mask M2."""
+"""Выполнение экспортированной политики ONNX на CPU с точной маской действий M2."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ from .model_bundle import load_model_metadata
 
 
 class OnnxGreedyPolicy:
-    """Выбирает greedy-действия двумя ONNX-графами без зависимости от PyTorch."""
+    """Выбирает жадные действия двумя графами ONNX без зависимости от PyTorch."""
 
     def __init__(self, bundle: str | Path) -> None:
-        """Проверяет bundle и создаёт CPU ONNX Runtime sessions."""
+        """Проверяет комплект и создаёт сеансы ONNX Runtime для CPU."""
 
         import onnxruntime as ort
 
@@ -30,11 +30,11 @@ class OnnxGreedyPolicy:
 
         indices = np.flatnonzero(legal)
         if indices.size == 0:
-            raise RuntimeError("ONNX policy level has no legal choices")
+            raise RuntimeError("уровень политики ONNX не имеет допустимых вариантов")
         return int(indices[int(np.argmax(values[indices]))])
 
     def action(self, fixed: Mapping[str, Any], dynamic: Mapping[str, Any]) -> int:
-        """Возвращает стабильный допустимый action index для observation v1."""
+        """Возвращает стабильный допустимый индекс действия для наблюдения v1."""
 
         outputs = self.encode(fixed, dynamic)
         state, orientations, instance_logits, rotation_logits, _ = outputs
@@ -53,7 +53,7 @@ class OnnxGreedyPolicy:
         return int(group[int(np.argmax(position_logits))])
 
     def encode(self, fixed: Mapping[str, Any], dynamic: Mapping[str, Any]) -> list[np.ndarray]:
-        """Возвращает сырые выходы encoder для parity-проверки и выбора действия."""
+        """Возвращает исходные выходы кодировщика для проверки соответствия."""
 
         return self.encoder.run(
             None,
@@ -68,7 +68,7 @@ class OnnxGreedyPolicy:
     def position_scores(
         self, state: np.ndarray, orientation: np.ndarray, candidate_features: np.ndarray
     ) -> np.ndarray:
-        """Возвращает сырые logits позиционной головы для выбранной группы."""
+        """Возвращает исходные логиты позиционной головы для выбранной группы."""
 
         return self.head.run(
             None,

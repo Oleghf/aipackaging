@@ -91,7 +91,7 @@ TEST(PackingSceneSaver, DoesNotSaveObjectPoolFormat)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет round-trip JSON-сцены через saver и loader
+  Проверяет двустороннее преобразование сцены JSON через модуль сохранения и загрузчик
 */
 //--
 TEST(PackingSceneLoader, LoadsValidRoundTripFromSaver)

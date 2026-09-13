@@ -17,7 +17,7 @@ from .model import EncodedGridState, HierarchicalGridPolicyV1
 
 @dataclass(frozen=True)
 class PolicyDecision:
-    """Содержит выбранный action index и дифференцируемые значения actor-critic."""
+    """Содержит выбранный индекс действия и дифференцируемые значения политики и критика."""
 
     action_index: int
     instance_index: int
@@ -29,7 +29,7 @@ class PolicyDecision:
 
 
 def _tensor(value: np.ndarray, device: torch.device, *, dtype: torch.dtype) -> Tensor:
-    """Копирует read-only NumPy-массив в tensor заданного dtype и устройства."""
+    """Копирует массив NumPy только для чтения в тензор заданного типа и устройства."""
 
     return torch.as_tensor(np.array(value, copy=True), dtype=dtype, device=device)
 
@@ -40,7 +40,7 @@ def encode_observation(
     dynamic: Mapping[str, Any],
     device: torch.device,
 ) -> EncodedGridState:
-    """Преобразует observation v1 и запускает общую encoder-часть политики."""
+    """Преобразует наблюдение v1 и запускает общую кодирующую часть политики."""
 
     return model.encode(
         _tensor(dynamic["occupancy"], device, dtype=torch.float32),
@@ -51,15 +51,15 @@ def encode_observation(
 
 
 def _masked_choice(logits: Tensor, legal: Tensor, generator: torch.Generator | None) -> tuple[int, Tensor, Tensor]:
-    """Выбирает только разрешённый элемент и возвращает log-probability с entropy."""
+    """Выбирает разрешённый элемент и возвращает логарифм вероятности с энтропией."""
 
     indices = torch.nonzero(legal, as_tuple=False).flatten()
     if indices.numel() == 0:
-        raise RuntimeError("hierarchical policy level has no legal choices")
+            raise RuntimeError("уровень иерархической политики не имеет допустимых вариантов")
     legal_logits = logits.index_select(0, indices)
     probabilities = torch.softmax(legal_logits, dim=0)
     if generator is None:
-        # torch.argmax возвращает первый максимум, что закрепляет stable tie-break.
+        # `torch.argmax` возвращает первый максимум и тем самым стабильно разрешает равенство.
         local = torch.argmax(legal_logits)
     else:
         local = torch.multinomial(probabilities, 1, generator=generator).squeeze(0)
@@ -79,9 +79,9 @@ def evaluate_action(
 
     action_mask = np.asarray(dynamic["action_mask"], dtype=np.bool_)
     if action_index < 0 or action_index >= action_mask.size:
-        raise IndexError("policy action index is out of range")
+        raise IndexError("индекс действия политики находится вне допустимого диапазона")
     if not action_mask[action_index]:
-        raise ValueError("policy action is masked out")
+        raise ValueError("действие политики запрещено маской")
 
     candidate_instance = np.asarray(fixed["candidate_instance"], dtype=np.int64)
     candidate_rotation = np.asarray(fixed["candidate_rotation"], dtype=np.int64)
@@ -150,7 +150,7 @@ def select_action(
     candidate_instance = np.asarray(fixed["candidate_instance"], dtype=np.int64)
     candidate_rotation = np.asarray(fixed["candidate_rotation"], dtype=np.int64)
     if not np.any(action_mask):
-        raise RuntimeError("cannot select an action in a terminal state")
+        raise RuntimeError("нельзя выбирать действие в конечном состоянии")
     encoded = encode_observation(model, fixed, dynamic, device)
 
     instance_mask_np = np.zeros(encoded.instance_logits.shape[0], dtype=np.bool_)
@@ -183,7 +183,7 @@ def select_action(
 
 
 class PolicyRunner:
-    """Получает решения нейросетью и опционально объединяет их с безопасным baseline."""
+    """Получает нейросетевые решения и при необходимости сравнивает их с базовым алгоритмом."""
 
     def __init__(
         self,
@@ -198,7 +198,7 @@ class PolicyRunner:
         """Сохраняет модель и проверяемую идентичность её весов."""
 
         if len(model_sha256) != 64 or any(character not in "0123456789abcdef" for character in model_sha256.lower()):
-            raise ValueError("model_sha256 must contain 64 hexadecimal characters")
+            raise ValueError("`model_sha256` должен содержать 64 шестнадцатеричных символа")
         self.model = model.to(device)
         self.model.eval()
         self.model_id = model_id
@@ -211,7 +211,7 @@ class PolicyRunner:
         )
 
     def _check_limits(self, fixed: Mapping[str, Any]) -> None:
-        """Отклоняет observation вне заявленного диапазона обученной модели."""
+        """Отклоняет наблюдение вне заявленного диапазона обученной модели."""
 
         actual = {
             "maxRows": int(fixed["rows"]),
@@ -222,10 +222,10 @@ class PolicyRunner:
         }
         exceeded = [name for name, value in actual.items() if value > self.limits[name]]
         if exceeded:
-            raise ValueError(f"problem exceeds grid_policy limits: {', '.join(exceeded)}")
+            raise ValueError(f"задача превышает ограничения `grid_policy`: {', '.join(exceeded)}")
 
     def _provenance(self, family: str, seed: int, rollouts: int, mode: str) -> dict[str, Any]:
-        """Формирует полный нативный provenance для solution v2."""
+        """Формирует полные нативные сведения о происхождении решения v2."""
 
         return {
             "family": family,
@@ -263,11 +263,11 @@ class PolicyRunner:
         solution = environment.snapshot_solution(provenance, incomplete_status=incomplete_status)
         error = _native.validate_solution(canonical_json(problem), canonical_json(solution))
         if error:
-            raise RuntimeError(f"neural solution failed independent validation: {error}")
+            raise RuntimeError(f"нейросетевое решение не прошло независимую проверку: {error}")
         return solution
 
     def _relabel_hybrid(self, problem: Mapping[str, Any], solution: Mapping[str, Any], seed: int, rollouts: int) -> dict[str, Any]:
-        """Повторно проигрывает выбранный результат и присваивает честный hybrid provenance."""
+        """Повторно проигрывает результат и записывает честное гибридное происхождение."""
 
         environment = GridNestingEnv.from_dict(problem)
         environment.reset_compact(seed=seed)
@@ -280,16 +280,16 @@ class PolicyRunner:
         )
         error = _native.validate_solution(canonical_json(problem), canonical_json(result))
         if error:
-            raise RuntimeError(f"hybrid solution failed independent validation: {error}")
+            raise RuntimeError(f"гибридное решение не прошло независимую проверку: {error}")
         return result
 
     def solve(self, problem: Mapping[str, Any], *, mode: str = "greedy", rollouts: int = 16, seed: int = 42) -> dict[str, Any]:
-        """Возвращает neural greedy, neural best-of или hybrid grid_solution v2."""
+        """Возвращает жадное, лучшее из нескольких или гибридное `grid_solution` v2."""
 
         if mode not in {"greedy", "best-of", "hybrid"}:
-            raise ValueError(f"unknown policy solve mode: {mode}")
+            raise ValueError(f"неизвестный режим решения политикой: {mode}")
         if rollouts < 1:
-            raise ValueError("rollouts must be positive")
+            raise ValueError("число запусков политики должно быть положительным")
         if mode == "greedy":
             return self._rollout(problem, seed, False, 1)
 

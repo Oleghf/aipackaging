@@ -20,7 +20,7 @@ Point2D QtAdapters::fromQtPoint(const QPointF & qtPoint)
 
 //------------------------------------------------------------------------------
 /**
-  Переводит point2d в qt точку
+  Преобразует `Point2D` в точку Qt
 */
 //--
 QPointF QtAdapters::toQtPoint(const Point2D & point)
@@ -31,7 +31,7 @@ QPointF QtAdapters::toQtPoint(const Point2D & point)
 
 //------------------------------------------------------------------------------
 /**
-  Переводит qrect в rect2d
+  Преобразует `QRect` в `Rect2D`
 */
 //--
 Rect2D QtAdapters::fromQtRect(const QRectF & qtRect)
@@ -42,7 +42,7 @@ Rect2D QtAdapters::fromQtRect(const QRectF & qtRect)
 
 //------------------------------------------------------------------------------
 /**
-  Переводит rect2d в qrectf
+  Преобразует `Rect2D` в `QRectF`
 */
 //--
 QRectF QtAdapters::toQtRect(const Rect2D & rect)
@@ -53,7 +53,7 @@ QRectF QtAdapters::toQtRect(const Rect2D & rect)
 
 //------------------------------------------------------------------------------
 /**
-  Переводит qmousebuttons в mousebutton
+  Преобразует `Qt::MouseButtons` в `MouseButton`
 */
 //--
 MouseButton QtAdapters::fromQtMouseButton(Qt::MouseButtons buttons)
@@ -69,7 +69,7 @@ MouseButton QtAdapters::fromQtMouseButton(Qt::MouseButtons buttons)
 
 //------------------------------------------------------------------------------
 /**
-  Переводит mousebutton в qtmousebutton
+  Преобразует `MouseButton` в значение кнопки мыши Qt
 */
 //--
 Qt::MouseButtons QtAdapters::toQtMouseButton(MouseButton button)

@@ -14,7 +14,7 @@ using namespace aipackaging::solver;
 using namespace aipackaging::tests;
 } // namespace
 
-/// Проверяет строгий JSON round-trip и отказ от неизвестного поля.
+/// Проверяет строгое двустороннее преобразование JSON и отказ от неизвестного поля.
 TEST(PolygonIo, RoundTripsProblemAndRejectsUnknownField)
 {
   const std::string text = savePolygonProblemToText(problem());
@@ -26,7 +26,7 @@ TEST(PolygonIo, RoundTripsProblemAndRejectsUnknownField)
   EXPECT_FALSE(loadPolygonProblemFromText(invalid).success);
 }
 
-/// Проверяет, что независимый валидатор обнаруживает подмену objective.
+/// Проверяет, что независимый валидатор обнаруживает подмену целевой функции.
 TEST(PolygonIo, RejectsMismatchedSolutionObjective)
 {
   PolygonSolution solution = solvePolygonProblem(problem());
@@ -35,7 +35,7 @@ TEST(PolygonIo, RejectsMismatchedSolutionObjective)
   EXPECT_FALSE(validatePolygonSolution(problem(), solution).success);
 }
 
-/// Проверяет, что слишком большое целое поворота отклоняется без исключения parser.
+/// Проверяет, что слишком большое целое поворота отклоняется без исключения синтаксического анализатора.
 TEST(PolygonIo, RejectsOutOfRangeRotation)
 {
   std::string text = savePolygonProblemToText(problem());

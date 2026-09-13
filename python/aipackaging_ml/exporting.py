@@ -1,4 +1,4 @@
-"""Экспорт двухчастной policy v1 в ONNX и проверка metadata bundle."""
+"""Экспорт двухчастной политики v1 в ONNX и проверка метаданных комплекта."""
 
 from __future__ import annotations
 
@@ -17,10 +17,10 @@ from .training import load_checkpoint
 
 
 class EncoderExport(nn.Module):
-    """Адаптирует NamedTuple encoder к стабильным именованным ONNX-выходам."""
+    """Адаптирует кодировщик NamedTuple к стабильным именованным выходам ONNX."""
 
     def __init__(self, encoder: GridStateEncoder) -> None:
-        """Сохраняет обученный encoder без копирования его параметров."""
+        """Сохраняет обученный кодировщик без копирования его параметров."""
 
         super().__init__()
         self.encoder = encoder
@@ -28,7 +28,7 @@ class EncoderExport(nn.Module):
     def forward(
         self, occupancy: Tensor, part_masks: Tensor, part_features: Tensor, objective: Tensor
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-        """Возвращает пять tensor в порядке публичного ONNX-контракта."""
+        """Возвращает пять тензоров в порядке публичного контракта ONNX."""
 
         encoded = self.encoder(occupancy, part_masks, part_features, objective)
         return (
@@ -44,7 +44,7 @@ def _export_onnx(*args: Any, **kwargs: Any) -> None:
     """Экспортирует граф, скрывая известное ложное предупреждение общей оси."""
 
     with warnings.catch_warnings():
-        # Один объект Dim намеренно связывает instance-axis трёх tensors. Экспортёр
+    # Один объект размерности намеренно связывает ось экземпляров трёх тензоров. Экспортёр
         # сообщает, что повторное имя не переименовано, хотя связь сохранена.
         warnings.filterwarnings("ignore", message=r"# The axis name: instances will not be used.*")
         torch.onnx.export(*args, **kwargs)
@@ -57,7 +57,7 @@ def export_policy_bundle(
     *,
     model_id: str = "grid-policy-v1",
 ) -> dict[str, Any]:
-    """Экспортирует encoder/head, считает hashes и записывает grid_policy metadata v1."""
+    """Экспортирует кодировщик и голову, считает хеши и записывает метаданные `grid_policy` v1."""
 
     config = load_training_config(config_path)
     destination = Path(output)

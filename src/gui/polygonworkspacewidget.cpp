@@ -23,7 +23,7 @@ namespace
 {
 using namespace aipackaging::solver;
 
-/// Преобразует внутренний статус baseline в подпись поля выбора.
+/// Преобразует внутренний статус базового алгоритма в подпись поля выбора.
 QString solverTitle(SolverKind kind)
 {
   switch (kind)
@@ -42,14 +42,14 @@ QString solverTitle(SolverKind kind)
   return {};
 }
 
-/// Добавляет вариант solver с wire-именем в user data.
+/// Добавляет вариант решателя с именем формата обмена в пользовательские данные.
 void addSolver(QComboBox * box, SolverKind kind)
 {
   box->addItem(solverTitle(kind), QString::fromStdString(toString(kind)));
 }
 } // namespace
 
-/// Собирает самостоятельную полигональную вкладку, не меняющую клеточный widget.
+/// Собирает самостоятельную полигональную вкладку, не меняющую клеточный виджет.
 PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   : QWidget(parent)
   , canvas_(new PolygonCanvasWidget(this))
@@ -168,7 +168,7 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   present({});
 }
 
-/// Парсит wire-имя solver и ограниченные виджетами значения конфигурации.
+/// Разбирает имя решателя формата обмена и значения конфигурации из виджетов.
 SolverConfig PolygonWorkspaceWidget::solverConfig() const
 {
   SolverConfig result;
@@ -184,7 +184,7 @@ SolverConfig PolygonWorkspaceWidget::solverConfig() const
   return result;
 }
 
-/// Обновляет все поля из одного snapshot, исключая противоречивые состояния кнопок.
+/// Обновляет все поля из одного снимка, исключая противоречивые состояния кнопок.
 void PolygonWorkspaceWidget::present(const PolygonWorkspaceSnapshot & snapshot)
 {
   problemLabel_->setText(snapshot.problemId.empty() ? tr("Задача: —")

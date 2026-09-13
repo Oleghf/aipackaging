@@ -1,4 +1,4 @@
-"""Замороженная оценка M3 и проверка PyTorch/ONNX parity."""
+"""Замороженная оценка M3 и проверка соответствия PyTorch и ONNX."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ BASELINES = ("input-first-fit", "area-left-bottom", "max-side-left-bottom", "ran
 
 
 def _aggregate(solutions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Агрегирует полноту и objective-компоненты без смешивания с wall-clock."""
+    """Объединяет полноту и компоненты цели без фактического времени выполнения."""
 
     solved = [solution for solution in solutions if solution["status"] == "solved"]
     denominator = max(len(solved), 1)
@@ -45,7 +45,7 @@ def evaluate_checkpoint(
     device_name: str = "cpu",
     smoke: bool = False,
 ) -> dict[str, Any]:
-    """Сравнивает пять baseline, neural greedy/best-of и безопасный hybrid."""
+    """Сравнивает пять базовых алгоритмов, нейросетевые и гибридный режимы."""
 
     config = load_training_config(config_path)
     episodes = load_expert_episodes(dataset_root, split, expected_manifest_sha256=config["datasetManifestSha256"])
@@ -70,11 +70,11 @@ def evaluate_checkpoint(
     for episode in episodes:
         baselines = frozen[episode.problem["problemId"]]
         if set(baselines) != set(BASELINES):
-            raise ValueError(f"incomplete frozen baseline set: {episode.problem['problemId']}")
+            raise ValueError(f"неполный замороженный набор базовых алгоритмов: {episode.problem['problemId']}")
         for name, solution in baselines.items():
             error = _native.validate_solution(canonical_json(episode.problem), canonical_json(solution))
             if error:
-                raise RuntimeError(f"frozen baseline {name} failed validation: {error}")
+                raise RuntimeError(f"замороженный базовый алгоритм {name} не прошёл проверку: {error}")
         task_seed = int(baselines["random-left-bottom"]["solver"]["seed"])
         greedy = runner.solve(episode.problem, mode="greedy", seed=task_seed)
         best = runner.solve(episode.problem, mode="best-of", rollouts=rollout_count, seed=task_seed)
@@ -134,12 +134,12 @@ def verify_model_bundle(
     split: str = "validation",
     smoke: bool = False,
 ) -> dict[str, Any]:
-    """Проверяет hashes и совпадение greedy action sequence PyTorch/ONNX."""
+    """Проверяет хеши и совпадение последовательности жадных действий PyTorch и ONNX."""
 
     config = load_training_config(config_path)
     metadata = load_model_metadata(bundle)
     if metadata["checkpointSha256"] != sha256_file(checkpoint):
-        raise ValueError("checkpoint does not match model metadata")
+        raise ValueError("контрольная точка не соответствует метаданным модели")
     episodes = load_expert_episodes(dataset_root, split, expected_manifest_sha256=config["datasetManifestSha256"])
     if smoke:
         episodes = episodes[:2]
@@ -164,10 +164,10 @@ def verify_model_bundle(
                 pytorch_action = select_action(model, fixed, pytorch_dynamic, torch.device("cpu")).action_index
                 onnx_action = onnx_policy.action(fixed, onnx_dynamic)
                 if pytorch_action != onnx_action:
-                    raise ValueError(f"ONNX action mismatch: {episode.problem['problemId']} at step {checked_actions}")
+                    raise ValueError(f"действие ONNX не совпало: {episode.problem['problemId']}, шаг {checked_actions}")
                 pytorch_dynamic, _, _, _, _ = pytorch_environment.step_compact(pytorch_action)
                 onnx_dynamic, _, _, _, _ = onnx_environment.step_compact(onnx_action)
                 checked_actions += 1
         if onnx_environment.is_complete != pytorch_environment.is_complete:
-            raise ValueError(f"ONNX terminal mismatch: {episode.problem['problemId']}")
+            raise ValueError(f"признак завершения ONNX не совпал: {episode.problem['problemId']}")
     return {"tasks": len(episodes), "actions": checked_actions, "modelSha256": metadata["modelSha256"]}

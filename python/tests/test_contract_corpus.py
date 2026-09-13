@@ -1,4 +1,4 @@
-"""Проверяет общий corpus через JSON Schema и native C++ binding."""
+"""Проверяет общий корпус через JSON Schema и нативную привязку C++."""
 
 from __future__ import annotations
 
@@ -15,19 +15,19 @@ CORPUS = ROOT / "tests/contracts"
 
 
 def _read_json(path: Path) -> dict:
-    """Читает один JSON fixture без преобразования значений."""
+    """Читает один тестовый пример JSON без преобразования значений."""
 
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _wire(document: dict) -> str:
-    """Сериализует fixture в стабильный JSON для native API."""
+    """Сериализует тестовый пример в стабильный JSON для нативного API."""
 
     return json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def _native_accepts(item: dict, document: dict) -> bool:
-    """Возвращает итог C++ parsing/domain-validation для записи manifest."""
+    """Возвращает итог синтаксического и доменного анализа C++ для записи манифеста."""
 
     contract = item["contract"]
     try:
@@ -45,11 +45,11 @@ def _native_accepts(item: dict, document: dict) -> bool:
             return native.validate_polygon_solution(_wire(problem), _wire(document)) == ""
     except (RuntimeError, ValueError):
         return False
-    raise AssertionError(f"unknown contract: {contract}")
+    raise AssertionError(f"неизвестный контракт: {contract}")
 
 
 def test_schema_and_native_classification_match_manifest() -> None:
-    """Каждый fixture должен одинаково классифицироваться всеми слоями контракта."""
+    """Каждый тестовый пример должен одинаково классифицироваться всеми слоями."""
 
     manifest = _read_json(CORPUS / "manifest.json")
     assert manifest["format"] == "aipackaging.contract_corpus"

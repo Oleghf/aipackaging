@@ -51,7 +51,7 @@ TEST(boundedCurve2D, MaxTInMinT)
 }
 
 
-// Тест использования двух кривых на одной bounded curve
+// Проверка использования двух кривых в одной ограниченной кривой
 TEST(boundedCurve2D, TwoCurveOnOneBoundedCurve)
 {
   Point2D point{0.0, 0.0};

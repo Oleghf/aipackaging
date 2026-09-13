@@ -1,4 +1,4 @@
-"""Сборка воспроизводимого production polygon dataset v2 и его cache."""
+"""Сборка воспроизводимого рабочего полигонального набора данных v2 и его кэша."""
 
 from __future__ import annotations
 
@@ -29,35 +29,35 @@ POLYGON_SMOKE_SPLITS = {"train": 4, "validation": 4, "test": 4}
 
 
 def _task_identity(tier: str, split: str, family_index: int, variant: int) -> dict[str, Any]:
-    """Формирует устойчивый адрес одной scale-вариации для cache envelope."""
+    """Формирует устойчивый адрес одного масштабного варианта для записи кэша."""
 
     return {"tier": tier, "split": split, "familyIndex": family_index, "scaleVariant": variant}
 
 
 def _task_key(identity: Mapping[str, Any]) -> str:
-    """Кодирует адрес задачи в стабильный внутренний ключ и имя cache-файла."""
+    """Кодирует адрес задачи в стабильный внутренний ключ и имя файла кэша."""
 
     return f"{identity['tier']}:{identity['split']}:{identity['familyIndex']}:{identity['scaleVariant']}"
 
 
 def _verify_expert(problem: Mapping[str, Any], trajectories: list[dict[str, Any]], expert_id: str) -> None:
-    """Повторяет все действия и проверяет выбор полного expert общим comparator."""
+    """Повторяет действия и проверяет выбор полного экспертного результата общим компаратором."""
 
     if len(trajectories) != len(POLYGON_SOLVERS) or {
         item["solver"]["name"] for item in trajectories
     } != set(POLYGON_SOLVERS):
-        raise ValueError(f"baseline trajectory set mismatch: {problem['problemId']}")
+        raise ValueError(f"набор траекторий базовых алгоритмов не совпадает: {problem['problemId']}")
     for trajectory in trajectories:
         verify_replay(problem, trajectory)
     solved = [item for item in trajectories if item["finalSolution"]["status"] == "solved"]
     if not solved:
-        raise ValueError(f"dataset task has no solved baseline: {problem['problemId']}")
+        raise ValueError(f"ни один базовый алгоритм не решил задачу набора данных: {problem['problemId']}")
     if best_trajectory(solved)["trajectoryId"] != expert_id:
-        raise ValueError(f"wrong expertTrajectoryId: {problem['problemId']}")
+        raise ValueError(f"неверное значение expertTrajectoryId: {problem['problemId']}")
 
 
 def _build_task(arguments: tuple[Any, ...]) -> dict[str, Any]:
-    """Выполняет детерминированный rejection loop одной вариации семейства."""
+    """Выполняет детерминированный цикл отбраковки одного варианта семейства."""
 
     master_seed, tier, split, family_index, variant, budgets, max_attempts = arguments
     identity = _task_identity(tier, split, family_index, variant)
@@ -92,7 +92,7 @@ def _build_task(arguments: tuple[Any, ...]) -> dict[str, Any]:
             "trajectories": trajectories,
             "expertTrajectoryId": expert,
         }
-    raise RuntimeError(f"cannot generate {tier}/{split}/{family_index}/{variant}: {last_error}")
+    raise RuntimeError(f"не удалось создать {tier}/{split}/{family_index}/{variant}: {last_error}")
 
 
 def _validate_generation_arguments(
@@ -102,35 +102,35 @@ def _validate_generation_arguments(
     budgets: Mapping[str, int],
     max_attempts: int,
 ) -> None:
-    """Проверяет баланс tier/family, worker count, budgets и предел rejection loop."""
+    """Проверяет баланс профилей и семейств, число процессов, бюджеты и предел попыток."""
 
     if set(split_sizes) != {"train", "validation", "test"}:
-        raise ValueError("split_sizes must contain train, validation and test")
+        raise ValueError("`split_sizes` должен содержать обучающую, проверочную и тестовую выборки")
     if not tiers or any(tier not in POLYGON_TIERS for tier in tiers) or len(set(tiers)) != len(tiers):
-        raise ValueError("tiers must be a non-empty unique subset of small/medium")
+        raise ValueError("`tiers` должен быть непустым уникальным подмножеством `small` и `medium`")
     divisor = 2 * len(tiers)
     if any(
         isinstance(size, bool) or not isinstance(size, int) or size < 0 or size % divisor != 0
         for size in split_sizes.values()
     ):
-        raise ValueError(f"every split size must be non-negative and divisible by {divisor}")
+        raise ValueError(f"размер каждой выборки должен быть неотрицательным и делиться на {divisor}")
     if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
-        raise ValueError("workers must be positive")
+        raise ValueError("число рабочих процессов должно быть положительным")
     if set(budgets) != {"timeoutMs", "randomIterations", "beamWidth", "maxExpandedStates"}:
-        raise ValueError("polygon solver budget fields mismatch")
+        raise ValueError("набор полей бюджета полигонального решателя не совпадает")
     if isinstance(budgets["timeoutMs"], bool) or not isinstance(budgets["timeoutMs"], int):
-        raise ValueError("invalid polygon solver budgets")
+        raise ValueError("некорректные бюджеты полигонального решателя")
     if budgets["timeoutMs"] != 0 or any(
         isinstance(budgets[name], bool) or not isinstance(budgets[name], int) or budgets[name] < 1
         for name in ("randomIterations", "beamWidth", "maxExpandedStates")
     ):
-        raise ValueError("invalid polygon solver budgets")
+        raise ValueError("некорректные бюджеты полигонального решателя")
     if (
         isinstance(max_attempts, bool)
         or not isinstance(max_attempts, int)
         or not 1 <= max_attempts <= 256
     ):
-        raise ValueError("max_attempts must be between 1 and 256")
+        raise ValueError("`max_attempts` должен находиться в диапазоне от 1 до 256")
 
 
 def _generation_fingerprint(
@@ -140,7 +140,7 @@ def _generation_fingerprint(
     budgets: Mapping[str, int],
     max_attempts: int,
 ) -> str:
-    """Вычисляет fingerprint всей конфигурации, влияющей на cache payload."""
+    """Вычисляет отпечаток конфигурации, влияющей на содержимое кэша."""
 
     value = {
         "generatorVersion": POLYGON_GENERATOR_VERSION,
@@ -159,20 +159,20 @@ def _generation_fingerprint(
 def _validate_cached_payload(
     payload: Mapping[str, Any], identity: Mapping[str, Any], master_seed: int, max_attempts: int
 ) -> None:
-    """Полностью перепроверяет совместимый cache payload перед его использованием."""
+    """Полностью перепроверяет совместимое содержимое кэша перед использованием."""
 
     expected_fields = {
         "problem", "tier", "split", "familyIndex", "scaleVariant", "derivedSeed", "familyHash",
         "attempt", "features", "trajectories", "expertTrajectoryId",
     }
     if set(payload) != expected_fields:
-        raise ValueError("resume cache payload fields mismatch")
+        raise ValueError("набор полей содержимого кэша возобновления не совпадает")
     for name, expected in identity.items():
         if payload[name] != expected:
-            raise ValueError("resume cache payload identity mismatch")
+            raise ValueError("идентификатор содержимого кэша возобновления не совпадает")
     attempt = payload["attempt"]
     if isinstance(attempt, bool) or not isinstance(attempt, int) or not 0 <= attempt < max_attempts:
-        raise ValueError("resume cache attempt mismatch")
+        raise ValueError("номер попытки в кэше возобновления не совпадает")
     expected_seed = derive_seed(
         master_seed,
         "polygon-task-v2",
@@ -184,9 +184,9 @@ def _validate_cached_payload(
     )
     problem = payload["problem"]
     if payload["derivedSeed"] != expected_seed:
-        raise ValueError("resume cache derived seed mismatch")
+        raise ValueError("производное начальное значение в кэше возобновления не совпадает")
     if payload["familyHash"] != polygon_family_hash(problem) or payload["features"] != problem_features(problem):
-        raise ValueError("resume cache derived geometry metadata mismatch")
+        raise ValueError("производные метаданные геометрии в кэше возобновления не совпадают")
     validate_problem_profile(problem, identity["tier"])
     _verify_expert(problem, payload["trajectories"], payload["expertTrajectoryId"])
 
@@ -203,16 +203,16 @@ def generate_polygon_dataset(
     resume: bool = False,
     mode: str = "canonical",
 ) -> dict[str, Any]:
-    """Генерирует возобновляемый polygon_dataset v2 и возвращает manifest."""
+    """Создаёт возобновляемый `polygon_dataset` v2 и возвращает его манифест."""
 
     if isinstance(master_seed, bool) or not isinstance(master_seed, int) or master_seed < 0:
-        raise ValueError("master_seed must be a non-negative integer")
+        raise ValueError("`master_seed` должен быть неотрицательным целым числом")
     if mode not in {"canonical", "smoke", "custom"}:
-        raise ValueError("mode must be canonical, smoke or custom")
+        raise ValueError("поле `mode` должно задавать канонический, пробный или пользовательский режим")
     if set(split_sizes) != {"train", "validation", "test"}:
-        raise ValueError("split_sizes must contain train, validation and test")
+        raise ValueError("`split_sizes` должен содержать обучающую, проверочную и тестовую выборки")
     if set(budgets) != {"timeoutMs", "randomIterations", "beamWidth", "maxExpandedStates"}:
-        raise ValueError("polygon solver budget fields mismatch")
+        raise ValueError("набор полей бюджета полигонального решателя не совпадает")
     tiers = tuple(tiers)
     split_sizes = {name: split_sizes[name] for name in ("train", "validation", "test")}
     budgets = {name: budgets[name] for name in (
@@ -250,7 +250,7 @@ def generate_polygon_dataset(
                     results[key] = payload
                     continue
             except (KeyError, TypeError, ValueError) as error:
-                raise ValueError(f"invalid resume cache: {cache_path}: {error}") from error
+                raise ValueError(f"некорректный кэш возобновления: {cache_path}: {error}") from error
         missing.append(arguments)
 
     if workers == 1:
@@ -266,7 +266,8 @@ def generate_polygon_dataset(
             )
     else:
         with multiprocessing.get_context("spawn").Pool(workers) as pool:
-            # unordered сокращает простой worker-ов; итог ниже собирается только по task_arguments.
+            # Неупорядоченная выдача уменьшает простой рабочих процессов; итог ниже
+    # собирается в порядке аргументов задач.
             for payload in pool.imap_unordered(_build_task, missing):
                 identity = _task_identity(
                     payload["tier"], payload["split"], payload["familyIndex"], payload["scaleVariant"]
@@ -291,7 +292,7 @@ def generate_polygon_dataset(
         family_key = (payload["tier"], payload["split"], payload["familyIndex"])
         family_hashes.setdefault(family_key, set()).add(payload["familyHash"])
     if any(len(values) != 1 for values in family_hashes.values()):
-        raise RuntimeError("scaled variants produced different family hashes")
+        raise RuntimeError("масштабные варианты дали разные хеши семейства")
 
     shards = []
     experts: dict[str, str] = {}
@@ -325,9 +326,9 @@ def generate_polygon_dataset(
                 "sha256": sha256_file(path),
             })
     if len(revisions) > 1:
-        raise RuntimeError("polygon trajectories contain mixed build revisions")
+        raise RuntimeError("полигональные траектории содержат разные ревизии сборки")
     if mode == "canonical" and any(set(values) != set(POLYGON_FEATURES) for values in coverage.values()):
-        raise RuntimeError("canonical polygon dataset does not cover every feature in every tier")
+        raise RuntimeError("канонический полигональный набор не покрывает все признаки в каждом профиле")
 
     manifest = {
         "format": "aipackaging.polygon_dataset",

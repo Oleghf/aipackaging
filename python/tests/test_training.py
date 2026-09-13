@@ -1,4 +1,4 @@
-"""Малый интеграционный тест behavioral cloning M3."""
+"""Малый интеграционный тест поведенческого клонирования M3."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ def _one_step_episode() -> ExpertEpisode:
 
 
 def test_behavioral_cloning_overfits_single_expert_decision(tmp_path: Path) -> None:
-    """BC заметно увеличивает вероятность единственного expert action fixture."""
+    """BC увеличивает вероятность единственного экспертного действия тестового примера."""
 
     configure_determinism(42)
     episode = _one_step_episode()

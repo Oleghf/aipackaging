@@ -51,7 +51,7 @@ size_t uniqueCoordinateCount(const Figure & figure)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет появление preview после загрузки в пул
+  Проверяет появление предварительного просмотра после загрузки в пул
 */
 //--
 TEST(FigurePool, LoadPromotesPreview)
@@ -69,7 +69,7 @@ TEST(FigurePool, LoadPromotesPreview)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет уменьшение пула после выдачи preview
+  Проверяет уменьшение пула после выдачи предварительного просмотра
 */
 //--
 TEST(FigurePool, TakePreviewShrinksRemainingPool)
@@ -93,7 +93,7 @@ TEST(FigurePool, TakePreviewShrinksRemainingPool)
 //--
 //------------------------------------------------------------------------------
 /**
-  Проверяет возврат фигуры как текущей preview-фигуры
+  Проверяет возврат фигуры как текущей фигуры предварительного просмотра
 */
 //--
 TEST(FigurePool, ReturnAsPreviewMakesFigureCurrentPreviewAndPreservesOldPreview)
@@ -127,7 +127,7 @@ TEST(FigurePool, EmptyPoolIsSafe)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет одинаковую последовательность preview для пулов с одинаковым seed
+  Проверяет одинаковые предварительные фигуры при общем начальном значении
 */
 //--
 TEST(FigurePool, SeededPoolsUseSamePreviewSequence)
@@ -197,7 +197,7 @@ TEST(ObjectPoolLoader, FailsOnInvalidFormat)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет сериализацию remaining pool в OBJECT формат
+  Проверяет сериализацию оставшегося пула в формат объектов
 */
 //--
 TEST(ObjectPoolSaver, SavesRemainingPoolToText)
@@ -212,7 +212,7 @@ TEST(ObjectPoolSaver, SavesRemainingPoolToText)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет round-trip между saver и loader
+  Проверяет двустороннее преобразование между модулем сохранения и загрузчиком
 */
 //--
 TEST(ObjectPoolSaver, SupportsRoundTripWithLoader)
@@ -248,7 +248,7 @@ TEST(ObjectPoolSaver, SavesToFile)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет создание generic фигуры из набора Cell2D
+  Проверяет создание общей фигуры из набора `Cell2D`
 */
 //--
 TEST(ObjectFigure, SupportsMoveRotateAndPoints)
@@ -348,7 +348,7 @@ TEST(RotateCommand, UndoRestoresOriginalCoordinates)
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет отсутствие фантомного попадания Contains между разнесёнными клетками
+  Проверяет отсутствие ложного попадания при проверке разнесённых клеток
 */
 //--
 TEST(Figure, ContainsDoesNotHitPhantomBridge)

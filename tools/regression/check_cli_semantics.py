@@ -34,14 +34,14 @@ def projected_hash(solution_path: Path, projection: dict[str, list[str]]) -> str
 
 
 def find_solution(build_dir: Path, name: str) -> Path | None:
-    """Находит единственный результат CLI в single- или multi-config build tree."""
+    """Находит единственный результат CLI в дереве сборки с одной или несколькими конфигурациями."""
 
     matches = sorted(build_dir.rglob(name))
     return matches[0] if len(matches) == 1 else None
 
 
 def main() -> int:
-    """Проверяет наличие и семантический hash каждого зафиксированного решения."""
+    """Проверяет наличие и семантический хеш каждого зафиксированного решения."""
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", type=Path, required=True)
@@ -63,11 +63,11 @@ def main() -> int:
         if actual not in accepted:
             errors.append(f"{name}: ожидался один из {accepted}, получен {actual}")
     if errors:
-        print("CLI semantic regression failed:")
+        print("Семантическая регрессия CLI обнаружена:")
         for error in errors:
             print(f"- {error}")
         return 1
-    print(f"CLI semantic regression passed: {len(manifest['solutions'])} solution(s).")
+    print(f"Семантическая проверка CLI пройдена: решений — {len(manifest['solutions'])}.")
     return 0
 
 

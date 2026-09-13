@@ -15,8 +15,8 @@ target_compile_definitions(_aipackaging_solver PRIVATE
   AIPACKAGING_BUILD_REVISION="${AIPACKAGING_BUILD_REVISION}"
 )
 if (MINGW)
-  # Editable-сборка может выбрать MinGW из PATH. Статическое подключение его
-  # runtime сохраняет wheel самодостаточным и не влияет на сборку MSVC/Linux.
+# Редактируемая сборка может выбрать MinGW из переменной `PATH`. Статическое подключение его
+# среды выполнения сохраняет пакет Python самодостаточным и не влияет на сборку MSVC/Linux.
   target_link_options(_aipackaging_solver PRIVATE -static-libgcc -static-libstdc++ -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic)
   get_filename_component(AIPACKAGING_MINGW_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
   find_file(AIPACKAGING_WINPTHREAD_DLL libwinpthread-1.dll PATHS "${AIPACKAGING_MINGW_BIN}" NO_DEFAULT_PATH REQUIRED)

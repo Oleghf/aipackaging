@@ -12,7 +12,7 @@ using namespace aipackaging::solver;
 using namespace aipackaging::solver::detail;
 } // namespace
 
-/// Проверяет timeout общего runtime без ожидания реального wall-clock времени.
+/// Проверяет ограничение времени общего механизма без реального ожидания.
 TEST(SearchRuntime, UsesInjectedMonotonicClockForTimeout)
 {
   SolverConfig config;
@@ -27,7 +27,7 @@ TEST(SearchRuntime, UsesInjectedMonotonicClockForTimeout)
   EXPECT_EQ(runtime.stopReason(), SearchStopReason::TimedOut);
 }
 
-/// Проверяет приоритет явной отмены при одновременном достижении timeout.
+/// Проверяет приоритет явной отмены при одновременном достижении ограничения времени.
 TEST(SearchRuntime, GivesCancellationPriorityAtSameSafeBoundary)
 {
   SolverConfig config;
@@ -46,7 +46,7 @@ TEST(SearchRuntime, GivesCancellationPriorityAtSameSafeBoundary)
   EXPECT_EQ(runtime.stopReason(), SearchStopReason::Cancelled);
 }
 
-/// Проверяет общие счётчики, временные компоненты и содержимое progress-снимка.
+/// Проверяет общие счётчики, временные компоненты и снимок хода выполнения.
 TEST(SearchRuntime, AccumulatesMetricsAndReportsProgress)
 {
   SolverConfig config;

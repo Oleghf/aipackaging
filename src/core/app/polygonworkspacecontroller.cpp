@@ -11,11 +11,11 @@ namespace
 {
 using namespace aipackaging::solver;
 
-/// Выполняет обычный baseline через общий управляемый API solver-а.
+/// Выполняет обычный базовый алгоритм через общий управляемый API решателя.
 class BaselinePolygonSolverBackend final : public IPolygonSolverBackend
 {
 public:
-  /// Передаёт задачу, настройки и execution-control полигональному solver-у.
+  /// Передаёт задачу, настройки и управление выполнением полигональному решателю.
   PolygonSolverExecutionResult run(const PolygonProblem & problem, const SolverConfig & config,
                                    const PolygonExecutionControl & control) override
   {
@@ -23,7 +23,7 @@ public:
   }
 };
 
-/// Переводит микронную точку кольца в миллиметровую presentation-точку.
+/// Переводит микронную точку кольца в миллиметровую точку модели представления.
 PolygonViewPoint toViewPoint(const PolygonPoint64 & point, std::int64_t offsetX, std::int64_t offsetY)
 {
   return {static_cast<double>(point.x + offsetX) / 1000.0, static_cast<double>(point.y + offsetY) / 1000.0};
@@ -42,11 +42,11 @@ PolygonWorkspaceController::PolygonWorkspaceController(std::shared_ptr<IPolygonW
   : view_(std::move(view))
   , backend_(backend ? std::move(backend) : std::make_shared<BaselinePolygonSolverBackend>())
 {
-  snapshot_.statusText = "Откройте polygon_problem v1";
+  snapshot_.statusText = "Откройте задачу `polygon_problem` v1";
   publish();
 }
 
-/// Запрашивает cooperative cancellation и синхронно завершает принадлежащий worker.
+/// Запрашивает совместную отмену и синхронно завершает принадлежащий рабочий поток.
 PolygonWorkspaceController::~PolygonWorkspaceController()
 {
   if (worker_.joinable())
@@ -56,7 +56,7 @@ PolygonWorkspaceController::~PolygonWorkspaceController()
   }
 }
 
-/// Устанавливает callbacks, удерживающие контроллер только на время конкретного вызова.
+/// Устанавливает функции обратного вызова, удерживающие контроллер только на время конкретного вызова.
 void PolygonWorkspaceController::bindActions()
 {
   const std::weak_ptr<PolygonWorkspaceController> weak = weak_from_this();
@@ -121,7 +121,7 @@ void PolygonWorkspaceController::openProblem(const std::string & filePath)
   publish();
 }
 
-/// Проверяет доступность результата и делегирует запись strict serializer-у.
+/// Проверяет доступность результата и делегирует запись строгому сериализатору.
 void PolygonWorkspaceController::saveSolution(const std::string & filePath)
 {
   if (filePath.empty() || !saveable_ || !solution_ || !problem_)
@@ -140,14 +140,14 @@ void PolygonWorkspaceController::saveSolution(const std::string & filePath)
   publish();
 }
 
-/// Копирует неизменяемый вход в worker и доставляет progress/result через UI-dispatcher.
+/// Копирует вход в рабочий поток и доставляет ход выполнения и итог через диспетчер UI.
 void PolygonWorkspaceController::start(const SolverConfig & config)
 {
   if (!problem_ || snapshot_.state == PolygonWorkspaceState::Running)
     return;
   if (!validConfig(config))
   {
-    snapshot_.statusText = "Параметры solver должны быть положительными";
+    snapshot_.statusText = "Параметры решателя должны быть положительными";
     publish();
     return;
   }
@@ -223,7 +223,7 @@ void PolygonWorkspaceController::start(const SolverConfig & config)
     });
 }
 
-/// Передаёт stop-request worker-у и оставляет окончательное состояние completion callback-у.
+/// Передаёт запрос остановки рабочему потоку и оставляет итог завершающему вызову.
 void PolygonWorkspaceController::cancel()
 {
   if (snapshot_.state != PolygonWorkspaceState::Running || !worker_.joinable())
@@ -239,7 +239,7 @@ PolygonWorkspaceSnapshot PolygonWorkspaceController::snapshot() const
   return snapshot_;
 }
 
-/// Вычисляет доступность кнопок из единственного состояния и отправляет снимок view.
+/// Вычисляет доступность кнопок из единственного состояния и отправляет снимок представлению.
 void PolygonWorkspaceController::publish()
 {
   const bool running = snapshot_.state == PolygonWorkspaceState::Running;
@@ -260,7 +260,7 @@ void PolygonWorkspaceController::acceptProgress(std::uint64_t runId, const Polyg
   publish();
 }
 
-/// Повторно валидирует результат и атомарно заменяет presentation-модель актуального запуска.
+/// Повторно проверяет результат и атомарно заменяет модель представления актуального запуска.
 void PolygonWorkspaceController::acceptResult(std::uint64_t runId, PolygonSolverExecutionResult result)
 {
   if (runId != runId_ || snapshot_.state != PolygonWorkspaceState::Running || !problem_)
@@ -269,7 +269,7 @@ void PolygonWorkspaceController::acceptResult(std::uint64_t runId, PolygonSolver
   if (!validation.success)
   {
     snapshot_.state = PolygonWorkspaceState::Error;
-    snapshot_.statusText = "Solver вернул невалидный результат: " + validation.error;
+    snapshot_.statusText = "Решатель вернул некорректный результат: " + validation.error;
     publish();
     return;
   }
@@ -281,7 +281,7 @@ void PolygonWorkspaceController::acceptResult(std::uint64_t runId, PolygonSolver
   if (result.cancelled)
   {
     snapshot_.state = PolygonWorkspaceState::Cancelled;
-    snapshot_.statusText = "Поиск отменён; показан последний partial";
+    snapshot_.statusText = "Поиск отменён; показано последнее частичное решение";
     saveable_ = false;
   }
   else
@@ -290,16 +290,16 @@ void PolygonWorkspaceController::acceptResult(std::uint64_t runId, PolygonSolver
     switch (solutionStatus)
     {
       case SolveStatus::TimedOut:
-        snapshot_.statusText = "Истёк timeout; показано лучшее проверенное partial";
+        snapshot_.statusText = "Истекло время поиска; показано лучшее проверенное частичное решение";
         break;
       case SolveStatus::BudgetExhausted:
         snapshot_.statusText = "Исчерпан бюджет; показано лучшее проверенное решение";
         break;
       case SolveStatus::UnsupportedEnvironment:
-        snapshot_.statusText = "Превышен предел среды; показано лучшее проверенное partial";
+        snapshot_.statusText = "Превышен предел среды; показано лучшее проверенное частичное решение";
         break;
       case SolveStatus::NoSolutionFound:
-        snapshot_.statusText = "Полное решение не найдено; показан проверенный partial";
+        snapshot_.statusText = "Полное решение не найдено; показано проверенное частичное решение";
         break;
       default:
         snapshot_.statusText = complete ? "Полная раскладка построена" : "Показано лучшее частичное решение";
@@ -310,17 +310,17 @@ void PolygonWorkspaceController::acceptResult(std::uint64_t runId, PolygonSolver
   publish();
 }
 
-/// Сохраняет прежнюю сцену и переводит только актуальный запуск в состояние error.
+/// Сохраняет прежнюю сцену и переводит только актуальный запуск в состояние ошибки.
 void PolygonWorkspaceController::acceptFailure(std::uint64_t runId, const std::string & error)
 {
   if (runId != runId_ || snapshot_.state != PolygonWorkspaceState::Running)
     return;
   snapshot_.state = PolygonWorkspaceState::Error;
-  snapshot_.statusText = "Ошибка solver backend: " + error;
+  snapshot_.statusText = "Ошибка внутренней реализации решателя: " + error;
   publish();
 }
 
-/// Переводит авторитетные микронные кольца и objective в миллиметровый view snapshot.
+/// Переводит авторитетные микронные кольца и целевую функцию в миллиметровый снимок представления.
 void PolygonWorkspaceController::rebuildPresentation(const PolygonSolution * solution)
 {
   snapshot_.scene = {};

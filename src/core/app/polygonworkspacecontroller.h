@@ -9,7 +9,7 @@
 #include <polygonenvironment.h>
 #include <polygonworkspaceview.h>
 
-/// Абстракция backend-а полигонального поиска для baseline и будущей модели.
+/// Абстракция внутренней реализации полигонального поиска для базовых алгоритмов и модели.
 class IPolygonSolverBackend
 {
 public:
@@ -21,39 +21,39 @@ public:
                                                                 const aipackaging::solver::PolygonExecutionControl & control) = 0;
 };
 
-/// Оркестрирует загрузку, асинхронный поиск, проверку и сохранение polygon_solution.
+/// Управляет загрузкой, асинхронным поиском, проверкой и сохранением `polygon_solution`.
 class PolygonWorkspaceController : public std::enable_shared_from_this<PolygonWorkspaceController>
 {
 public:
-  /// Создаёт контроллер для представления и необязательного тестового backend-а.
+  /// Создаёт контроллер для представления и необязательной тестовой реализации.
   explicit PolygonWorkspaceController(std::shared_ptr<IPolygonWorkspaceView> view,
                                       std::shared_ptr<IPolygonSolverBackend> backend = {});
-  /// Останавливает активную работу и дожидается завершения worker-потока.
+  /// Останавливает активную работу и дожидается завершения рабочего потока.
   ~PolygonWorkspaceController();
 
-  /// Привязывает безопасные weak-callback пользовательских действий к представлению.
+  /// Привязывает безопасные слабые функции обратного вызова к представлению.
   void bindActions();
-  /// Загружает strict polygon_problem, не разрушая прежнюю сцену при ошибке.
+  /// Загружает строгий `polygon_problem`, сохраняя прежнюю сцену при ошибке.
   void openProblem(const std::string & filePath);
-  /// Сохраняет последний разрешённый independently validated polygon_solution.
+  /// Сохраняет последнее разрешённое и независимо проверенное решение `polygon_solution`.
   void saveSolution(const std::string & filePath);
-  /// Запускает выбранный baseline асинхронно, если задача готова.
+  /// Запускает выбранный базовый алгоритм асинхронно, если задача готова.
   void start(const aipackaging::solver::SolverConfig & config);
   /// Запрашивает отмену текущего поиска без блокировки GUI.
   void cancel();
-  /// Возвращает последний опубликованный presentation-снимок.
+  /// Возвращает последний опубликованный снимок модели представления.
   PolygonWorkspaceSnapshot snapshot() const;
 
 private:
   /// Публикует текущее состояние и вычисляет доступность действий.
   void publish();
-  /// Принимает актуальный progress callback в UI-потоке.
+  /// Принимает актуальное сообщение о ходе выполнения в потоке UI.
   void acceptProgress(std::uint64_t runId, const aipackaging::solver::PolygonSolverProgress & progress);
-  /// Принимает результат актуального worker-а и повторно проверяет его.
+  /// Принимает результат актуального рабочего потока и повторно проверяет его.
   void acceptResult(std::uint64_t runId, aipackaging::solver::PolygonSolverExecutionResult result);
-  /// Завершает актуальный запуск диагностируемой внутренней ошибкой backend-а.
+  /// Завершает актуальный запуск диагностируемой ошибкой внутренней реализации.
   void acceptFailure(std::uint64_t runId, const std::string & error);
-  /// Формирует presentation-сцену и список неразмещённых экземпляров.
+  /// Формирует сцену модели представления и список неразмещённых экземпляров.
   void rebuildPresentation(const aipackaging::solver::PolygonSolution * solution);
 
   std::shared_ptr<IPolygonWorkspaceView> view_;

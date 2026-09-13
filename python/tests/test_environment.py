@@ -1,4 +1,4 @@
-"""Контрактные тесты Python-обёртки и NumPy observation v1."""
+"""Контрактные тесты оболочки Python и наблюдения NumPy v1."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def _environment() -> GridNestingEnv:
 
 
 def test_observation_shapes_dtypes_and_read_only() -> None:
-    """Все публичные массивы имеют закреплённые shape/dtype и запрещают запись."""
+    """Все публичные массивы имеют закреплённые форму и тип и запрещают запись."""
 
     environment = _environment()
     observation, info = environment.reset(seed=7)
@@ -67,7 +67,7 @@ def test_gym_like_step_and_exceptions_preserve_state() -> None:
 
 
 def test_from_dict_is_strict_and_limits_are_separate_from_geometry() -> None:
-    """Strict JSON и ограничения среды возвращают ValueError с диагностикой."""
+    """Строгий JSON и ограничения среды возвращают ValueError с диагностикой."""
 
     problem = json.loads(FIXTURE.read_text(encoding="utf-8"))
     problem["unknown"] = True
@@ -79,7 +79,7 @@ def test_from_dict_is_strict_and_limits_are_separate_from_geometry() -> None:
 
 
 def test_compact_observation_and_neural_snapshot_v2() -> None:
-    """Compact API сохраняет динамические поля и формирует валидный solution v2."""
+    """Компактный API сохраняет динамические поля и формирует корректное решение v2."""
 
     environment = _environment()
     fixed = environment.static_observation()

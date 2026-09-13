@@ -46,7 +46,7 @@ bool readDouble(const Json & object, const char * key, double & value)
   return std::isfinite(value);
 }
 
-/// Читает обязательное целое в диапазоне int.
+/// Читает обязательное целое в диапазоне типа `int`.
 bool readInt(const Json & object, const char * key, int & value)
 {
   if (!object.contains(key) || !object.at(key).is_number_integer())
@@ -65,7 +65,7 @@ bool readInt(const Json & object, const char * key, int & value)
   }
 }
 
-/// Читает обязательное беззнаковое целое в диапазоне uint64.
+/// Читает обязательное беззнаковое целое в диапазоне типа `uint64_t`.
 bool readUint64(const Json & object, const char * key, std::uint64_t & value)
 {
   if (!object.contains(key) || !object.at(key).is_number_integer())
@@ -212,7 +212,7 @@ PolygonSolutionLoadResult solutionFailure(const std::string & error)
   return {false, {}, error};
 }
 
-/// Читает solver metadata общего baseline-формата.
+/// Читает метаданные решателя общего формата базовых алгоритмов.
 bool readSolver(const Json & value, SolverMetadata & solver)
 {
   if (!onlyKeys(value, {"name", "projectVersion", "revision", "seed", "randomIterations", "beamWidth", "maxExpandedStates",
@@ -236,7 +236,7 @@ bool readSolver(const Json & value, SolverMetadata & solver)
 }
 } // namespace
 
-/// Читает strict polygon_problem v1 и запускает полную геометрическую нормализацию.
+/// Читает строгий `polygon_problem` v1 и запускает геометрическую нормализацию.
 PolygonProblemLoadResult loadPolygonProblemFromText(const std::string & text)
 {
   Json root;
@@ -309,7 +309,7 @@ PolygonProblemLoadResult loadPolygonProblemFromText(const std::string & text)
   return {true, std::move(problem), {}};
 }
 
-/// Читает файл целиком и передаёт текст strict parser.
+/// Читает файл целиком и передаёт текст строгому синтаксическому анализатору.
 PolygonProblemLoadResult loadPolygonProblemFromFile(const std::string & filePath)
 {
   std::ifstream input(filePath);
@@ -320,7 +320,7 @@ PolygonProblemLoadResult loadPolygonProblemFromFile(const std::string & filePath
   return loadPolygonProblemFromText(buffer.str());
 }
 
-/// Строит стабильное JSON-дерево исходной задачи без раскрытия nlohmann в API.
+/// Строит стабильное дерево JSON исходной задачи без раскрытия nlohmann/json в API.
 std::string savePolygonProblemToText(const PolygonProblem & problem)
 {
   Json parts = Json::array();
@@ -349,7 +349,7 @@ std::string savePolygonProblemToText(const PolygonProblem & problem)
   return root.dump(2) + '\n';
 }
 
-/// Разбирает polygon_solution v1 без доверия к recorded objective.
+/// Разбирает `polygon_solution` v1 без доверия к записанной целевой функции.
 PolygonSolutionLoadResult loadPolygonSolutionFromText(const std::string & text)
 {
   Json root;
@@ -431,7 +431,7 @@ PolygonSolutionLoadResult loadPolygonSolutionFromText(const std::string & text)
   return {true, std::move(solution), {}};
 }
 
-/// Читает solution-файл целиком и делегирует текстовому parser.
+/// Читает файл решения целиком и делегирует обработку текстовому синтаксическому анализатору.
 PolygonSolutionLoadResult loadPolygonSolutionFromFile(const std::string & filePath)
 {
   std::ifstream input(filePath);
@@ -442,7 +442,7 @@ PolygonSolutionLoadResult loadPolygonSolutionFromFile(const std::string & filePa
   return loadPolygonSolutionFromText(buffer.str());
 }
 
-/// Сериализует exact-координаты, objective, метрики и baseline provenance.
+/// Сериализует точные координаты, целевую функцию, метрики и происхождение результата.
 std::string savePolygonSolutionToText(const PolygonSolution & solution)
 {
   Json placements = Json::array();
@@ -493,7 +493,7 @@ std::string savePolygonSolutionToText(const PolygonSolution & solution)
   return root.dump(2) + '\n';
 }
 
-/// Открывает output в binary truncate и проверяет завершение записи.
+/// Открывает выходной файл в двоичном режиме с очисткой и проверяет завершение записи.
 bool savePolygonSolutionToFile(const std::string & filePath, const PolygonSolution & solution, std::string & error)
 {
   std::ofstream output(filePath, std::ios::binary | std::ios::trunc);
@@ -511,7 +511,7 @@ bool savePolygonSolutionToFile(const std::string & filePath, const PolygonSoluti
   return true;
 }
 
-/// Разбирает только корневой JSON object и возвращает строковый format.
+/// Разбирает только корневой объект JSON и возвращает строковое поле формата.
 std::string detectJsonFormat(const std::string & text)
 {
   try

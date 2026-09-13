@@ -7,7 +7,7 @@ from typing import Any
 
 
 def train(arguments: Namespace) -> dict[str, Any]:
-    """Запускает BC/PPO только после явного выбора команды train."""
+    """Запускает BC/PPO только после явного выбора команды `train`."""
 
     from ..training import train_pipeline
 
@@ -22,7 +22,7 @@ def train(arguments: Namespace) -> dict[str, Any]:
 
 
 def evaluate(arguments: Namespace) -> dict[str, Any]:
-    """Оценивает checkpoint только после явного выбора команды evaluate."""
+    """Оценивает контрольную точку после явного выбора команды `evaluate`."""
 
     from ..evaluation import evaluate_checkpoint
 
@@ -38,7 +38,7 @@ def evaluate(arguments: Namespace) -> dict[str, Any]:
 
 
 def export_onnx(arguments: Namespace) -> dict[str, Any]:
-    """Экспортирует ONNX bundle только после явного выбора команды export-onnx."""
+    """Экспортирует комплект ONNX только после явного выбора команды `export-onnx`."""
 
     from ..exporting import export_policy_bundle
 
@@ -51,7 +51,7 @@ def export_onnx(arguments: Namespace) -> dict[str, Any]:
 
 
 def verify_model(arguments: Namespace) -> dict[str, Any]:
-    """Проверяет model bundle только после явного выбора команды verify-model."""
+    """Проверяет комплект модели только после явного выбора команды `verify-model`."""
 
     from ..evaluation import verify_model_bundle
 

@@ -18,7 +18,7 @@ struct GridLearningLimits
   std::size_t maxActions = 1000000;
 };
 
-/// Плоское наблюдение C++, из которого binding формирует типизированные NumPy-массивы.
+/// Плоское наблюдение C++, из которого привязка формирует типизированные массивы NumPy.
 struct GridLearningObservation
 {
   int rows = 0;
@@ -39,7 +39,7 @@ struct GridLearningObservation
   std::vector<float> objective;
 };
 
-/// Неизменная часть observation v1, которую достаточно передать Python один раз за эпизод.
+/// Неизменная часть наблюдения v1, передаваемая в Python один раз за эпизод.
 struct GridLearningStaticObservation
 {
   int rows = 0;
@@ -56,7 +56,7 @@ struct GridLearningStaticObservation
   std::vector<float> candidateFeatures;
 };
 
-/// Изменяемая часть observation v1 после reset или одного допустимого действия.
+/// Изменяемая часть наблюдения v1 после сброса или одного допустимого действия.
 struct GridLearningDynamicObservation
 {
   std::vector<std::uint8_t> occupancy;
@@ -65,7 +65,7 @@ struct GridLearningDynamicObservation
   std::vector<float> objective;
 };
 
-/// Аудируемые изменения ранга и objective после одного допустимого действия.
+/// Аудируемые изменения ранга и целевой функции после одного допустимого действия.
 struct GridRewardComponents
 {
   std::uint64_t rankBefore = 0;
@@ -99,7 +99,7 @@ struct GridLearningCompactStepResult
   GridRewardComponents rewardComponents;
 };
 
-/// Детерминированный эпизод с постоянным action space для обучения и replay.
+/// Детерминированный эпизод с постоянным пространством действий для обучения и повтора.
 class GridLearningEnvironment
 {
 public:
@@ -113,15 +113,15 @@ public:
   GridLearningDynamicObservation resetCompact();
   /// Возвращает неизменные признаки задачи и постоянного каталога действий.
   GridLearningStaticObservation staticObservation() const;
-  /// Возвращает occupancy, remaining, action mask и objective текущего состояния.
+  /// Возвращает занятость, оставшиеся детали, маску действий и целевую функцию.
   GridLearningDynamicObservation dynamicObservation() const;
   /// Возвращает независимый снимок текущего наблюдения.
   GridLearningObservation observation() const;
   /// Применяет действие по стабильному индексу и возвращает результат перехода.
   GridLearningStepResult step(std::size_t actionIndex);
-  /// Применяет действие и возвращает только изменяемую часть observation.
+  /// Применяет действие и возвращает только изменяемую часть наблюдения.
   GridLearningCompactStepResult stepCompact(std::size_t actionIndex);
-  /// Формирует независимо проверяемое решение из текущих размещений и provenance вызывающего кода.
+  /// Формирует независимо проверяемое решение из текущих размещений и сведений вызывающего кода о происхождении.
   GridSolution snapshotSolution(const SolverMetadata & solver, SolveStatus incompleteStatus = SolveStatus::BudgetExhausted) const;
 
   /// Возвращает действие стабильного каталога по индексу.
@@ -140,9 +140,9 @@ public:
   bool isTerminal() const { return terminal_; }
   /// Сообщает, завершился ли неполный эпизод из-за отсутствия действий.
   bool isDeadEnd() const { return terminal_ && !complete_; }
-  /// Возвращает текущий точный смешанный ранг reward v1.
+  /// Возвращает текущий точный смешанный ранг вознаграждения v1.
   std::uint64_t rank() const;
-  /// Возвращает общий нормирующий верхний предел reward v1.
+  /// Возвращает общий нормирующий верхний предел вознаграждения v1.
   std::uint64_t rankUpperBound() const { return rankUpperBound_; }
   /// Возвращает идентификатор задачи текущего эпизода.
   const std::string & problemId() const { return environment_->problem().problemId; }
@@ -152,17 +152,17 @@ private:
   GridLearningEnvironment(std::unique_ptr<GridEnvironment> environment, GridLearningLimits limits,
                           std::vector<GridAction> actions);
 
-  /// Строит маску допустимых действий для текущего value-state.
+  /// Строит маску допустимых действий для текущего изменяемого состояния.
   std::vector<std::uint8_t> buildActionMask() const;
-  /// Пересчитывает признаки complete/dead-end из текущего состояния и маски.
+  /// Пересчитывает признаки полноты и тупика из текущего состояния и маски.
   void updateTerminal(const std::vector<std::uint8_t> & actionMask);
-  /// Вычисляет смешанный ранг reward v1 с проверенной целочисленной арифметикой.
+  /// Вычисляет смешанный ранг вознаграждения v1 с проверенной арифметикой.
   std::uint64_t calculateRank(const ObjectiveComponents & objective) const;
   /// Создаёт неизменную часть наблюдения: маски фигур и признаки каталога.
   GridLearningObservation buildStaticObservation() const;
   /// Собирает динамическое наблюдение с уже вычисленной маской действий.
   GridLearningDynamicObservation buildDynamicObservation(std::vector<std::uint8_t> actionMask) const;
-  /// Проверяет и применяет действие, возвращая общие для полного и compact API данные перехода.
+  /// Проверяет и применяет действие, возвращая общие для полного и компактного API данные перехода.
   GridLearningCompactStepResult applyStep(std::size_t actionIndex);
 
   std::unique_ptr<GridEnvironment> environment_;

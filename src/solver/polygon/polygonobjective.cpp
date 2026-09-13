@@ -11,7 +11,7 @@ namespace aipackaging::solver
 {
 namespace internal
 {
-/// Консервативно помечает растровую клетку занятой при любом контакте с outer proxy.
+/// Консервативно помечает растровую клетку занятой при любом контакте с внешним заменяющим контуром.
 bool rasterCellOccupied(const PolygonEnvironment & environment, const PolygonState & state, std::int64_t minX, std::int64_t minY,
                         std::int64_t maxX, std::int64_t maxY)
 {
@@ -38,7 +38,7 @@ bool rasterCellOccupied(const PolygonEnvironment & environment, const PolygonSta
 
 using namespace internal;
 
-/// Вычисляет primary по точным bounds и secondary по стабильной сетке 128x128.
+/// Вычисляет основные метрики по точным границам, а вторичные — по стабильной сетке 128x128.
 PolygonObjectiveComponents PolygonEnvironment::evaluate(const PolygonState & state) const
 {
   if (state.objectiveCached)
@@ -79,7 +79,7 @@ PolygonObjectiveComponents PolygonEnvironment::evaluate(const PolygonState & sta
         rasterCellOccupied(*this, state, minX, minY, maxX, maxY) ? 0 : 1;
     }
 
-  // Histogram-алгоритм находит крупнейший свободный осевой прямоугольник.
+  // Алгоритм по гистограмме находит крупнейший свободный осевой прямоугольник.
   std::array<int, RASTER_SIZE> heights{};
   std::size_t largestRectangleCells = 0;
   for (int row = 0; row < RASTER_SIZE; ++row)

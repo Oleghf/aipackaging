@@ -38,7 +38,7 @@ struct PolygonPlacedPartView
   std::size_t colorIndex = 0;
 };
 
-/// Полная presentation-модель листа и текущей раскладки.
+/// Полная модель представления листа и текущей раскладки.
 struct PolygonSceneView
 {
   double sheetWidth = 0.0;
@@ -69,7 +69,7 @@ struct PolygonWorkspaceSnapshot
   std::vector<std::string> unplacedInstances;
 };
 
-/// Набор действий GUI, привязываемых application-контроллером.
+/// Набор действий GUI, привязываемых контроллером приложения.
 struct PolygonWorkspaceActions
 {
   std::function<void(const std::string &)> openProblem;
@@ -86,9 +86,9 @@ public:
   virtual ~IPolygonWorkspaceView() = default;
   /// Устанавливает обработчики пользовательских действий полигональной вкладки.
   virtual void setPolygonWorkspaceActions(PolygonWorkspaceActions actions) = 0;
-  /// Показывает новый неизменяемый снимок состояния полигонального workflow.
+  /// Показывает новый неизменяемый снимок состояния полигонального рабочего процесса.
   virtual void presentPolygonWorkspace(const PolygonWorkspaceSnapshot & snapshot) = 0;
-  /// Планирует выполнение callback в потоке, которому принадлежит представление.
+  /// Планирует обратный вызов в потоке, которому принадлежит представление.
   virtual void postToPolygonUi(std::function<void()> callback) = 0;
 };
 

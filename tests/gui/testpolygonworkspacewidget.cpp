@@ -17,7 +17,7 @@
 
 namespace
 {
-/// Создаёт единственный QApplication для widget-тестов либо возвращает существующий.
+/// Создаёт единственный `QApplication` для тестов виджетов либо возвращает существующий.
 QApplication * ensureApplication()
 {
   if (auto * application = qobject_cast<QApplication *>(QCoreApplication::instance()))
@@ -42,7 +42,7 @@ TEST(PolygonWorkspaceWidget, MainWindowContainsTwoWorkspaces)
   EXPECT_EQ(tabs->tabText(1), QStringLiteral("Полигональный раскрой"));
 }
 
-/// Проверяет значения baseline по умолчанию, сигналы и блокировку controls во время запуска.
+/// Проверяет базовый алгоритм по умолчанию, сигналы и блокировку элементов управления.
 TEST(PolygonWorkspaceWidget, ExposesConfiguredActionsAndRunningState)
 {
   ensureApplication();
@@ -127,7 +127,7 @@ TEST(PolygonWorkspaceWidget, RendersPolygonWithHole)
   EXPECT_NE(image.pixelColor(image.width() / 2, image.height() / 2), QColor(Qt::transparent));
 }
 
-/// Проверяет заметное предупреждение и перечень экземпляров для partial-раскладки.
+/// Проверяет предупреждение и перечень экземпляров для частичной раскладки.
 TEST(PolygonWorkspaceWidget, HighlightsPartialAndListsUnplacedInstances)
 {
   ensureApplication();

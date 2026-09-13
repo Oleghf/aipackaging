@@ -16,7 +16,7 @@ using namespace aipackaging::solver;
 using namespace aipackaging::tests;
 } // namespace
 
-/// Проверяет все baseline и независимый валидатор на простой задаче.
+/// Проверяет все базовые алгоритмы и независимый валидатор на простой задаче.
 TEST(PolygonSolver, SolvesAndValidatesEveryBaseline)
 {
   for (const SolverKind kind : {SolverKind::InputFirstFit, SolverKind::AreaLeftBottom, SolverKind::MaxSideLeftBottom,
@@ -37,7 +37,7 @@ TEST(PolygonSolver, SolvesAndValidatesEveryBaseline)
   }
 }
 
-/// Проверяет сохранение лучшего partial всеми baseline на несовместимой вместимости.
+/// Проверяет сохранение лучшего частичного решения всеми базовыми алгоритмами.
 TEST(PolygonSolver, ReturnsValidatedPartialForEveryBaseline)
 {
   PolygonProblem value = problem();
@@ -61,7 +61,7 @@ TEST(PolygonSolver, ReturnsValidatedPartialForEveryBaseline)
   }
 }
 
-/// Проверяет детерминированные placements и счётчики при одинаковом random seed.
+/// Проверяет детерминированные размещения и счётчики с общим начальным значением.
 TEST(PolygonSolver, RepeatsSeededSearch)
 {
   SolverConfig config;
@@ -77,7 +77,7 @@ TEST(PolygonSolver, RepeatsSeededSearch)
   EXPECT_EQ(first.metrics.expandedStates, second.metrics.expandedStates);
 }
 
-/// Проверяет диагностируемое исчерпание детерминированного beam-бюджета.
+/// Проверяет диагностируемое исчерпание бюджета детерминированного лучевого поиска.
 TEST(PolygonSolver, ReportsBeamBudgetExhaustion)
 {
   SolverConfig config;
@@ -91,7 +91,7 @@ TEST(PolygonSolver, ReportsBeamBudgetExhaustion)
   EXPECT_TRUE(validatePolygonSolution(problem(), solution).success);
 }
 
-/// Проверяет progress каждого baseline и отсутствие влияния callback на детерминированный результат.
+/// Проверяет ход базовых алгоритмов и отсутствие влияния обратного вызова на результат.
 TEST(PolygonSolver, ReportsProgressWithoutChangingSolution)
 {
   for (const SolverKind kind : {SolverKind::InputFirstFit, SolverKind::AreaLeftBottom, SolverKind::MaxSideLeftBottom,
@@ -124,7 +124,7 @@ TEST(PolygonSolver, ReportsProgressWithoutChangingSolution)
   }
 }
 
-/// Проверяет cooperative cancellation до первой мутации и валидность возвращённого partial.
+/// Проверяет совместную отмену до первой мутации и корректность частичного решения.
 TEST(PolygonSolver, CancelsAtSafeBoundary)
 {
   for (const SolverKind kind : {SolverKind::InputFirstFit, SolverKind::AreaLeftBottom, SolverKind::MaxSideLeftBottom,
@@ -145,7 +145,7 @@ TEST(PolygonSolver, CancelsAtSafeBoundary)
   }
 }
 
-/// Проверяет возврат лучшего independently validated partial после отмены между экземплярами.
+/// Проверяет возврат лучшего независимо проверенного частичного решения после отмены.
 TEST(PolygonSolver, ReturnsBestPartialWhenCancelledAfterProgress)
 {
   SolverConfig config;

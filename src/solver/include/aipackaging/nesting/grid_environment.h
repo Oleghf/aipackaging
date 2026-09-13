@@ -28,7 +28,7 @@ struct GridPartInstance
   int maxDimension = 0;
 };
 
-/// Value-state среды: занятость листа и уже применённые действия.
+/// Изменяемое состояние среды: занятость листа и уже применённые действия.
 struct GridState
 {
   std::vector<unsigned char> occupancy;
@@ -77,9 +77,9 @@ private:
   std::vector<GridPartInstance> instances_;
 };
 
-/// Проверяет структуру и геометрические инварианты задачи grid_problem v1.
+/// Проверяет структуру и геометрические инварианты задачи `grid_problem` v1.
 ValidationResult validateGridProblem(const GridProblem & problem);
-/// Независимо проверяет placements и записанную оценку решения.
+/// Независимо проверяет размещения и записанную оценку решения.
 ValidationResult validateGridSolution(const GridProblem & problem, const GridSolution & solution);
 } // namespace aipackaging::solver
 

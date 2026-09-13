@@ -1,4 +1,4 @@
-"""Тесты воспроизводимости генератора, manifest и replay датасета."""
+"""Тесты воспроизводимости генератора, манифеста и повторного проигрывания набора данных."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def test_generator_respects_profile_and_is_deterministic(tier: str) -> None:
 
 
 def test_single_and_multi_worker_outputs_are_byte_identical(tmp_path: Path) -> None:
-    """Число worker не влияет ни на порядок, ни на gzip и manifest."""
+    """Число рабочих процессов не влияет на порядок, gzip и манифест."""
 
     splits = {"train": 1, "validation": 0, "test": 0}
     single = tmp_path / "single"
@@ -62,7 +62,7 @@ def test_single_and_multi_worker_outputs_are_byte_identical(tmp_path: Path) -> N
 
 
 def test_verifier_detects_corrupted_shard(tmp_path: Path) -> None:
-    """Повреждение даже одного байта обнаруживается до replay."""
+    """Повреждение даже одного байта обнаруживается до повторного проигрывания."""
 
     root = tmp_path / "dataset"
     manifest = generate_dataset(
@@ -73,12 +73,12 @@ def test_verifier_detects_corrupted_shard(tmp_path: Path) -> None:
     )
     shard = root / manifest["shards"][0]["path"]
     shard.write_bytes(shard.read_bytes() + b"corruption")
-    with pytest.raises(ValueError, match="checksum mismatch"):
+    with pytest.raises(ValueError, match="контрольная сумма не совпадает"):
         verify_dataset(root)
 
 
 def test_verifier_rejects_duplicate_problem_and_damaged_action_audit(tmp_path: Path) -> None:
-    """Даже с пересчитанным checksum verifier отклоняет дубли ID и повреждённый replay."""
+    """Модуль проверки отклоняет дубли ID и повреждённый повтор даже с новым хешем."""
 
     root = tmp_path / "dataset"
     generate_dataset(
@@ -98,7 +98,7 @@ def test_verifier_rejects_duplicate_problem_and_damaged_action_audit(tmp_path: P
     problem_shard["records"] += 1
     problem_shard["sha256"] = sha256_file(problem_path)
     write_canonical_json(manifest_path, manifest)
-    with pytest.raises(ValueError, match="duplicate problemId"):
+    with pytest.raises(ValueError, match="повторяющийся problemId"):
         verify_dataset(root)
 
     write_jsonl_gzip(problem_path, problems)
@@ -113,5 +113,5 @@ def test_verifier_rejects_duplicate_problem_and_damaged_action_audit(tmp_path: P
     write_jsonl_gzip(trajectory_path, trajectories)
     trajectory_shard["sha256"] = sha256_file(trajectory_path)
     write_canonical_json(manifest_path, manifest)
-    with pytest.raises(ValueError, match="action index audit mismatch"):
+    with pytest.raises(ValueError, match="проверочные индексы действий не совпадают"):
         verify_dataset(root)

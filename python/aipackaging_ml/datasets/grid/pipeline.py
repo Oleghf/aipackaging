@@ -1,4 +1,4 @@
-"""Сборка воспроизводимых shards и manifest клеточного датасета v1."""
+"""Сборка воспроизводимых частей и манифеста клеточного набора данных v1."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def generate_dataset(
     split_sizes: Mapping[str, int] = DEFAULT_SPLITS,
     workers: int = 1,
 ) -> dict[str, Any]:
-    """Генерирует все shards и возвращает записанный manifest grid_dataset v1."""
+    """Создаёт все части и возвращает записанный манифест `grid_dataset` v1."""
 
     output_path = Path(output)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -38,7 +38,7 @@ def generate_dataset(
     if workers == 1:
         rollout_results = [rollout_task(task) for task in ordered_tasks]
     else:
-        # spawn обеспечивает одинаковую модель процессов на Windows, Linux и macOS.
+        # Порождение процессов обеспечивает одинаковую модель работы в Windows, Linux и macOS.
         context = multiprocessing.get_context("spawn")
         with context.Pool(processes=workers) as pool:
             rollout_results = pool.map(rollout_task, ordered_tasks)

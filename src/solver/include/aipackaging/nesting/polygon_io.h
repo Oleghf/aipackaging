@@ -7,7 +7,7 @@
 
 namespace aipackaging::solver
 {
-/// Результат строгой загрузки polygon_problem v1.
+/// Результат строгой загрузки задачи `polygon_problem` v1.
 struct PolygonProblemLoadResult
 {
   bool success = false;
@@ -15,7 +15,7 @@ struct PolygonProblemLoadResult
   std::string error;
 };
 
-/// Результат строгой загрузки polygon_solution v1.
+/// Результат строгой загрузки решения `polygon_solution` v1.
 struct PolygonSolutionLoadResult
 {
   bool success = false;
@@ -37,7 +37,7 @@ PolygonSolutionLoadResult loadPolygonSolutionFromFile(const std::string & filePa
 std::string savePolygonSolutionToText(const PolygonSolution & solution);
 /// Записывает полигональное решение в файл либо возвращает ошибку I/O.
 bool savePolygonSolutionToFile(const std::string & filePath, const PolygonSolution & solution, std::string & error);
-/// Возвращает значение корневого поля format без принятия доменного решения.
+/// Возвращает значение корневого поля `format` без принятия предметного решения.
 std::string detectJsonFormat(const std::string & text);
 } // namespace aipackaging::solver
 

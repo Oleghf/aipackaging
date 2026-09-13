@@ -38,7 +38,7 @@ std::string toString(const SolverFamily family)
   return "baseline";
 }
 
-/// Сравнивает строку со всеми допустимыми wire-значениями статуса и записывает найденный enum.
+/// Сравнивает строку со значениями статуса формата обмена и записывает перечисление.
 bool parseSolveStatus(const std::string & value, SolveStatus & status)
 {
   if (value == "solved")
@@ -58,7 +58,7 @@ bool parseSolveStatus(const std::string & value, SolveStatus & status)
   return true;
 }
 
-/// Сравнивает строку со всеми допустимыми wire-значениями семейства и записывает найденный enum.
+/// Сравнивает строку со значениями семейства формата обмена и записывает перечисление.
 bool parseSolverFamily(const std::string & value, SolverFamily & family)
 {
   if (value == "baseline")

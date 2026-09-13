@@ -194,7 +194,7 @@ void PackingController::loadPool(std::vector<std::shared_ptr<Figure>> figures)
 
 //------------------------------------------------------------------------------
 /**
-  Возвращает snapshot оставшегося пула
+  Возвращает снимок оставшегося пула
 */
 //--
 std::vector<std::shared_ptr<Figure>> PackingController::remainingPoolSnapshot() const
@@ -205,7 +205,7 @@ std::vector<std::shared_ptr<Figure>> PackingController::remainingPoolSnapshot() 
 
 //------------------------------------------------------------------------------
 /**
-  Снимает snapshot текущей сцены упаковки
+  Снимает состояние текущей сцены раскроя
 */
 //--
 PackingSceneSnapshot PackingController::packingSceneSnapshot() const
@@ -233,7 +233,7 @@ PackingSceneSnapshot PackingController::packingSceneSnapshot() const
 
 //------------------------------------------------------------------------------
 /**
-  Загружает snapshot сцены упаковки
+  Загружает снимок сцены раскроя
 */
 //--
 PackingSceneLoadResult PackingController::loadSceneSnapshot(const PackingSceneSnapshot & snapshot)
@@ -411,7 +411,7 @@ std::unique_ptr<ICommand> PackingController::acquireFigureFromGenerator()
 
 //------------------------------------------------------------------------------
 /**
-  Проверяет активную фигуру перед получением следующей preview-фигуры
+  Проверяет активную фигуру перед получением следующей фигуры предварительного просмотра
 */
 //--
 bool PackingController::validateActiveBeforeAcquire()
@@ -435,7 +435,7 @@ bool PackingController::validateActiveBeforeAcquire()
 
 //------------------------------------------------------------------------------
 /**
-  Выполняет сценарий автоматического размещения preview-фигуры
+  Выполняет сценарий автоматического размещения фигуры предварительного просмотра
 */
 //--
 std::unique_ptr<ICommand> PackingController::runAutomaticPlacement()
@@ -460,7 +460,7 @@ std::unique_ptr<ICommand> PackingController::runAutomaticPlacement()
 
 //------------------------------------------------------------------------------
 /**
-  РЎС‚СЂРѕРёС‚ all-or-nothing РєРѕРјР°РЅРґСѓ Р°РІС‚РѕСѓРїР°РєРѕРІРєРё РѕСЃС‚Р°РІС€РµРіРѕСЃСЏ РїСѓР»Р°
+  Строит неделимую команду автоматического раскроя оставшегося пула
 */
 //--
 std::unique_ptr<ICommand> PackingController::runAutomaticPackRemaining()
@@ -489,7 +489,7 @@ std::unique_ptr<ICommand> PackingController::runAutomaticPackRemaining()
 
 //------------------------------------------------------------------------------
 /**
-  Синхронизирует preview фигуру со сценой генерации
+  Синхронизирует фигуру предварительного просмотра со сценой генерации
 */
 //--
 void PackingController::syncPreviewFigure()

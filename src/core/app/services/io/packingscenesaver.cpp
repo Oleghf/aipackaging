@@ -55,7 +55,7 @@ std::string formatJsonNumber(double value)
 
 //------------------------------------------------------------------------------
 /**
-  Сохраняет snapshot сцены упаковки в JSON файл
+  Сохраняет снимок сцены раскроя в файл JSON
 */
 //--
 bool PackingSceneSaver::saveToFile(const std::string & filePath, const PackingSceneSnapshot & snapshot)
@@ -71,7 +71,7 @@ bool PackingSceneSaver::saveToFile(const std::string & filePath, const PackingSc
 
 //------------------------------------------------------------------------------
 /**
-  Преобразует snapshot сцены упаковки в JSON текст
+  Преобразует снимок сцены раскроя в текст JSON
 */
 //--
 std::string PackingSceneSaver::saveToText(const PackingSceneSnapshot & snapshot)

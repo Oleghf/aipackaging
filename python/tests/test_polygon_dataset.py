@@ -1,4 +1,4 @@
-"""Тесты production polygon_dataset v2, совместимости v1 и benchmark."""
+"""Тесты рабочего `polygon_dataset` v2, совместимости v1 и сравнительного отчёта."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ SCHEMAS = Path(__file__).parents[2] / "schemas"
 
 
 def _published_files(root: Path) -> dict[str, bytes]:
-    """Читает точные байты опубликованных файлов, исключая внутренний resume-cache."""
+    """Читает точные байты опубликованных файлов, исключая внутренний кэш продолжения."""
 
     return {
         path.relative_to(root).as_posix(): path.read_bytes()
@@ -45,7 +45,7 @@ def _published_files(root: Path) -> dict[str, bytes]:
 
 
 def _small_dataset(root: Path, workers: int = 1, *, resume: bool = False) -> dict[str, object]:
-    """Создаёт две train и две validation задачи с короткими budgets."""
+    """Создаёт две обучающие и две проверочные задачи с малыми бюджетами."""
 
     return generate_polygon_dataset(
         root,
@@ -61,9 +61,9 @@ def _small_dataset(root: Path, workers: int = 1, *, resume: bool = False) -> dic
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
-        ({"split_sizes": {"train": "2", "validation": 2, "test": 0}}, "split size"),
-        ({"workers": True}, "workers"),
-        ({"budgets": {**POLYGON_SMOKE_BUDGETS, "beamWidth": "2"}}, "budgets"),
+        ({"split_sizes": {"train": "2", "validation": 2, "test": 0}}, "размер каждой выборки"),
+        ({"workers": True}, "число рабочих процессов"),
+        ({"budgets": {**POLYGON_SMOKE_BUDGETS, "beamWidth": "2"}}, "бюджет"),
         ({"max_attempts": 1.5}, "max_attempts"),
     ],
 )
@@ -86,7 +86,7 @@ def test_generation_rejects_non_integer_numeric_arguments(
 
 
 def test_m4_problem_generator_keeps_semantic_golden() -> None:
-    """Публичный генератор одной smoke-задачи сохраняет прежние M4-байты."""
+    """Публичный генератор одной пробной задачи сохраняет прежние байты M4."""
 
     expected = [
         "63a0df1a83b5e21e69b89fe27ba853a47645742d79307e6eedaf01793459c5d8",
@@ -103,7 +103,7 @@ def test_m4_problem_generator_keeps_semantic_golden() -> None:
 
 
 def test_profiles_family_hash_and_feature_coverage_are_deterministic() -> None:
-    """Обе scale-вариации совпадают по family hash и покрывают семь классов фигур."""
+    """Оба масштабных варианта имеют общий хеш семейства и покрывают семь классов фигур."""
 
     assert isinstance(_native.__revision__, str) and _native.__revision__
     assert set(pipeline_module.POLYGON_FEATURES) == set(POLYGON_FEATURES)
@@ -120,7 +120,7 @@ def test_profiles_family_hash_and_feature_coverage_are_deterministic() -> None:
 
 
 def test_hidden_layout_binding_accepts_only_complete_valid_placements() -> None:
-    """Native helper проверяет полный набор, повороты, экземпляры, границы и коллизии."""
+    """Нативная функция проверяет полный набор, повороты, экземпляры, границы и коллизии."""
 
     problem, placements, _ = generate_family_variant(42, "small", "train", 0, 0, 0)
     assert placements is not None
@@ -128,7 +128,7 @@ def test_hidden_layout_binding_accepts_only_complete_valid_placements() -> None:
     metrics = _native.validate_hidden_polygon_layout(wire, placements)
     assert metrics["placedParts"] == metrics["totalParts"] == len(placements)
 
-    with pytest.raises(ValueError, match="incomplete"):
+    with pytest.raises(ValueError, match="неполна"):
         _native.validate_hidden_polygon_layout(wire, placements[:-1])
     bad_rotation = [dict(item) for item in placements]
     bad_rotation[0]["rotationDegrees"] = 45
@@ -155,7 +155,7 @@ def test_hidden_layout_binding_accepts_only_complete_valid_placements() -> None:
 
 
 def test_dataset_is_reproducible_across_workers_and_resume(tmp_path: Path) -> None:
-    """Один/два worker и resume создают одинаковые опубликованные bytes."""
+    """Один или два процесса и продолжение создают одинаковые опубликованные байты."""
 
     single = tmp_path / "single"
     parallel = tmp_path / "parallel"
@@ -169,7 +169,7 @@ def test_dataset_is_reproducible_across_workers_and_resume(tmp_path: Path) -> No
 
 
 def test_resume_replaces_stale_cache_and_rejects_matching_corruption(tmp_path: Path) -> None:
-    """Другой fingerprint регенерируется, а повреждённый совпавший cache отклоняется."""
+    """Другой отпечаток пересоздаётся, а повреждённый совпавший кэш отклоняется."""
 
     root = tmp_path / "dataset"
     _small_dataset(root)
@@ -188,7 +188,7 @@ def test_resume_replaces_stale_cache_and_rejects_matching_corruption(tmp_path: P
     cache = read_canonical_json(cache_path)
     cache["payload"]["attempt"] = 999
     write_canonical_json(cache_path, cache)
-    with pytest.raises(ValueError, match="invalid resume cache"):
+    with pytest.raises(ValueError, match="некорректный кэш возобновления"):
         generate_polygon_dataset(
             root,
             master_seed=43,
@@ -201,7 +201,7 @@ def test_resume_replaces_stale_cache_and_rejects_matching_corruption(tmp_path: P
 
 
 def test_manifest_v2_schema_metadata_and_replay_are_strict(tmp_path: Path) -> None:
-    """Schema и verifier подтверждают profiles, hashes, coverage и dynamic replay."""
+    """Схема и модуль проверки подтверждают профили, хеши, покрытие и динамический повтор."""
 
     root = tmp_path / "dataset"
     manifest = _small_dataset(root)
@@ -212,12 +212,12 @@ def test_manifest_v2_schema_metadata_and_replay_are_strict(tmp_path: Path) -> No
 
     manifest["unknown"] = True
     write_canonical_json(root / "manifest.json", manifest)
-    with pytest.raises(ValueError, match="fields mismatch"):
+    with pytest.raises(ValueError, match="ожидались поля"):
         verify_polygon_dataset(root)
 
 
 def test_corrupted_action_and_expert_are_rejected_with_updated_hash(tmp_path: Path) -> None:
-    """Verifier обнаруживает подмену действия и expert даже после обновления checksum."""
+    """Модуль проверки обнаруживает подмену действия и эксперта после обновления хеша."""
 
     root = tmp_path / "dataset"
     _small_dataset(root)
@@ -232,7 +232,7 @@ def test_corrupted_action_and_expert_are_rejected_with_updated_hash(tmp_path: Pa
     write_jsonl_gzip(shard_path, records)
     shard["sha256"] = sha256_file(shard_path)
     write_canonical_json(manifest_path, manifest)
-    with pytest.raises(ValueError, match="(action replay|solution placement audit) mismatch"):
+    with pytest.raises(ValueError, match="(действие при повторном проигрывании|проверочные размещения решения) не совпадают"):
         verify_polygon_dataset(root)
 
     shard_path.write_bytes(original_shard)
@@ -241,12 +241,12 @@ def test_corrupted_action_and_expert_are_rejected_with_updated_hash(tmp_path: Pa
     problem_id = next(iter(manifest["expertTrajectoryId"]))
     manifest["expertTrajectoryId"][problem_id] = "missing:trajectory"
     write_canonical_json(manifest_path, manifest)
-    with pytest.raises(ValueError, match="wrong expertTrajectoryId"):
+    with pytest.raises(ValueError, match="неверное значение expertTrajectoryId"):
         verify_polygon_dataset(root)
 
 
 def test_polygon_dataset_v1_remains_readable(tmp_path: Path) -> None:
-    """Verifier сохраняет поддержку strict smoke manifest v1 без миграции файлов."""
+    """Модуль проверки поддерживает строгий пробный манифест v1 без миграции файлов."""
 
     source = tmp_path / "source"
     target = tmp_path / "v1"
@@ -276,7 +276,7 @@ def test_polygon_dataset_v1_remains_readable(tmp_path: Path) -> None:
 
 
 def test_benchmark_uses_frozen_data_distinguishes_ties_and_is_verifiable(tmp_path: Path) -> None:
-    """Benchmark не запускает solver и отличает равное лучшему качество от худшего."""
+    """Отчёт не запускает решатель и отличает равное лучшему качество от худшего."""
 
     root = tmp_path / "dataset"
     output = tmp_path / "benchmark.json"
@@ -296,12 +296,12 @@ def test_benchmark_uses_frozen_data_distinguishes_ties_and_is_verifiable(tmp_pat
 
     report["summaries"]["beam"]["solved"] += 1
     write_canonical_json(output, report)
-    with pytest.raises(ValueError, match="does not match"):
+    with pytest.raises(ValueError, match="не соответствует"):
         verify_polygon_benchmark(root, output)
 
 
 def test_polygon_dataset_cli_smoke_does_not_import_torch(tmp_path: Path) -> None:
-    """CLI smoke generate/verify/benchmark работает без train-extra и test leakage."""
+    """Пробный цикл CLI работает без обучающих зависимостей и утечки тестовой выборки."""
 
     output = tmp_path / "cli-dataset"
     benchmark = tmp_path / "cli-benchmark.json"
@@ -312,7 +312,7 @@ import sys
 class RejectTorch(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path, target=None):
         if fullname == "torch" or fullname.startswith("torch."):
-            raise AssertionError("dataset-only CLI imported PyTorch")
+            raise AssertionError("команда набора данных CLI импортировала PyTorch")
         return None
 
 sys.meta_path.insert(0, RejectTorch())

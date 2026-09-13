@@ -17,21 +17,21 @@ namespace
 using namespace aipackaging::solver;
 using namespace std::chrono_literals;
 
-/// Представление-тестдубль с управляемой очередью UI callback.
+/// Тестовый двойник представления с управляемой очередью обратных вызовов UI.
 class PolygonWorkspaceViewStub final : public IPolygonWorkspaceView
 {
 public:
   /// Сохраняет привязанные контроллером пользовательские действия.
   void setPolygonWorkspaceActions(PolygonWorkspaceActions value) override { actions = std::move(value); }
 
-  /// Сохраняет последний presentation-снимок под mutex.
+  /// Сохраняет последний снимок модели представления под взаимной блокировкой.
   void presentPolygonWorkspace(const PolygonWorkspaceSnapshot & value) override
   {
     std::lock_guard lock(mutex_);
     latest_ = value;
   }
 
-  /// Ставит worker callback в тестовую очередь вместо выполнения в чужом потоке.
+  /// Ставит обратный вызов рабочего потока в очередь вместо выполнения в чужом потоке.
   void postToPolygonUi(std::function<void()> callback) override
   {
     std::lock_guard lock(mutex_);
@@ -45,7 +45,7 @@ public:
     return latest_;
   }
 
-  /// Выполняет queued callbacks до выполнения условия либо истечения срока.
+  /// Выполняет поставленные в очередь функции обратного вызова до выполнения условия либо истечения срока.
   bool pumpUntil(const std::function<bool(const PolygonWorkspaceSnapshot &)> & predicate,
                  std::chrono::milliseconds timeout = 3000ms)
   {
@@ -66,7 +66,7 @@ public:
     return false;
   }
 
-  /// Ожидает накопления указанного числа callback без их выполнения.
+  /// Ожидает накопления указанного числа обратных вызовов без их выполнения.
   bool waitForQueued(std::size_t count, std::chrono::milliseconds timeout = 3000ms) const
   {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -82,7 +82,7 @@ public:
     return false;
   }
 
-  /// Выполняет самый новый callback раньше ранее поставленных progress-событий.
+  /// Выполняет новый обратный вызов раньше поставленных сообщений о ходе работы.
   void executeNewest()
   {
     std::function<void()> callback;
@@ -102,11 +102,11 @@ private:
   std::deque<std::function<void()>> queue_;
 };
 
-/// Backend-тестдубль, ожидающий stop-request и возвращающий точный пустой partial.
+/// Тестовый двойник реализации, ожидающий остановки и возвращающий частичное решение.
 class BlockingPolygonBackend final : public IPolygonSolverBackend
 {
 public:
-  /// Ожидает внешнюю отмену, затем использует production solver для валидного partial.
+  /// Ожидает внешнюю отмену, затем использует рабочий решатель для частичного решения.
   PolygonSolverExecutionResult run(const PolygonProblem & problem, const SolverConfig & config,
                                    const PolygonExecutionControl & control) override
   {
@@ -124,7 +124,7 @@ public:
   std::atomic<int> calls = 0;
 };
 
-/// Backend-тестдубль, имитирующий нарушение objective внешней реализацией.
+/// Тестовый двойник реализации, имитирующий нарушение целевой функции.
 class CorruptPolygonBackend final : public IPolygonSolverBackend
 {
 public:
@@ -138,7 +138,7 @@ public:
   }
 };
 
-/// Backend-тестдубль, возвращающий корректный результат только при первом запуске.
+/// Тестовый двойник реализации, возвращающий корректный результат при первом запуске.
 class ValidThenCorruptPolygonBackend final : public IPolygonSolverBackend
 {
 public:
@@ -156,11 +156,11 @@ private:
   std::atomic<int> calls = 0;
 };
 
-/// Backend-тестдубль, возвращающий валидный timed-out partial.
+/// Тестовый двойник, возвращающий частичное решение после ограничения времени.
 class TimedOutPolygonBackend final : public IPolygonSolverBackend
 {
 public:
-  /// Строит точный пустой снимок и помечает его аварийным timeout.
+  /// Строит точный пустой снимок и помечает его остановленным по времени.
   PolygonSolverExecutionResult run(const PolygonProblem & problem, const SolverConfig & config,
                                    const PolygonExecutionControl &) override
   {
@@ -176,7 +176,7 @@ public:
   }
 };
 
-/// Создаёт прямоугольный путь для controller-тестов.
+/// Создаёт прямоугольный путь для тестов контроллера.
 PolygonPath rectangle(double width, double height)
 {
   PolygonPath result;
@@ -204,7 +204,7 @@ PolygonProblem testProblem(double sheetWidth = 100.0, double sheetHeight = 60.0)
   return result;
 }
 
-/// Записывает задачу в изолированный временный JSON для file workflow.
+/// Записывает задачу в изолированный временный файл JSON для файлового сценария.
 std::filesystem::path writeProblem(const PolygonProblem & problem, const std::string & suffix)
 {
   const std::filesystem::path path = std::filesystem::temp_directory_path() / ("aipackaging-" + suffix + ".json");
@@ -214,7 +214,7 @@ std::filesystem::path writeProblem(const PolygonProblem & problem, const std::st
 }
 } // namespace
 
-/// Проверяет полный workflow загрузки, асинхронного поиска и сохранения.
+/// Проверяет полный сценарий загрузки, асинхронного поиска и сохранения.
 TEST(PolygonWorkspaceController, LoadsRunsAndSavesValidatedSolution)
 {
   const auto input = writeProblem(testProblem(), "polygon-controller-input");
@@ -263,7 +263,7 @@ TEST(PolygonWorkspaceController, KeepsPreviousSceneAfterLoadError)
   std::filesystem::remove(invalid);
 }
 
-/// Проверяет запрет параллельного запуска и несохраняемый partial после отмены.
+/// Проверяет запрет параллельного запуска и несохраняемое частичное решение после отмены.
 TEST(PolygonWorkspaceController, CancelsWithoutStartingSecondRun)
 {
   const auto input = writeProblem(testProblem(), "polygon-controller-cancel");
@@ -286,7 +286,7 @@ TEST(PolygonWorkspaceController, CancelsWithoutStartingSecondRun)
   std::filesystem::remove(input);
 }
 
-/// Проверяет показ и сохранение независимо валидного partial после исчерпания места.
+/// Проверяет показ и сохранение независимо проверенного частичного решения.
 TEST(PolygonWorkspaceController, PublishesAndSavesOrdinaryPartial)
 {
   const PolygonProblem problem = testProblem(34.0, 24.0);
@@ -311,7 +311,7 @@ TEST(PolygonWorkspaceController, PublishesAndSavesOrdinaryPartial)
   std::filesystem::remove(output);
 }
 
-/// Проверяет, что controller не публикует и не разрешает сохранять невалидный backend-результат.
+/// Проверяет, что контроллер не публикует некорректный результат внутренней реализации.
 TEST(PolygonWorkspaceController, RejectsCorruptBackendResult)
 {
   const auto input = writeProblem(testProblem(), "polygon-controller-corrupt");
@@ -326,7 +326,7 @@ TEST(PolygonWorkspaceController, RejectsCorruptBackendResult)
   ASSERT_TRUE(view->pumpUntil([](const auto & snapshot) { return snapshot.state == PolygonWorkspaceState::Error; }));
   EXPECT_FALSE(view->latest().canSave);
   EXPECT_TRUE(view->latest().scene.placements.empty());
-  EXPECT_NE(view->latest().statusText.find("невалидный"), std::string::npos);
+  EXPECT_NE(view->latest().statusText.find("некорректный"), std::string::npos);
   std::filesystem::remove(input);
 }
 
@@ -353,7 +353,7 @@ TEST(PolygonWorkspaceController, KeepsValidatedSolutionAfterLaterBackendError)
   std::filesystem::remove(input);
 }
 
-/// Проверяет отображение и сохранение timed-out partial без смешения с пользовательской отменой.
+/// Проверяет частичное решение после ограничения времени отдельно от отмены пользователя.
 TEST(PolygonWorkspaceController, PublishesSaveableTimedOutPartial)
 {
   const auto input = writeProblem(testProblem(), "polygon-controller-timeout");
@@ -377,7 +377,7 @@ TEST(PolygonWorkspaceController, PublishesSaveableTimedOutPartial)
   std::filesystem::remove(output);
 }
 
-/// Проверяет, что progress старого порядка доставки не перезаписывает завершённое состояние.
+/// Проверяет, что устаревшее сообщение о ходе работы не меняет завершённое состояние.
 TEST(PolygonWorkspaceController, IgnoresLateProgressAfterResult)
 {
   const auto input = writeProblem(testProblem(), "polygon-controller-late-progress");
@@ -390,7 +390,7 @@ TEST(PolygonWorkspaceController, IgnoresLateProgressAfterResult)
   config.timeoutMs = 0;
   view->actions.start(config);
 
-  // Production solver ставит два progress-события и итог; исполняем итог первым.
+  // Рабочий решатель ставит два сообщения о ходе и итог; исполняем итог первым.
   ASSERT_TRUE(view->waitForQueued(3));
   view->executeNewest();
   ASSERT_EQ(view->latest().state, PolygonWorkspaceState::Completed);

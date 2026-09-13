@@ -9,7 +9,7 @@
 
 // БАЗОВЫЕ СЛУЧАИ
 
-// Базовый случай сравнения двух double
+// Базовый случай сравнения двух чисел типа `double`
 TEST(doubleEQ, Base)
 {
   double d1 = 0.00000006;
@@ -80,7 +80,7 @@ TEST(distance, PointToCircleBase)
 // НЕОРДИНАРНЫЕ СЛУЧАИ
 
 
-// Сравнение очень маленьких double
+// Сравнение очень маленьких чисел типа `double`
 TEST(doubleEQ, EQ_VerySmall)
 {
   double epsilon = 1e-11;
@@ -94,7 +94,7 @@ TEST(doubleEQ, EQ_VerySmall)
 }
 
 
-// Сравнение очень больших double
+// Сравнение очень больших чисел типа `double`
 TEST(doubleEQ, EQ_VeryBig)
 {
   double d1 = 50000000.20000005;

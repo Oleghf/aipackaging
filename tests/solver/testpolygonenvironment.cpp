@@ -114,7 +114,7 @@ TEST(PolygonEnvironment, RejectsInvalidTopology)
   EXPECT_EQ(PolygonEnvironment::Create(value, error), nullptr);
 }
 
-/// Проверяет детерминированность NFP-кандидатов и точные primary-компоненты.
+/// Проверяет детерминированность вариантов NFP и точные основные компоненты.
 TEST(PolygonEnvironment, GeneratesStableNfpCandidatesAndObjective)
 {
   std::string error;
@@ -134,7 +134,7 @@ TEST(PolygonEnvironment, GeneratesStableNfpCandidatesAndObjective)
   EXPECT_EQ(objective.placedParts, 2);
 }
 
-/// Проверяет сохранение точечного inner-fit кандидата при точном размере листа.
+/// Проверяет сохранение точечного варианта внутреннего размещения при точном размере листа.
 TEST(PolygonEnvironment, GeneratesCandidateForExactSheetFit)
 {
   PolygonProblem value = problem();

@@ -84,7 +84,7 @@ bool isConnected(const std::set<CellKey> & occupied)
   return visited.size() == occupied.size();
 }
 
-/// Заливает внешний фон расширенного bounding box и обнаруживает недоступные из него пустые клетки.
+/// Заливает внешний фон расширенной ограничивающей рамки и обнаруживает недоступные из него пустые клетки.
 bool hasHole(const std::set<CellKey> & occupied, int width, int height)
 {
   const int extendedWidth = width + 2;
@@ -94,7 +94,7 @@ bool hasHole(const std::set<CellKey> & occupied, int width, int height)
     blocked[static_cast<std::size_t>(cell.second + 1) * extendedWidth + cell.first + 1] = 1;
 
   // Рамка в одну клетку гарантирует общую стартовую точку внешнего фона даже
-  // тогда, когда деталь полностью занимает границу собственного bounding box.
+  // тогда, когда деталь полностью занимает границу собственной ограничивающей рамки.
   std::vector<unsigned char> visited(blocked.size(), 0);
   std::queue<CellKey> pending;
   pending.push({0, 0});
@@ -214,7 +214,7 @@ std::pair<std::size_t, std::size_t> freeComponents(const GridState & state, int 
   return {freeArea, largest};
 }
 
-/// Сравнивает записанные компоненты objective с независимо пересчитанными значениями.
+/// Сравнивает записанные компоненты целевой функции с независимо пересчитанными значениями.
 bool equalObjective(const ObjectiveComponents & lhs, const ObjectiveComponents & rhs)
 {
   return lhs.usedLength == rhs.usedLength && lhs.primaryRemnantWidth == rhs.primaryRemnantWidth &&
@@ -295,7 +295,7 @@ GridEnvironment::GridEnvironment(GridProblem problem, std::vector<std::vector<Gr
 {
 }
 
-/// Проверяет задачу, строит уникальные ориентации и разворачивает quantity в стабильные экземпляры.
+/// Проверяет задачу, строит уникальные ориентации и разворачивает количество в стабильные экземпляры.
 std::unique_ptr<GridEnvironment> GridEnvironment::Create(const GridProblem & problem, std::string & error)
 {
   const ValidationResult validation = validateGridProblem(problem);
@@ -345,13 +345,13 @@ std::unique_ptr<GridEnvironment> GridEnvironment::Create(const GridProblem & pro
   return std::unique_ptr<GridEnvironment>(new GridEnvironment(problem, std::move(allOrientations), std::move(instances)));
 }
 
-/// Возвращает подготовленный список ориентаций с проверкой индекса через at().
+/// Возвращает подготовленный список ориентаций с проверкой индекса через `at()`.
 const std::vector<GridOrientation> & GridEnvironment::orientations(std::size_t partIndex) const
 {
   return orientations_.at(partIndex);
 }
 
-/// Выделяет пустую occupancy-матрицу и маску ещё не размещённых экземпляров.
+/// Выделяет пустую матрицу занятости и маску ещё не размещённых экземпляров.
 GridState GridEnvironment::initialState() const
 {
   GridState state;
@@ -360,7 +360,7 @@ GridState GridEnvironment::initialState() const
   return state;
 }
 
-/// Перебирает ориентации и все позиции их bounding box в стабильном порядке rotation/column/row.
+/// Перебирает ориентации и все позиции их ограничивающей рамки в стабильном порядке «поворот, столбец, строка».
 std::vector<GridAction> GridEnvironment::enumerateCandidates(const GridState &, std::size_t instancePosition) const
 {
   std::vector<GridAction> result;
@@ -450,7 +450,7 @@ bool GridEnvironment::apply(GridState & state, const GridAction & action) const
   return true;
 }
 
-/// Сканирует occupancy и вычисляет правую полосу, дополнительный прямоугольник и фрагментацию.
+/// Сканирует матрицу занятости и вычисляет правую полосу, дополнительный прямоугольник и фрагментацию.
 ObjectiveComponents GridEnvironment::evaluate(const GridState & state) const
 {
   ObjectiveComponents result;
@@ -480,7 +480,7 @@ ObjectiveComponents GridEnvironment::evaluate(const GridState & state) const
   }
   result.primaryRemnantWidth = problem_.sheet.columns - result.usedLength;
   result.largestExtraRectangleArea = largestFreeRectangle(state, problem_.sheet.columns, problem_.sheet.rows, result.usedLength);
-  // Правая прямоугольная полоса исключается из secondary metrics: они оценивают
+  // Правая прямоугольная полоса исключается из вторичных метрик: они оценивают
   // только остатки внутри уже использованной длины листа.
   const auto [freeArea, largestComponent] = freeComponents(state, problem_.sheet.columns, problem_.sheet.rows, result.usedLength);
   result.fragmentationPenalty = freeArea - largestComponent;
@@ -489,7 +489,7 @@ ObjectiveComponents GridEnvironment::evaluate(const GridState & state) const
   return result;
 }
 
-/// Воспроизводит placements в чистой среде и сверяет полноту и все objective-компоненты.
+/// Воспроизводит размещения в чистой среде и сверяет полноту и все компоненты целевой функции.
 ValidationResult validateGridSolution(const GridProblem & problem, const GridSolution & solution)
 {
   std::string error;

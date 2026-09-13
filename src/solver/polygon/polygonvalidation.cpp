@@ -41,7 +41,7 @@ ValidationResult validatePolygonProblem(const PolygonProblem & problem)
   return {true, {}};
 }
 
-/// Создаёт новую среду и повторно применяет placements, не доверяя solution-метрикам.
+/// Создаёт новую среду и повторно применяет размещения, не доверяя метрикам решения.
 ValidationResult validatePolygonSolution(const PolygonProblem & problem, const PolygonSolution & solution)
 {
   std::string error;

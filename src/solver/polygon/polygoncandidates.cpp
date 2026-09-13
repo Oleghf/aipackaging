@@ -33,7 +33,7 @@ bool interiorsOverlap(const PolygonRing64 & lhs, const PolygonRing64 & rhs)
 
 using namespace internal;
 
-/// Формирует точки контакта с листом и вершинами размещённых outer proxy.
+/// Формирует точки контакта с листом и вершинами внешних заменяющих контуров размещённых деталей.
 std::vector<PolygonAction> PolygonEnvironment::enumerateCandidates(const PolygonState & state, std::size_t instancePosition) const
 {
   std::vector<PolygonAction> result;
@@ -52,7 +52,7 @@ std::vector<PolygonAction> PolygonEnvironment::enumerateCandidates(const Polygon
       continue;
     if (right == left || top == bottom)
     {
-      // Вырожденная inner-fit область является отрезком либо точкой. Clipper2
+      // Вырожденная область допустимого внутреннего размещения является отрезком либо точкой. Clipper2
       // не возвращает её как полигон с площадью, поэтому явно сохраняем
       // граничные переносы и ниже пропускаем их через точный валидатор.
       unique.emplace(orientation.rotationDegrees, left, bottom);
@@ -80,7 +80,7 @@ std::vector<PolygonAction> PolygonEnvironment::enumerateCandidates(const Polygon
                                         Clipper2Lib::EndType::Polygon, 2.0, 1.0);
       obstacles.insert(obstacles.end(), nfp.begin(), nfp.end());
     }
-    // Вычитание объединения NFP из inner-fit rectangle даёт конфигурационное
+    // Вычитание объединения NFP из прямоугольной области допустимого внутреннего размещения даёт конфигурационное
     // пространство переносов. Его вершины включают контакты и пересечения
     // ограничений, которые теряются при простом попарном совмещении вершин.
     const Clipper2Lib::Paths64 feasible = obstacles.empty() ? Clipper2Lib::Paths64{feasibleRectangle}
@@ -96,7 +96,7 @@ std::vector<PolygonAction> PolygonEnvironment::enumerateCandidates(const Polygon
     if (canApply(state, action))
       result.push_back(std::move(action));
     if (result.size() > MAX_CANDIDATES)
-      throw std::length_error("polygon candidate catalog exceeds 250000 actions");
+      throw std::length_error("каталог вариантов полигонального размещения превышает 250000 действий");
   }
   const std::int64_t currentUsed = evaluate(state).usedLength + sheetMargin_;
   std::stable_sort(result.begin(), result.end(),

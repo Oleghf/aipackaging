@@ -38,14 +38,14 @@ public:
   std::vector<PolygonAction> enumerateCandidates(const PolygonState & state, std::size_t instancePosition) const;
   /// Проверяет действие по экземпляру, повороту, границам, пересечениям и зазору.
   bool canApply(const PolygonState & state, const PolygonAction & action) const;
-  /// Применяет допустимое действие к переданному value-state.
+  /// Применяет допустимое действие к переданному изменяемому состоянию.
   bool apply(PolygonState & state, const PolygonAction & action) const;
-  /// Вычисляет точные primary и растровые secondary компоненты objective.
+  /// Вычисляет точные основные и растровые вторичные компоненты целевой функции.
   PolygonObjectiveComponents evaluate(const PolygonState & state) const;
 
   /// Находит позицию экземпляра по partId и instanceIndex либо возвращает размер списка.
   std::size_t findInstance(const std::string & partId, std::uint32_t instanceIndex) const;
-  /// Находит нормализованную ориентацию типа детали либо возвращает nullptr.
+  /// Находит нормализованную ориентацию типа детали либо возвращает `nullptr`.
   const PolygonOrientation * findOrientation(std::size_t partIndex, int rotationDegrees) const;
   /// Возвращает перенесённое внешнее кольцо указанного размещения.
   PolygonRing64 placedOuter(const PolygonPlacement & placement) const;
@@ -65,9 +65,9 @@ private:
   std::vector<PolygonPartInstance> instances_;
 };
 
-/// Проверяет исходные поля и производственные ограничения polygon_problem v1.
+/// Проверяет исходные поля и производственные ограничения `polygon_problem` v1.
 ValidationResult validatePolygonProblem(const PolygonProblem & problem);
-/// Независимо воспроизводит полигональную раскладку и сверяет записанный objective.
+/// Независимо воспроизводит полигональную раскладку и сверяет записанную целевую функцию.
 ValidationResult validatePolygonSolution(const PolygonProblem & problem, const PolygonSolution & solution);
 } // namespace aipackaging::solver
 

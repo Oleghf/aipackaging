@@ -27,7 +27,7 @@ enum class PlacementPolicy : std::uint8_t
   LeftBottom
 };
 
-/// Возвращает стабильный input/area/max-side порядок экземпляров адаптера.
+/// Возвращает стабильный входной порядок экземпляров либо порядок по площади или максимальной стороне.
 template<class Adapter>
 std::vector<std::size_t> orderedInstances(const Adapter & adapter, PartOrdering ordering)
 {
@@ -36,8 +36,8 @@ std::vector<std::size_t> orderedInstances(const Adapter & adapter, PartOrdering 
   if (ordering == PartOrdering::Input)
     return result;
 
-  // Геометрические величины предоставляет адаптер, а общий runtime фиксирует
-  // одинаковую последовательность tie-break для обеих предметных областей.
+  // Геометрические величины предоставляет адаптер, а общий механизм выполнения фиксирует
+  // одинаковую последовательность разрешения равенства для обеих предметных областей.
   std::stable_sort(result.begin(), result.end(),
                    [&adapter, ordering](std::size_t lhs, std::size_t rhs)
                    {
@@ -54,7 +54,7 @@ std::vector<std::size_t> orderedInstances(const Adapter & adapter, PartOrdering 
   return result;
 }
 
-/// Последовательно обрабатывает заданный порядок и возвращает достигнутый partial или complete state.
+/// Последовательно обрабатывает порядок и возвращает частичное или полное состояние.
 template<class Adapter>
 Adapter::State runOrdered(SearchRuntime & runtime, const Adapter & adapter, const std::vector<std::size_t> & order,
                           PlacementPolicy policy, bool reportInstances = true)
@@ -72,7 +72,7 @@ Adapter::State runOrdered(SearchRuntime & runtime, const Adapter & adapter, cons
   return state;
 }
 
-/// Выполняет seeded-перестановки и сохраняет лучший найденный state.
+/// Выполняет перестановки с заданным начальным значением и сохраняет лучшее найденное состояние.
 template<class Adapter>
 Adapter::State runRandom(SearchRuntime & runtime, const Adapter & adapter, SolveStatus & status)
 {
@@ -88,7 +88,7 @@ Adapter::State runRandom(SearchRuntime & runtime, const Adapter & adapter, Solve
       return best;
     }
     // Один PRNG последовательно создаёт ту же Fisher-Yates серию, что и до
-    // выделения runtime; измерения и callback не участвуют в выборе действий.
+    // выделения механизма выполнения; измерения и обратные вызовы не влияют на выбор.
     std::shuffle(order.begin(), order.end(), random);
     typename Adapter::State candidate = runOrdered(runtime, adapter, order, PlacementPolicy::LeftBottom, false);
     if (adapter.better(candidate, best))
@@ -106,7 +106,7 @@ Adapter::State runRandom(SearchRuntime & runtime, const Adapter & adapter, Solve
   return best;
 }
 
-/// Расширяет совместный action space слоями и сохраняет не более beamWidth лучших состояний.
+/// Расширяет общее пространство действий слоями и сохраняет до beamWidth лучших состояний.
 template<class Adapter>
 Adapter::State runBeam(SearchRuntime & runtime, const Adapter & adapter, SolveStatus & status)
 {
@@ -131,7 +131,7 @@ Adapter::State runBeam(SearchRuntime & runtime, const Adapter & adapter, SolveSt
           continue;
 
         // Экземпляры одного типа взаимозаменяемы. Минимальный ещё не
-        // размещённый индекс устраняет перестановочные дубли в beam.
+        // размещённый индекс устраняет перестановочные дубли в лучевом поиске.
         bool earlierEquivalentUnplaced = false;
         for (std::size_t earlier = 0; earlier < instance; ++earlier)
           if (!adapter.isPlaced(state, earlier) && adapter.samePart(earlier, instance))
@@ -191,8 +191,8 @@ Adapter::State runBeam(SearchRuntime & runtime, const Adapter & adapter, SolveSt
     }
     if (children.empty())
       break;
-    // Стабильная сортировка вместе с domain tie-break сохраняет одинаковое
-    // усечение beam на разных запусках и реализациях стандартной библиотеки.
+    // Стабильная сортировка вместе с предметным разрешением равенства сохраняет одинаковое
+    // усечение луча на разных запусках и реализациях стандартной библиотеки.
     std::stable_sort(children.begin(), children.end(),
                      [&adapter](const auto & lhs, const auto & rhs) { return adapter.better(lhs, rhs); });
     if (children.size() > runtime.config().beamWidth)

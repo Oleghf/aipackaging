@@ -36,7 +36,7 @@ TEST(circle2D, GetPointBase)
 }
 
 
-// Базовый тест Move
+// Базовая проверка перемещения
 TEST(circle2D, MoveBase)
 {
   Point2D center{0, 0};

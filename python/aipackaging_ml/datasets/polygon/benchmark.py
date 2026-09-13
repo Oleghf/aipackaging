@@ -1,4 +1,4 @@
-"""Воспроизводимый benchmark замороженных полигональных baseline-траекторий."""
+"""Воспроизводимое сравнение замороженных траекторий полигональных базовых алгоритмов."""
 
 from __future__ import annotations
 
@@ -39,14 +39,14 @@ def _quality_relation(candidate: Mapping[str, Any], expert: Mapping[str, Any]) -
     candidate_wire = canonical_json(candidate["finalSolution"])
     expert_wire = canonical_json(expert["finalSolution"])
     if _native.is_better_polygon_solution(candidate_wire, expert_wire):
-        raise ValueError("frozen expert is not the best polygon trajectory")
+        raise ValueError("замороженная экспертная траектория не является лучшей полигональной траекторией")
     if _native.is_better_polygon_solution(expert_wire, candidate_wire):
         return "worse_than_best"
     return "equivalent_to_best"
 
 
 def _build_report(root: Path, split: str) -> dict[str, Any]:
-    """Агрегирует только сохранённые trajectories выбранного split без запуска solver."""
+    """Объединяет сохранённые траектории выбранной выборки без запуска решателя."""
 
     manifest, problems, trajectories = load_polygon_dataset_records(root, split)
     by_problem: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -62,7 +62,7 @@ def _build_report(root: Path, split: str) -> dict[str, Any]:
         results = sorted(by_problem[problem_id], key=lambda item: POLYGON_SOLVERS.index(item["solver"]["name"]))
         expert = next((item for item in results if item["trajectoryId"] == expert_id), None)
         if expert is None:
-            raise ValueError(f"missing expert trajectory: {problem_id}")
+            raise ValueError(f"отсутствует экспертная траектория: {problem_id}")
         expert_solver = expert["solver"]["name"]
         expert_counts[expert_solver] += 1
         expert_used = expert["finalSolution"]["objective"]["usedLengthMicrometers"]
@@ -128,17 +128,17 @@ def _build_report(root: Path, split: str) -> dict[str, Any]:
 def benchmark_polygon_baselines(
     dataset: str | Path, output: str | Path, *, split: str = "validation"
 ) -> dict[str, Any]:
-    """Строит canonical benchmark-report из frozen validation либо test split."""
+    """Строит канонический отчёт по замороженной проверочной или тестовой выборке."""
 
     if split not in {"validation", "test"}:
-        raise ValueError("polygon benchmark supports validation or test split")
+        raise ValueError("сравнение полигональных алгоритмов поддерживает проверочную и тестовую выборки")
     report = _build_report(Path(dataset), split)
     write_canonical_json(output, report)
     return report
 
 
 def verify_polygon_benchmark(dataset: str | Path, report_path: str | Path) -> dict[str, int]:
-    """Проверяет строгий формат, dataset hash и все агрегаты benchmark-report."""
+    """Проверяет строгий формат, хеш набора данных и все сводные значения отчёта."""
 
     report = read_canonical_json(report_path)
     expected_fields = {
@@ -146,12 +146,12 @@ def verify_polygon_benchmark(dataset: str | Path, report_path: str | Path) -> di
         "solverBudgets", "summaries", "tasks",
     }
     if set(report) != expected_fields:
-        raise ValueError("polygon benchmark report fields mismatch")
+        raise ValueError("набор полей отчёта сравнения полигональных алгоритмов не совпадает")
     if report["format"] != "aipackaging.polygon_benchmark_report" or report["version"] != 1:
-        raise ValueError("unsupported polygon benchmark report")
+        raise ValueError("неподдерживаемый отчёт сравнения полигональных алгоритмов")
     if report["split"] not in {"validation", "test"}:
-        raise ValueError("polygon benchmark report uses a forbidden split")
+        raise ValueError("отчёт сравнения полигональных алгоритмов использует запрещённую выборку")
     expected = _build_report(Path(dataset), report["split"])
     if report != expected:
-        raise ValueError("polygon benchmark report does not match frozen trajectories")
+        raise ValueError("отчёт сравнения не соответствует замороженным полигональным траекториям")
     return {"tasks": len(report["tasks"]), "solvers": len(report["summaries"])}

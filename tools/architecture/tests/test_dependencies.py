@@ -1,4 +1,4 @@
-"""Self-tests архитектурного сканера на заведомо запрещённых зависимостях."""
+"""Самопроверки архитектурного анализатора на заведомо запрещённых зависимостях."""
 
 from __future__ import annotations
 
@@ -15,10 +15,10 @@ from check_dependencies import check_repository  # noqa: E402
 
 
 class DependencyCheckerTests(unittest.TestCase):
-    """Проверяет, что сканер действительно отклоняет запрещённые include."""
+    """Проверяет, что анализатор действительно отклоняет запрещённые включения."""
 
     def test_rejects_core_to_qt_include(self) -> None:
-        """Запрещённый Qt include из nesting Core должен давать ошибку с номером строки."""
+        """Запрещённое включение Qt из ядра раскроя должно давать ошибку с номером строки."""
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -49,7 +49,7 @@ class DependencyCheckerTests(unittest.TestCase):
             self.assertIn("Qt include", violations[0].message)
 
     def test_rejects_learning_to_json_include(self) -> None:
-        """Learning не должен получать доступ к сериализации через публичный заголовок."""
+        """Модуль обучения не должен получать доступ к сериализации через публичный заголовок."""
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -69,7 +69,7 @@ class DependencyCheckerTests(unittest.TestCase):
             self.assertIn("learning не может включать json", violations[0].message)
 
     def test_rejects_search_to_json_include(self) -> None:
-        """Search runtime не должен получать доступ к wire-сериализации."""
+        """Механизм поиска не должен получать доступ к сериализации формата обмена."""
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -110,7 +110,7 @@ class DependencyCheckerTests(unittest.TestCase):
             self.assertTrue(any("nlohmann/json" in item.message for item in violations))
 
     def test_rejects_torch_from_dataset_module(self) -> None:
-        """Dataset pipeline не должен незаметно требовать установленный PyTorch."""
+        """Конвейер набора данных не должен незаметно требовать PyTorch."""
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -122,7 +122,7 @@ class DependencyCheckerTests(unittest.TestCase):
             self.assertIn("PyTorch import", violations[0].message)
 
     def test_rejects_training_from_dataset_common(self) -> None:
-        """Общая сериализация не должна зависеть от training orchestration."""
+        """Общая сериализация не должна зависеть от управления обучением."""
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -134,14 +134,14 @@ class DependencyCheckerTests(unittest.TestCase):
             self.assertIn("dataset_common не может импортировать training", violations[0].message)
 
     def _check(self, root: Path, rules: dict):
-        """Сохраняет минимальные правила fixture и запускает общий checker."""
+        """Сохраняет минимальные правила тестового примера и запускает общую проверку."""
 
         rules_path = root / "rules.json"
         rules_path.write_text(json.dumps(rules), encoding="utf-8")
         return check_repository(root, rules_path)
 
     def _rules(self, layers: dict, allowed: dict, owners: dict) -> dict:
-        """Создаёт минимальный полный набор правил для отрицательного self-test."""
+        """Создаёт минимальный полный набор правил для отрицательной самопроверки."""
 
         return {
             "version": 1,
@@ -160,7 +160,7 @@ class DependencyCheckerTests(unittest.TestCase):
         }
 
     def _python_rules(self) -> dict:
-        """Создаёт минимальные prefix-правила Python для отрицательных self-tests."""
+        """Создаёт минимальные правила префиксов Python для отрицательных самопроверок."""
 
         rules = self._rules({}, {}, {})
         rules["python"] = {

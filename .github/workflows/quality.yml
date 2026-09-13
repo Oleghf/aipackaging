@@ -1,4 +1,4 @@
-name: Quality
+name: Качество
 
 on:
   push:
@@ -14,24 +14,28 @@ concurrency:
 
 jobs:
   linux-nesting:
-    name: Linux clean nesting
+    name: Чистая сборка ядра в Linux
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - name: Architecture checks
+      - name: Языковая проверка
+        run: python3 tools/run_checks.py language
+      - name: Архитектурные проверки
         run: python3 tools/run_checks.py architecture
-      - name: Configure, build and test
+      - name: Настройка, сборка и тестирование
         run: python3 tools/run_checks.py nesting
 
   windows-headless:
-    name: Windows MSVC headless
+    name: Сборка MSVC без графического интерфейса
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v6
       - uses: ilammy/msvc-dev-cmd@v1
-      - name: Architecture checks
+      - name: Языковая проверка
+        run: py -3 tools/run_checks.py language
+      - name: Архитектурные проверки
         run: py -3 tools/run_checks.py architecture
-      - name: Configure, build and test
+      - name: Настройка, сборка и тестирование
         run: py -3 tools/run_checks.py headless
 
   python:
@@ -43,9 +47,11 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-      - name: Install package and test dependencies
+      - name: Установка пакета и тестовых зависимостей
         run: python -m pip install -e ".[dev]"
-      - name: Architecture checks
+      - name: Языковая проверка
+        run: python tools/run_checks.py language
+      - name: Архитектурные проверки
         run: python tools/run_checks.py architecture
-      - name: Python tests
+      - name: Тесты Python
         run: python tools/run_checks.py python

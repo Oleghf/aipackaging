@@ -1,4 +1,4 @@
-"""Анализ геометрических семейств и declared tier полигонального датасета."""
+"""Анализ геометрических семейств и заявленного профиля полигонального набора данных."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def _normalized_point(
 
 
 def _normalized_part(part: Mapping[str, Any], rotation: int) -> dict[str, Any]:
-    """Возвращает identifier-independent геометрию детали в выбранной ориентации."""
+    """Возвращает геометрию детали без идентификаторов в выбранной ориентации."""
 
     paths = [part["outer"], *part["holes"]]
     rotated = [_rotate(point, rotation) for path in paths for point in path_points(path)]
@@ -51,7 +51,7 @@ def _normalized_part(part: Mapping[str, Any], rotation: int) -> dict[str, Any]:
     minimum_y = min(point[1] for point in rotated)
     width = max(point[0] for point in rotated) - minimum_x
     height = max(point[1] for point in rotated) - minimum_y
-    # Единый коэффициент сохраняет aspect ratio и отличает геометрически разные семьи.
+    # Единый коэффициент сохраняет отношение сторон и отличает разные семейства.
     scale = max(width, height, 1e-12)
 
     def normalize_path(path: Mapping[str, Any]) -> dict[str, Any]:
@@ -80,7 +80,7 @@ def _normalized_part(part: Mapping[str, Any], rotation: int) -> dict[str, Any]:
 
 
 def polygon_family_hash(problem: Mapping[str, Any]) -> str:
-    """Вычисляет rotation-invariant и uniformly scale-normalized hash набора фигур."""
+    """Вычисляет хеш набора фигур, неизменный к повороту и равномерному масштабу."""
 
     signatures = []
     for part in problem["parts"]:
@@ -91,7 +91,7 @@ def polygon_family_hash(problem: Mapping[str, Any]) -> str:
 
 
 def problem_features(problem: Mapping[str, Any]) -> list[str]:
-    """Восстанавливает проверяемые классы геометрии из polygon_problem v1."""
+    """Восстанавливает проверяемые классы геометрии из `polygon_problem` v1."""
 
     result: set[str] = set()
     for part in problem["parts"]:
@@ -130,25 +130,25 @@ def problem_features(problem: Mapping[str, Any]) -> list[str]:
 
 
 def validate_problem_profile(problem: Mapping[str, Any], tier: str) -> None:
-    """Проверяет лист, количества и максимальный bbox extent по declared tier."""
+    """Проверяет лист, количества и максимальный габарит по заявленному профилю."""
 
     if tier not in POLYGON_PROFILES:
-        raise ValueError(f"unknown problem tier: {tier}")
+        raise ValueError(f"неизвестный профиль задачи: {tier}")
     profile = POLYGON_PROFILES[tier]
     width, height = float(problem["sheet"]["width"]), float(problem["sheet"]["height"])
     if not profile["sheetWidth"][0] <= width <= profile["sheetWidth"][1]:
-        raise ValueError(f"sheet width is outside {tier} profile")
+        raise ValueError(f"ширина листа не входит в профиль {tier}")
     if not profile["sheetHeight"][0] <= height <= profile["sheetHeight"][1]:
-        raise ValueError(f"sheet height is outside {tier} profile")
+        raise ValueError(f"высота листа не входит в профиль {tier}")
     if not profile["partTypes"][0] <= len(problem["parts"]) <= profile["partTypes"][1]:
-        raise ValueError(f"part type count is outside {tier} profile")
+        raise ValueError(f"число типов деталей не входит в профиль {tier}")
     instances = sum(int(part["quantity"]) for part in problem["parts"])
     if not profile["instances"][0] <= instances <= profile["instances"][1]:
-        raise ValueError(f"instance count is outside {tier} profile")
+        raise ValueError(f"число экземпляров не входит в профиль {tier}")
     for part in problem["parts"]:
         points = list(path_points(part["outer"]))
         extent_x = max(float(point["x"]) for point in points) - min(float(point["x"]) for point in points)
         extent_y = max(float(point["y"]) for point in points) - min(float(point["y"]) for point in points)
         minimum, maximum = profile["partExtent"]
         if not minimum <= max(extent_x, extent_y) <= maximum:
-            raise ValueError(f"part extent is outside {tier} profile: {part['id']}")
+            raise ValueError(f"габарит детали не входит в профиль {tier}: {part['id']}")

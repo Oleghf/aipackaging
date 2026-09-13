@@ -6,21 +6,21 @@
 
 namespace aipackaging::solver
 {
-/// Результат управляемого grid-запуска с отдельным признаком пользовательской отмены.
+/// Результат управляемого клеточного запуска с отдельным признаком пользовательской отмены.
 struct GridSolverExecutionResult
 {
   GridSolution solution;
   bool cancelled = false;
 };
 
-/// Сравнивает два результата по единому полному/partial objective-порядку M1.
+/// Сравнивает результаты по единому порядку полных и частичных решений M1.
 bool isBetterGridSolution(const GridSolution & candidate, const GridSolution & reference);
 
-/// Запускает grid baseline с поддержкой отмены, прогресса и возврата лучшего partial.
+/// Запускает клеточный базовый алгоритм с отменой и возвратом лучшего частичного решения.
 GridSolverExecutionResult runGridProblem(const GridProblem & problem, const SolverConfig & config,
                                          const SearchExecutionControl & control = {});
 
-/// Запускает выбранный baseline над общей средой и возвращает полный или лучший частичный результат.
+/// Запускает выбранный базовый алгоритм и возвращает полное или лучшее частичное решение.
 GridSolution solveGridProblem(const GridProblem & problem, const SolverConfig & config = {});
 } // namespace aipackaging::solver
 

@@ -7,7 +7,7 @@
 
 namespace aipackaging::solver
 {
-/// Результат строгой загрузки grid_problem v1.
+/// Результат строгой загрузки клеточной задачи `grid_problem` v1.
 struct GridProblemLoadResult
 {
   bool success = false;
@@ -15,7 +15,7 @@ struct GridProblemLoadResult
   std::string error;
 };
 
-/// Результат строгой загрузки совместимого grid_solution v1 или v2.
+/// Результат строгой загрузки совместимого клеточного решения `grid_solution` v1 или v2.
 struct GridSolutionLoadResult
 {
   bool success = false;
@@ -27,16 +27,16 @@ struct GridSolutionLoadResult
 GridProblemLoadResult loadGridProblemFromText(const std::string & text);
 /// Загружает и проверяет задачу из JSON-файла.
 GridProblemLoadResult loadGridProblemFromFile(const std::string & filePath);
-/// Сериализует задачу в канонический JSON grid_problem v1.
+/// Сериализует задачу в канонический JSON формата `grid_problem` v1.
 std::string saveGridProblemToText(const GridProblem & problem);
 
 /// Загружает структуру решения из JSON-текста без привязки к конкретной задаче.
 GridSolutionLoadResult loadGridSolutionFromText(const std::string & text);
 /// Загружает структуру решения из JSON-файла без привязки к конкретной задаче.
 GridSolutionLoadResult loadGridSolutionFromFile(const std::string & filePath);
-/// Сериализует результат в канонический JSON выбранной wire-версии.
+/// Сериализует результат в канонический JSON выбранной версии формата обмена.
 std::string saveGridSolutionToText(const GridSolution & solution);
-/// Записывает grid_solution v1/v2 в файл либо возвращает диагностическое сообщение.
+/// Записывает решение `grid_solution` v1/v2 в файл либо возвращает диагностическое сообщение.
 bool saveGridSolutionToFile(const std::string & filePath, const GridSolution & solution, std::string & error);
 } // namespace aipackaging::solver
 

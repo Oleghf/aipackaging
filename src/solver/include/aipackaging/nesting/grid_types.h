@@ -79,7 +79,7 @@ struct ObjectiveComponents
   double materialUtilization = 0.0;
 };
 
-/// Сериализуемый результат решения, включая допустимый partial.
+/// Сериализуемый результат, включая допустимое частичное решение.
 struct GridSolution
 {
   int wireVersion = 1;
