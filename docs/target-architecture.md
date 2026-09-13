@@ -3,62 +3,65 @@
 ## Назначение
 
 Целевая система остаётся модульным монолитом C++ с Python-инструментами обучения.
-Она не делится на сервисы и не вводит runtime IPC. Границы нужны для независимой
-сборки, тестирования и замены policy backend, а не ради количества библиотек.
+Она не делится на сервисы и не вводит механизм выполнения межпроцессное взаимодействие. Границы нужны для независимой
+сборки, тестирования и замены внутренней реализации политики, а не ради количества библиотек.
 
-Главная продуктовая цепочка — полигональная. Grid solver сохраняется как
-изолированный research compatibility-контур для воспроизводимости M1-M3.
-Клеточный desktop `Board/Figure` считается legacy и выводится после достижения
+Главная продуктовая цепочка — полигональная. клеточный решатель сохраняется как
+изолированный исследовательский контур совместимости для воспроизводимости M1-M3.
+Клеточный настольное приложение `Board/Figure` считается унаследованный контур и выводится после достижения
 полигонального функционального паритета.
 
 ## Принципы
 
-1. Геометрия определяет допустимость; policy только выбирает допустимое действие.
-2. Wire contract, domain type и presentation model имеют разных владельцев.
-3. Core не знает о JSON, Qt, pybind11, ONNX Runtime, filesystem и потоках.
-4. Search не выполняет сериализацию и не публикует UI callbacks.
-5. Application зависит от портов, а не от конкретного baseline или ONNX backend.
-6. Старые заголовки сохраняются forwarding adapters на время миграции.
-7. Новые границы подтверждаются CMake targets и dependency tests.
+1. Геометрия определяет допустимость; политика только выбирает допустимое действие.
+2. формат обмена контракты, домен тип и представление модель имеют разных владельцев.
+3. ядро не знает о JSON, Qt, pybind11, ONNX механизм выполнения, файловая система и потоках.
+4. поиск не выполняет сериализацию и не публикует UI функции обратного вызова.
+5. прикладной слой зависит от портов, а не от конкретного базового алгоритма или внутренней реализации ONNX.
+6. Старые заголовки сохраняются перенаправляющий адаптеры на время миграции.
+7. Новые границы подтверждаются CMake цели сборки и зависимость тесты.
 
 ## Модули
 
 ### `AIPackaging_NestingCore`
 
-Владеет нейтральными status/metadata/validation-контрактами, аналитической и
-нормализованной полигональной геометрией, `PolygonEnvironment`, candidate
-generation, objective/comparator и точным validator. Clipper2 является private
-implementation dependency.
+Владеет нейтральными контрактами статуса, метаданных и проверки, аналитической и
+нормализованной полигональной геометрией, `PolygonEnvironment`, генерацией
+кандидатов, целевой функцией, компаратором и точным валидатором. Clipper2
+является закрытой зависимостью реализации.
 
-Core не владеет wall-clock временем, progress, JSON и ML tensors. Публичные
-заголовки размещаются под include-prefix `aipackaging/nesting/...`.
+Ядро не владеет измерением фактического времени, ходом выполнения, JSON и
+тензорами ML. Публичные
+заголовки размещаются с префиксом включения `aipackaging/nesting/...`.
 
 ### `AIPackaging_Search`
 
 Владеет `SolverKind`, `SolverConfig`, `SearchRuntime`, бюджетами,
-timeout/cancellation, progress snapshot, ordering policies, random и beam
-orchestration. Зависит только от NestingCore.
+ограничение времени, отмену, снимки хода выполнения, порядок политик и
+координацию случайного и лучевого поиска. Зависит только от `NestingCore`.
 
-Geometry-specific операции предоставляются адаптером среды: enumerate, canApply,
-apply, evaluate и stable tie-break. Они не прячутся за общим объектным интерфейсом,
-если достаточно compile-time adapter: это сохраняет типобезопасность и не
+Специфичные для геометрии операции предоставляются адаптером среды: перечисление, проверка применимости,
+применение, оценка и стабильное разрешение равенства. Они не прячутся за общим
+объектным интерфейсом, если достаточно адаптера времени компиляции: это
+сохраняет типобезопасность и не
 усложняет горячий цикл виртуальными вызовами.
 
 ### `AIPackaging_Learning`
 
-Владеет `PolygonLearningEnvironment`, raster/feature observations, reward и
-replay API. Зависит от NestingCore, но не от Search: baseline trajectories могут
+Владеет `PolygonLearningEnvironment`, растровый/признак наблюдения, вознаграждение и
+API повторного проигрывания. Зависит от `NestingCore`, но не от поиска:
+траектории базовых алгоритмов могут
 проигрываться без подключения алгоритмов поиска.
 
 ### `AIPackaging_Json`
 
-Владеет strict problem/solution serializers всех поддерживаемых wire versions.
-Зависит от публичных контрактов Core и скрывает nlohmann/json. Filesystem helpers
-находятся здесь либо в конкретном CLI/desktop adapter, но не в Core.
+Владеет строгими сериализаторами задач и решений всех поддерживаемых версий формата обмена.
+Зависит от публичных контрактов ядро и скрывает `nlohmann`/json. файловая система вспомогательные функции
+находятся здесь либо в конкретном адаптере CLI или настольного приложения, но не в ядре.
 
 ### `AIPackaging_Application`
 
-Владеет use cases полигонального workspace, состояниями workflow, application
+Владеет сценарии использования полигонального рабочая область, состояниями рабочий процесс, прикладной слой
 DTO и портами:
 
 ```cpp
@@ -70,22 +73,22 @@ class INestingJobRunner;
 class IPolygonWorkspaceOutput;
 ```
 
-DTO содержат только необходимые UI поля. `INestingJobRunner` различает complete,
-partial, cancelled и failed. Controller не хранит `PolygonEnvironment`, не
-управляет `std::jthread` и не принимает solver structs в публичном view API.
+DTO содержат только необходимые UI поля. `INestingJobRunner` различает завершено,
+частичного решения, отмены и ошибки. Контроллер не хранит `PolygonEnvironment`,
+не управляет `std::jthread` и не принимает структуры решателя в публичном API представления.
 
-### Infrastructure и adapters
+### инфраструктура и адаптеры
 
-- `BaselinePolygonBackend` связывает Application с Search и validator.
-- `OnnxPolygonBackend` в M6.3 реализует тот же application port и всегда выполняет
-  post-validation через Core.
-- `LocalPolygonDocumentGateway` связывает Application с Json и filesystem.
-- `StdThreadNestingJobRunner` владеет `std::jthread`, stop source, throttling и
-  generation id; Qt предоставляет только UI dispatcher.
-- Qt GUI зависит от Application и отображает presentation DTO.
-- CLI зависит от Json, Search и Core validator.
-- pybind11 зависит от Core, Learning, Search и Json, но bindings разделены по
-  grid/polygon/common translation units.
+- `BaselinePolygonBackend` связывает прикладной слой с поиск и валидатор.
+- `OnnxPolygonBackend` в M6.3 реализует тот же прикладной слой порт и всегда выполняет
+  повторная проверка через ядро.
+- `LocalPolygonDocumentGateway` связывает прикладной слой с Json и файловая система.
+- `StdThreadNestingJobRunner` владеет `std::jthread`, остановка исходный код, ограничение частоты и
+  генерация идентификатор; Qt предоставляет только UI диспетчер.
+- графический интерфейс Qt зависит от прикладного слоя и отображает DTO представления.
+- CLI зависит от Json, поиск и ядро валидатор.
+- pybind11 зависит от ядро, обучение, поиск и Json, но привязки Python/C++ разделены по
+  клеточные, полигональные и общие единицы трансляции.
 
 ## Граф допустимых зависимостей
 
@@ -109,27 +112,28 @@ partial, cancelled и failed. Controller не хранит `PolygonEnvironment`,
                                                   Qt GUI            composition root
 ```
 
-Запрещены зависимости Core → Search/Json/Learning/Application, Application →
-concrete Search/Json/Clipper2 и Qt GUI → Core/Search concrete types.
+Запрещены зависимости ядро → поиск/Json/обучение/прикладной слой, прикладной слой →
+конкретный поиск, JSON и Clipper2; а графический интерфейс Qt — на конкретные
+типы ядра и поиска.
 
 ## Владение публичными типами
 
 | Контракт | Владелец | Потребители |
 |---|---|---|
-| `ObjectiveDefinition`, status, metrics, metadata, validation | NestingCore common | Search, Json, adapters |
-| `PolygonProblem`, geometry, placement, solution | NestingCore polygon | Search, Learning, Json |
-| solver kind/config, `SearchControl`, progress, execution result | Search | CLI, infrastructure |
-| observation/reward/replay | Learning | pybind11, Python |
-| wire format v1/v2 | Json + schemas | CLI, desktop gateway, Python audit |
-| workspace request/progress/result/view | Application | Qt, infrastructure |
-| NumPy/Python wrapper types | Python package | training and datasets |
+| `ObjectiveDefinition`, статус, метрики, метаданные, проверка | `NestingCore` общий | поиск, Json, адаптеры |
+| `PolygonProblem`, геометрия, размещение, решение | `NestingCore` полигональный | поиск, обучение, Json |
+| решатель вид/конфигурация, `SearchControl`, ход выполнения, выполнение результат | поиск | CLI, инфраструктура |
+| наблюдение/вознаграждение/повторное проигрывание | обучение | pybind11, Python |
+| формат обмена v1/v2 | Json + схемы | CLI, настольное приложение шлюз, Python аудит |
+| рабочая область запрос/ход выполнения/результат/представление | прикладной слой | Qt, инфраструктура |
+| NumPy/Python обёртка типы | Python пакет | обучение и наборы данных |
 
-Внешний wire JSON остаётся совместимым. Перемещение C++ declarations между
-заголовками не является причиной повышать wire version.
+Внешний формат обмена JSON остаётся совместимым. Перемещение C++ объявления между
+заголовками не является причиной повышать версию формата обмена.
 
 ## Потоки выполнения
 
-### Baseline CLI
+### Базовый алгоритм в CLI
 
 ```text
 file -> Json parser -> PolygonProblem -> Search -> Core validator
@@ -143,10 +147,10 @@ dataset JSONL -> Python verifier -> pybind Json/Core/Learning -> observation
 policy action -> dynamic catalogue -> Core apply/validator -> trajectory audit
 ```
 
-Python отвечает за orchestration, multiprocessing, datasets и tensors. C++
-остаётся источником истины для геометрии, действий, objective и validation.
+Python отвечает за координация, многопроцессная обработка, наборы данных и тензоры. C++
+остаётся источником истины для геометрии, действий, целевой функции и проверки.
 
-### Desktop baseline и ONNX
+### Базовый алгоритм и ONNX в настольном приложении
 
 ```text
 Qt action -> Application controller -> INestingJobRunner
@@ -155,44 +159,47 @@ Qt action -> Application controller -> INestingJobRunner
 completion -> Application DTO -> queued Qt presentation
 ```
 
-Controller меняет состояние только в UI-потоке. Runner никогда не вызывает GUI
-напрямую. Каждый event содержит generation id; устаревшие events игнорируются.
-Отменённый partial отображается, но не становится сохраняемым решением.
+Контроллер меняет состояние только в потоке UI. Средство запуска никогда не
+вызывает GUI напрямую. Каждое событие содержит идентификатор запуска;
+устаревшие события игнорируются.
+Отменённый частичное решение отображается, но не становится сохраняемым решением.
 
 ## Совместимость и переходные контуры
 
-- `grid_problem`/`grid_solution` и M1-M3 dataset остаются читаемыми.
-- Grid environment/search/learning перемещаются в временный
-  `AIPackaging_GridResearch`; новые product-функции на него не ссылаются.
-- Старый `AIPackaging_Solver` на переходе является INTERFACE compatibility target,
+- `grid_problem`, `grid_solution` и наборы данных M1-M3 остаются читаемыми.
+- клеточные среда, поиск и обучение перемещаются во временный
+  `AIPackaging_GridResearch`; новые функции продукта на него не ссылаются.
+- Старый `AIPackaging_Solver` на переходе является `INTERFACE` совместимость цель сборки,
   агрегирующим новые библиотеки.
-- Старые плоские headers становятся forwarding headers с deprecation comment;
-  внутренний код использует namespaced include-prefix.
-- `Board/Figure` и универсальные UI events остаются в
+- Старые плоские заголовки становятся перенаправляющий заголовки с вывод из эксплуатации комментарий;
+  внутренний код использует префикс включения с пространством имён.
+- `Board/Figure` и универсальные UI события остаются в
   `AIPackaging_LegacyDesktop`, собираемом только с `BUILD_LEGACY_DESKTOP=ON`.
-- Удаление legacy допускается только после миграции нужных пользовательских
-  сценариев и отдельного решения о старом scene format.
+- Удаление унаследованный контур допускается только после миграции нужных пользовательских
+  сценариев и отдельного решения о старом сцена формат.
 
 ## Тестовая архитектура
 
-Production target имеет соответствующий test executable: Core, Search, Json,
-Learning, Application, Qt adapters и Legacy. End-to-end CLI/Python tests остаются
-отдельными. Минимальные compile/link tests подтверждают, что:
+Каждая рабочая цель сборки имеет соответствующий исполняемый файл тестов: ядро,
+поиск, JSON, обучение, прикладной слой, адаптеры Qt и унаследованный контур.
+Сквозные тесты CLI/Python остаются отдельными. Минимальные тесты компиляции и
+компоновки подтверждают, что:
 
-- Core собирается без Qt, nlohmann public headers, Python и App;
-- Learning собирается без Search и filesystem;
-- Application собирается с fake ports без Solver/Clipper2/Qt;
-- Qt headers не встречаются вне GUI adapter;
-- запрещённые include edges приводят к ошибке проверки.
+- ядро собирается без Qt, `nlohmann` открытый заголовки, Python и прикладной слой;
+- обучение собирается без поиск и файловая система;
+- прикладной слой собирается с имитация порты без решатель/Clipper2/Qt;
+- Qt заголовки не встречаются вне GUI адаптер;
+- запрещённые включение заголовка связи приводят к ошибке проверки.
 
-GitHub Actions выполняет Linux headless и Python jobs на каждый push/PR, Windows
-MSVC — для C++ parity. Qt desktop job добавляется отдельно и не блокирует первые
-архитектурные изменения, пока способ установки Qt на runner не закреплён.
+GitHub Actions выполняет задания Linux без графического интерфейса и Python при
+каждой отправке изменений и запросе на слияние, Windows
+MSVC — для C++ функциональный паритет. Qt настольное приложение задание добавляется отдельно и не блокирует первые
+архитектурные изменения, пока способ установки Qt на средство выполнения заданий не закреплён.
 
 ## Что намеренно не делается
 
-- Микросервисы, отдельные процессы solver и сетевые API.
-- Общий абстрактный geometry interface для grid и polygon любой ценой.
+- Микросервисы, отдельные процессы решателя и сетевые API.
+- Общий абстрактный интерфейс геометрии для клеточного и полигонального контуров любой ценой.
 - Переписывание рабочего Clipper2-кода одновременно с перемещением модулей.
-- Исправление всех имён и форматирования legacy перед его удалением.
-- Изменение problem/solution/dataset wire formats без отдельного ADR.
+- Исправление всех имён и форматирования унаследованный контур перед его удалением.
+- Изменение форматов обмена задачи, решения или набора данных без отдельного ADR.
