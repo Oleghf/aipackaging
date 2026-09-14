@@ -46,3 +46,23 @@ TEST(PolygonIo, RejectsOutOfRangeRotation)
   text.replace(position, 1, "9223372036854775807");
   EXPECT_FALSE(loadPolygonProblemFromText(text).success);
 }
+
+/// Проверяет чтение и запись происхождения нейросетевого полигонального решения v2.
+TEST(PolygonIo, RoundTripsNeuralSolutionV2)
+{
+  PolygonSolution solution = solvePolygonProblem(problem());
+  ASSERT_TRUE(solution.complete());
+  solution.wireVersion = 2;
+  solution.solver.family = SolverFamily::Neural;
+  solution.solver.name = "polygon-policy-v1";
+  solution.solver.modelId = "fixture-policy";
+  solution.solver.modelSha256 = std::string(64, 'a');
+  solution.solver.rollouts = 16;
+  solution.solver.selectionMode = "sampled-best-of";
+  const PolygonSolutionLoadResult loaded = loadPolygonSolutionFromText(savePolygonSolutionToText(solution));
+  ASSERT_TRUE(loaded.success) << loaded.error;
+  EXPECT_EQ(loaded.solution.wireVersion, 2);
+  EXPECT_EQ(loaded.solution.solver.family, SolverFamily::Neural);
+  EXPECT_EQ(loaded.solution.solver.modelId, "fixture-policy");
+  EXPECT_EQ(loaded.solution.solver.rollouts, 16U);
+}

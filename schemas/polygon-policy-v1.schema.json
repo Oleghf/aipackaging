@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aipackaging.local/schemas/polygon-policy-v1.schema.json",
+  "title": "AIPackaging: метаданные полигональной политики v1",
+  "type": "object", "additionalProperties": false,
+  "required": ["format", "version", "modelId", "architecture", "observationVersion", "rewardVersion", "datasetManifestSha256", "configSha256", "checkpointSha256", "limits", "actionSelection"],
+  "properties": {
+    "format": {"const": "aipackaging.polygon_policy"}, "version": {"const": 1}, "modelId": {"type": "string", "minLength": 1},
+    "architecture": {"const": "hierarchical-polygon-policy-v1"}, "observationVersion": {"const": 2}, "rewardVersion": {"const": 2},
+    "datasetManifestSha256": {"$ref": "#/$defs/sha"}, "configSha256": {"$ref": "#/$defs/sha"}, "checkpointSha256": {"$ref": "#/$defs/sha"},
+    "limits": {"type": "object", "additionalProperties": false,
+      "required": ["architecture", "hiddenSize", "sheetRasterSize", "shapeRasterSize", "maxInstances", "maxCandidatesPerPair"],
+      "properties": {"architecture": {"const": "hierarchical-polygon-policy-v1"}, "hiddenSize": {"type": "integer", "minimum": 16},
+        "sheetRasterSize": {"const": 128}, "shapeRasterSize": {"const": 32}, "maxInstances": {"type": "integer", "minimum": 1},
+        "maxCandidatesPerPair": {"type": "integer", "minimum": 1}}},
+    "actionSelection": {"type": "object", "additionalProperties": false, "required": ["levels", "tieBreak"],
+      "properties": {"levels": {"const": ["instance", "rotation", "position"]}, "tieBreak": {"const": "lowest-current-catalog-index"}}}
+  },
+  "$defs": {"sha": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+}

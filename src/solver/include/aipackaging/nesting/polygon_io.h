@@ -15,7 +15,7 @@ struct PolygonProblemLoadResult
   std::string error;
 };
 
-/// Результат строгой загрузки решения `polygon_solution` v1.
+/// Результат строгой загрузки решения `polygon_solution` v1 или v2.
 struct PolygonSolutionLoadResult
 {
   bool success = false;

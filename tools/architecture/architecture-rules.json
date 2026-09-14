@@ -177,7 +177,8 @@
       "base": [
         "__init__",
         "contracts",
-        "environment"
+        "environment",
+        "polygon_contracts"
       ],
       "dataset": [
         "dataset",
@@ -193,15 +194,21 @@
         "onnx_policy",
         "policy",
         "rl",
-        "training_data"
+        "training_data",
+        "polygon_model",
+        "polygon_policy",
+        "polygon_training_data"
       ],
       "training": [
         "rollout",
-        "training"
+        "training",
+        "polygon_training",
+        "polygon_training_cache"
       ],
       "evaluation": [
         "evaluation",
-        "exporting"
+        "exporting",
+        "polygon_evaluation"
       ],
       "dataset_cli": [
         "commands.datasets"
@@ -279,7 +286,11 @@
       "python/aipackaging_ml/exporting.py",
       "python/aipackaging_ml/model.py",
       "python/aipackaging_ml/policy.py",
-      "python/aipackaging_ml/training.py"
+      "python/aipackaging_ml/training.py",
+      "python/aipackaging_ml/polygon_evaluation.py",
+      "python/aipackaging_ml/polygon_model.py",
+      "python/aipackaging_ml/polygon_policy.py",
+      "python/aipackaging_ml/polygon_training.py"
     ]
   },
   "ignoredDirectories": [

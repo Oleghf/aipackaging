@@ -158,6 +158,7 @@ struct PolygonState
 /// Сериализуемый результат полного или частичного полигонального поиска.
 struct PolygonSolution
 {
+  int wireVersion = 1;
   std::string problemId;
   SolveStatus status = SolveStatus::InvalidProblem;
   std::vector<PolygonPlacement> placements;
@@ -190,6 +191,30 @@ struct PolygonPlacementObservation
   std::vector<float> channels;
   std::vector<PolygonAction> actions;
   std::vector<float> candidateFeatures;
+};
+
+/// Неизменная часть наблюдения полигональной политики для одного эпизода.
+struct PolygonStaticObservation
+{
+  int shapeRasterRows = 32;
+  int shapeRasterColumns = 32;
+  std::vector<unsigned char> partMasks;
+  std::vector<unsigned char> orientationMask;
+  std::vector<float> partFeatures;
+  std::vector<std::string> instancePartIds;
+  std::vector<std::uint32_t> instanceIndices;
+};
+
+/// Изменяемая часть наблюдения полигональной политики для текущего шага.
+struct PolygonDynamicObservation
+{
+  int rasterRows = 128;
+  int rasterColumns = 128;
+  std::vector<float> occupied;
+  std::vector<float> clearance;
+  std::vector<unsigned char> remaining;
+  std::vector<unsigned char> pairMask;
+  std::vector<float> objective;
 };
 } // namespace aipackaging::solver
 

@@ -89,6 +89,23 @@ bool readUint64(const Json & object, const char * key, std::uint64_t & value)
   }
 }
 
+/// Читает размер контейнера без потери диапазона текущей платформы.
+bool readSize(const Json & object, const char * key, std::size_t & value)
+{
+  std::uint64_t parsed = 0;
+  if (!readUint64(object, key, parsed) || parsed > std::numeric_limits<std::size_t>::max())
+    return false;
+  value = static_cast<std::size_t>(parsed);
+  return true;
+}
+
+/// Проверяет каноническую запись SHA-256 в нижнем регистре.
+bool validSha256(const std::string & value)
+{
+  return value.size() == 64 && std::all_of(value.begin(), value.end(), [](unsigned char character)
+                                           { return std::isdigit(character) || (character >= 'a' && character <= 'f'); });
+}
+
 /// Читает обязательную знаковую микронную координату.
 bool readInt64(const Json & object, const char * key, std::int64_t & value)
 {
@@ -234,6 +251,49 @@ bool readSolver(const Json & value, SolverMetadata & solver)
   solver.maxExpandedStates = static_cast<std::size_t>(maxExpanded);
   return true;
 }
+
+/// Читает происхождение нейросетевого или гибридного решения полигонального формата v2.
+bool readSolverV2(const Json & value, SolverMetadata & solver)
+{
+  if (!onlyKeys(value, {"family", "name", "projectVersion", "revision", "seed", "baseline", "policy"}))
+    return false;
+  std::string family;
+  if (!readString(value, "family", family) || !parseSolverFamily(family, solver.family) ||
+      !readString(value, "name", solver.name) || solver.name.empty() ||
+      !readString(value, "projectVersion", solver.projectVersion) || !readString(value, "revision", solver.revision) ||
+      !readUint64(value, "seed", solver.seed))
+    return false;
+  const bool needsBaseline = solver.family != SolverFamily::Neural;
+  const bool needsPolicy = solver.family != SolverFamily::Baseline;
+  if (!value.contains("baseline") || !value.contains("policy") ||
+      (needsBaseline ? !value.at("baseline").is_object() : !value.at("baseline").is_null()) ||
+      (needsPolicy ? !value.at("policy").is_object() : !value.at("policy").is_null()))
+    return false;
+  if (needsBaseline)
+  {
+    const Json & baseline = value.at("baseline");
+    if (!onlyKeys(baseline, {"randomIterations", "beamWidth", "maxExpandedStates", "timeoutMs"}) ||
+        !readSize(baseline, "randomIterations", solver.randomIterations) || !readSize(baseline, "beamWidth", solver.beamWidth) ||
+        !readSize(baseline, "maxExpandedStates", solver.maxExpandedStates) ||
+        !readUint64(baseline, "timeoutMs", solver.timeoutMs))
+      return false;
+  }
+  if (needsPolicy)
+  {
+    const Json & policy = value.at("policy");
+    if (!onlyKeys(policy, {"modelId", "modelSha256", "rollouts", "selectionMode"}) ||
+        !readString(policy, "modelId", solver.modelId) || solver.modelId.empty() ||
+        !readString(policy, "modelSha256", solver.modelSha256) || !validSha256(solver.modelSha256) ||
+        !readSize(policy, "rollouts", solver.rollouts) || solver.rollouts == 0 ||
+        !readString(policy, "selectionMode", solver.selectionMode) ||
+        (solver.selectionMode != "greedy" && solver.selectionMode != "sampled-best-of" &&
+         solver.selectionMode != "hybrid-best-of"))
+      return false;
+    if ((solver.family == SolverFamily::Hybrid) != (solver.selectionMode == "hybrid-best-of"))
+      return false;
+  }
+  return true;
+}
 } // namespace
 
 /// Читает строгий `polygon_problem` v1 и запускает геометрическую нормализацию.
@@ -349,7 +409,7 @@ std::string savePolygonProblemToText(const PolygonProblem & problem)
   return root.dump(2) + '\n';
 }
 
-/// Разбирает `polygon_solution` v1 без доверия к записанной целевой функции.
+/// Разбирает `polygon_solution` v1/v2 без доверия к записанной целевой функции.
 PolygonSolutionLoadResult loadPolygonSolutionFromText(const std::string & text)
 {
   Json root;
@@ -369,9 +429,11 @@ PolygonSolutionLoadResult loadPolygonSolutionFromText(const std::string & text)
   std::string status;
   int version = 0;
   if (!readString(root, "format", format) || format != "aipackaging.polygon_solution" || !readInt(root, "version", version) ||
-      version != 1 || !readString(root, "problemId", solution.problemId) || !readString(root, "status", status) ||
-      !parseSolveStatus(status, solution.status) || !readString(root, "errorMessage", solution.errorMessage))
+      (version != 1 && version != 2) || !readString(root, "problemId", solution.problemId) ||
+      !readString(root, "status", status) || !parseSolveStatus(status, solution.status) ||
+      !readString(root, "errorMessage", solution.errorMessage))
     return solutionFailure("unsupported polygon solution format, version, or status");
+  solution.wireVersion = version;
   if (!root.contains("placements") || !root.at("placements").is_array())
     return solutionFailure("placements must be an array");
   for (const Json & item : root.at("placements"))
@@ -426,7 +488,8 @@ PolygonSolutionLoadResult loadPolygonSolutionFromText(const std::string & text)
       !readUint64(metrics, "searchTimeUs", solution.metrics.searchTimeUs) ||
       !readUint64(metrics, "totalTimeUs", solution.metrics.totalTimeUs))
     return solutionFailure("invalid polygon metrics values");
-  if (!root.contains("solver") || !readSolver(root.at("solver"), solution.solver))
+  if (!root.contains("solver") ||
+      (version == 1 ? !readSolver(root.at("solver"), solution.solver) : !readSolverV2(root.at("solver"), solution.solver)))
     return solutionFailure("invalid polygon solver metadata");
   return {true, std::move(solution), {}};
 }
@@ -456,7 +519,7 @@ std::string savePolygonSolutionToText(const PolygonSolution & solution)
   const auto & metrics = solution.metrics;
   const auto & solver = solution.solver;
   Json root = {{"format", "aipackaging.polygon_solution"},
-               {"version", 1},
+               {"version", solution.wireVersion},
                {"problemId", solution.problemId},
                {"status", toString(solution.status)},
                {"placements", std::move(placements)},
@@ -480,16 +543,36 @@ std::string savePolygonSolutionToText(const PolygonSolution & solution)
                  {"validationTimeUs", metrics.validationTimeUs},
                  {"searchTimeUs", metrics.searchTimeUs},
                  {"totalTimeUs", metrics.totalTimeUs}}},
-               {"solver",
-                {{"name", solver.name},
-                 {"projectVersion", solver.projectVersion},
-                 {"revision", solver.revision},
-                 {"seed", solver.seed},
-                 {"randomIterations", solver.randomIterations},
-                 {"beamWidth", solver.beamWidth},
-                 {"maxExpandedStates", solver.maxExpandedStates},
-                 {"timeoutMs", solver.timeoutMs}}},
                {"errorMessage", solution.errorMessage}};
+  if (solution.wireVersion == 1)
+  {
+    root["solver"] = {{"name", solver.name},
+                      {"projectVersion", solver.projectVersion},
+                      {"revision", solver.revision},
+                      {"seed", solver.seed},
+                      {"randomIterations", solver.randomIterations},
+                      {"beamWidth", solver.beamWidth},
+                      {"maxExpandedStates", solver.maxExpandedStates},
+                      {"timeoutMs", solver.timeoutMs}};
+  }
+  else
+  {
+    Json baseline = nullptr;
+    if (solver.family != SolverFamily::Neural)
+      baseline = {{"randomIterations", solver.randomIterations},
+                  {"beamWidth", solver.beamWidth},
+                  {"maxExpandedStates", solver.maxExpandedStates},
+                  {"timeoutMs", solver.timeoutMs}};
+    Json policy = nullptr;
+    if (solver.family != SolverFamily::Baseline)
+      policy = {{"modelId", solver.modelId},
+                {"modelSha256", solver.modelSha256},
+                {"rollouts", solver.rollouts},
+                {"selectionMode", solver.selectionMode}};
+    root["solver"] = {{"family", toString(solver.family)}, {"name", solver.name}, {"projectVersion", solver.projectVersion},
+                      {"revision", solver.revision},       {"seed", solver.seed}, {"baseline", std::move(baseline)},
+                      {"policy", std::move(policy)}};
+  }
   return root.dump(2) + '\n';
 }
 

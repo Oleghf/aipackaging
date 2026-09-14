@@ -86,6 +86,26 @@ def _parser() -> argparse.ArgumentParser:
     model.add_argument("--dataset", type=Path, required=True)
     model.add_argument("--split", choices=("validation",), default="validation")
     model.add_argument("--smoke", action="store_true")
+
+    polygon_train = commands.add_parser("train-polygon", help="выполнить полигональное BC и PPO")
+    polygon_train.add_argument("--config", type=Path, required=True)
+    polygon_train.add_argument("--dataset", type=Path, required=True)
+    polygon_train.add_argument("--run-dir", type=Path, required=True)
+    polygon_train.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+    polygon_train.add_argument("--resume", type=Path)
+    polygon_train.add_argument("--smoke", action="store_true")
+
+    polygon_evaluate = commands.add_parser("evaluate-polygon", help="оценить полигональную политику")
+    polygon_evaluate.add_argument("--checkpoint", type=Path, required=True)
+    polygon_evaluate.add_argument("--config", type=Path, required=True)
+    polygon_evaluate.add_argument("--dataset", type=Path, required=True)
+    polygon_evaluate.add_argument("--output", type=Path, required=True)
+    polygon_evaluate.add_argument("--split", choices=("validation", "test"), default="validation")
+    polygon_evaluate.add_argument("--device", choices=("cuda", "cpu"), default="cpu")
+    polygon_evaluate.add_argument("--smoke", action="store_true")
+
+    polygon_run = commands.add_parser("verify-polygon-run", help="проверить файлы полигонального обучения")
+    polygon_run.add_argument("--run-dir", type=Path, required=True)
     return parser
 
 
@@ -103,6 +123,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "evaluate": ml_commands.evaluate,
         "export-onnx": ml_commands.export_onnx,
         "verify-model": ml_commands.verify_model,
+        "train-polygon": ml_commands.train_polygon,
+        "evaluate-polygon": ml_commands.evaluate_polygon,
+        "verify-polygon-run": ml_commands.verify_polygon_run,
     }
     result = handlers[arguments.command](arguments)
     print(json.dumps(result, sort_keys=True))

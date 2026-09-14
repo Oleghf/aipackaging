@@ -1,0 +1,42 @@
+{
+  "format": "aipackaging.polygon_training_config",
+  "version": 1,
+  "seed": 42,
+  "datasetManifestSha256": "747ade28a858de2f1d484cdf6c942df07cb59af017eeb886f8c18d9105422c44",
+  "rewardVersion": 2,
+  "model": {
+    "architecture": "hierarchical-polygon-policy-v1",
+    "hiddenSize": 128,
+    "sheetRasterSize": 128,
+    "shapeRasterSize": 32,
+    "maxInstances": 100,
+    "maxCandidatesPerPair": 250000
+  },
+  "behavioralCloning": {
+    "learningRate": 0.0003,
+    "weightDecay": 0.0001,
+    "maxEpochs": 100,
+    "gradientAccumulation": 16,
+    "earlyStoppingPatience": 10
+  },
+  "ppo": {
+    "learningRate": 0.0001,
+    "updates": 122,
+    "transitionsPerUpdate": 4096,
+    "epochsPerUpdate": 4,
+    "workers": 4,
+    "gamma": 1.0,
+    "gaeLambda": 0.95,
+    "clipRatio": 0.2,
+    "entropyStart": 0.01,
+    "entropyEnd": 0.001,
+    "valueCoefficient": 0.5,
+    "maxGradientNorm": 0.5,
+    "maxWallTimeSeconds": 28800
+  },
+  "evaluation": {
+    "neuralRollouts": 16,
+    "requiredLexicographicWins": 6,
+    "requiredUsedLengthWins": 1
+  }
+}

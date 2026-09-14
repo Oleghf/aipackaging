@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aipackaging.local/schemas/polygon-solution-v2.schema.json",
+  "title": "AIPackaging: полигональное решение v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "problemId", "status", "placements", "objective", "metrics", "solver", "errorMessage"],
+  "properties": {
+    "format": {"const": "aipackaging.polygon_solution"},
+    "version": {"const": 2},
+    "problemId": {"type": "string", "minLength": 1},
+    "status": {"enum": ["solved", "no_solution_found", "budget_exhausted", "timed_out", "unsupported_environment", "invalid_problem"]},
+    "placements": {"type": "array", "items": {"type": "object", "additionalProperties": false,
+      "required": ["partId", "instanceIndex", "xMicrometers", "yMicrometers", "rotationDegrees"],
+      "properties": {"partId": {"type": "string"}, "instanceIndex": {"type": "integer", "minimum": 0},
+        "xMicrometers": {"type": "integer"}, "yMicrometers": {"type": "integer"},
+        "rotationDegrees": {"enum": [0, 90, 180, 270]}}}},
+    "objective": {"type": "object", "additionalProperties": false,
+      "required": ["usedLengthMicrometers", "primaryRemnantWidthMicrometers", "largestExtraRectangleSquareMicrometers", "fragmentationPenaltySquareMicrometers", "placedParts", "totalParts", "placedAreaSquareMicrometers", "totalPartAreaSquareMicrometers", "materialUtilization", "rasterColumns", "rasterRows"],
+      "properties": {
+        "usedLengthMicrometers": {"type": "integer", "minimum": 0}, "primaryRemnantWidthMicrometers": {"type": "integer", "minimum": 0},
+        "largestExtraRectangleSquareMicrometers": {"type": "integer", "minimum": 0}, "fragmentationPenaltySquareMicrometers": {"type": "integer", "minimum": 0},
+        "placedParts": {"type": "integer", "minimum": 0}, "totalParts": {"type": "integer", "minimum": 0, "maximum": 100},
+        "placedAreaSquareMicrometers": {"type": "integer", "minimum": 0}, "totalPartAreaSquareMicrometers": {"type": "integer", "minimum": 0},
+        "materialUtilization": {"type": "number", "minimum": 0, "maximum": 1}, "rasterColumns": {"const": 128}, "rasterRows": {"const": 128}}},
+    "metrics": {"type": "object", "additionalProperties": false,
+      "required": ["candidatesGenerated", "candidatesValidated", "expandedStates", "candidateGenerationTimeUs", "validationTimeUs", "searchTimeUs", "totalTimeUs"],
+      "properties": {"candidatesGenerated": {"type": "integer", "minimum": 0}, "candidatesValidated": {"type": "integer", "minimum": 0},
+        "expandedStates": {"type": "integer", "minimum": 0}, "candidateGenerationTimeUs": {"type": "integer", "minimum": 0},
+        "validationTimeUs": {"type": "integer", "minimum": 0}, "searchTimeUs": {"type": "integer", "minimum": 0}, "totalTimeUs": {"type": "integer", "minimum": 0}}},
+    "solver": {"type": "object", "additionalProperties": false,
+      "required": ["family", "name", "projectVersion", "revision", "seed", "baseline", "policy"],
+      "properties": {
+        "family": {"enum": ["baseline", "neural", "hybrid"]}, "name": {"type": "string", "minLength": 1},
+        "projectVersion": {"type": "string", "minLength": 1}, "revision": {"type": "string", "minLength": 1}, "seed": {"type": "integer", "minimum": 0},
+        "baseline": {"type": ["object", "null"], "additionalProperties": false,
+          "required": ["randomIterations", "beamWidth", "maxExpandedStates", "timeoutMs"],
+          "properties": {"randomIterations": {"type": "integer", "minimum": 1}, "beamWidth": {"type": "integer", "minimum": 1},
+            "maxExpandedStates": {"type": "integer", "minimum": 1}, "timeoutMs": {"type": "integer", "minimum": 0}}},
+        "policy": {"type": ["object", "null"], "additionalProperties": false,
+          "required": ["modelId", "modelSha256", "rollouts", "selectionMode"],
+          "properties": {"modelId": {"type": "string", "minLength": 1}, "modelSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "rollouts": {"type": "integer", "minimum": 1}, "selectionMode": {"enum": ["greedy", "sampled-best-of", "hybrid-best-of"]}}}},
+      "allOf": [
+        {"if": {"properties": {"family": {"const": "baseline"}}}, "then": {"properties": {"baseline": {"type": "object"}, "policy": {"type": "null"}}}},
+        {"if": {"properties": {"family": {"const": "neural"}}}, "then": {"properties": {"baseline": {"type": "null"}, "policy": {"type": "object", "properties": {"selectionMode": {"enum": ["greedy", "sampled-best-of"]}}}}}},
+        {"if": {"properties": {"family": {"const": "hybrid"}}}, "then": {"properties": {"baseline": {"type": "object"}, "policy": {"type": "object", "properties": {"selectionMode": {"const": "hybrid-best-of"}}}}}}
+      ]},
+    "errorMessage": {"type": "string"}
+  }
+}

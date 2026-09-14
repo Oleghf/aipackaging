@@ -1,4 +1,4 @@
-"""Многопроцессное выполнение нативных сред для сбора траекторий текущей политики M3."""
+"""Многопроцессное выполнение нативных сред для сбора траекторий политик."""
 
 from __future__ import annotations
 
@@ -7,12 +7,12 @@ from multiprocessing.connection import Connection
 from typing import Any, Mapping, Sequence
 
 
-def _worker(connection: Connection) -> None:
+def _worker(connection: Connection, environment_kind: str) -> None:
     """Обслуживает одну нативную среду и возвращает ошибки главному процессу."""
 
-    from .environment import GridNestingEnv
+    from .environment import GridNestingEnv, PolygonNestingEnv
 
-    environment: GridNestingEnv | None = None
+    environment: GridNestingEnv | PolygonNestingEnv | None = None
     try:
         while True:
             command, payload = connection.recv()
@@ -20,7 +20,11 @@ def _worker(connection: Connection) -> None:
                 return
             try:
                 if command == "reset":
-                    environment = GridNestingEnv.from_dict(payload["problem"])
+                    environment_type = GridNestingEnv if environment_kind == "grid" else PolygonNestingEnv
+                    if environment_kind == "polygon":
+                        environment = environment_type.from_dict(payload["problem"], reward_version=2)
+                    else:
+                        environment = environment_type.from_dict(payload["problem"])
                     fixed = environment.static_observation()
                     dynamic, info = environment.reset_compact(seed=payload["seed"])
                     connection.send((True, (fixed, dynamic, info)))
@@ -28,6 +32,19 @@ def _worker(connection: Connection) -> None:
                     if environment is None:
                         raise RuntimeError("рабочий процесс траектории не был сброшен")
                     connection.send((True, environment.step_compact(payload)))
+                elif command == "polygon-placement":
+                    if environment_kind != "polygon" or environment is None:
+                        raise RuntimeError("полигональная среда рабочего процесса не была сброшена")
+                    connection.send(
+                        (True, environment.placement_observation(payload["instance"], payload["rotationDegrees"]))
+                    )
+                elif command == "polygon-step-action":
+                    if environment_kind != "polygon" or environment is None:
+                        raise RuntimeError("полигональная среда рабочего процесса не была сброшена")
+                    # Индекс динамического каталога вычисляется там же, где живёт среда:
+                    # между запросом условного наблюдения и шагом состояние не меняется.
+                    action_index = environment.find_action(payload)
+                    connection.send((True, (action_index, environment.step_compact(action_index))))
                 else:
                     raise ValueError(f"неизвестная команда рабочего процесса траектории: {command}")
             except Exception as error:  # noqa: BLE001 - ошибка должна перейти в главный процесс
@@ -39,17 +56,19 @@ def _worker(connection: Connection) -> None:
 class MultiprocessRolloutPool:
     """Параллельно выполняет геометрические переходы в фиксированном числе процессов."""
 
-    def __init__(self, workers: int) -> None:
+    def __init__(self, workers: int, *, environment_kind: str = "grid") -> None:
         """Создаёт одинаково запускаемые в Windows и Linux рабочие процессы."""
 
         if workers < 1:
             raise ValueError("число рабочих процессов траекторий должно быть положительным")
+        if environment_kind not in {"grid", "polygon"}:
+            raise ValueError("неизвестный вид среды рабочих процессов")
         context = multiprocessing.get_context("spawn")
         self._connections: list[Connection] = []
         self._processes: list[multiprocessing.Process] = []
         for _ in range(workers):
             parent, child = context.Pipe()
-            process = context.Process(target=_worker, args=(child,))
+            process = context.Process(target=_worker, args=(child, environment_kind))
             process.start()
             child.close()
             self._connections.append(parent)
@@ -86,6 +105,28 @@ class MultiprocessRolloutPool:
             raise ValueError("число действий должно совпадать с числом рабочих процессов")
         for connection, action in zip(self._connections, actions, strict=True):
             connection.send(("step", int(action)))
+        return [self._receive(connection) for connection in self._connections]
+
+    def polygon_placements(self, pairs: Sequence[tuple[int, int]]) -> list[dict[str, Any]]:
+        """Параллельно получает условные наблюдения выбранных пар полигональной среды."""
+
+        if len(pairs) != self.workers:
+            raise ValueError("число пар должно совпадать с числом рабочих процессов")
+        for connection, (instance, rotation) in zip(self._connections, pairs, strict=True):
+            connection.send(
+                ("polygon-placement", {"instance": int(instance), "rotationDegrees": int(rotation) * 90})
+            )
+        return [self._receive(connection) for connection in self._connections]
+
+    def polygon_step_actions(
+        self, actions: Sequence[Mapping[str, Any]]
+    ) -> list[tuple[int, tuple[dict[str, Any], float, bool, bool, dict[str, Any]]]]:
+        """Параллельно находит и применяет аудируемые полигональные действия."""
+
+        if len(actions) != self.workers:
+            raise ValueError("число действий должно совпадать с числом рабочих процессов")
+        for connection, action in zip(self._connections, actions, strict=True):
+            connection.send(("polygon-step-action", dict(action)))
         return [self._receive(connection) for connection in self._connections]
 
     def reset_lanes(

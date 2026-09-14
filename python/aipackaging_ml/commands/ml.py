@@ -63,3 +63,29 @@ def verify_model(arguments: Namespace) -> dict[str, Any]:
         split=arguments.split,
         smoke=arguments.smoke,
     )
+
+
+def train_polygon(arguments: Namespace) -> dict[str, Any]:
+    """Запускает полигональное BC/PPO после явного выбора команды."""
+
+    from ..polygon_training import train_polygon_pipeline
+
+    return train_polygon_pipeline(arguments.config, arguments.dataset, arguments.run_dir, device_name=arguments.device,
+                                  smoke=arguments.smoke, resume=arguments.resume)
+
+
+def evaluate_polygon(arguments: Namespace) -> dict[str, Any]:
+    """Оценивает полигональную контрольную точку на замороженной выборке."""
+
+    from ..polygon_evaluation import evaluate_polygon_checkpoint
+
+    return evaluate_polygon_checkpoint(arguments.checkpoint, arguments.config, arguments.dataset, arguments.output,
+                                       split=arguments.split, device_name=arguments.device, smoke=arguments.smoke)
+
+
+def verify_polygon_run(arguments: Namespace) -> dict[str, Any]:
+    """Проверяет хеши и структуру файлов полигонального запуска."""
+
+    from ..polygon_evaluation import verify_polygon_run as verify
+
+    return verify(arguments.run_dir)

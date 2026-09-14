@@ -154,16 +154,16 @@ class PolygonNestingEnv:
         self._native = native_environment
 
     @classmethod
-    def from_file(cls, path: str | Path) -> "PolygonNestingEnv":
+    def from_file(cls, path: str | Path, *, reward_version: int = 1) -> "PolygonNestingEnv":
         """Загружает строгий `polygon_problem` v1 из файла в кодировке UTF-8."""
 
-        return cls(_native.create_polygon_environment(Path(path).read_text(encoding="utf-8")))
+        return cls(_native.create_polygon_environment(Path(path).read_text(encoding="utf-8"), reward_version))
 
     @classmethod
-    def from_dict(cls, problem: Mapping[str, Any]) -> "PolygonNestingEnv":
+    def from_dict(cls, problem: Mapping[str, Any], *, reward_version: int = 1) -> "PolygonNestingEnv":
         """Создаёт эпизод из JSON-совместимого словаря `polygon_problem` v1."""
 
-        return cls(_native.create_polygon_environment(canonical_json(problem)))
+        return cls(_native.create_polygon_environment(canonical_json(problem), reward_version))
 
     def reset(self, seed: int | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
         """Сбрасывает эпизод и сообщает текущий размер пространства действий."""
@@ -175,6 +175,22 @@ class PolygonNestingEnv:
         """Возвращает независимый снимок базового наблюдения только для чтения."""
 
         return self._native.observation()
+
+    def static_observation(self) -> dict[str, Any]:
+        """Возвращает неизменные растры ориентаций и признаки экземпляров."""
+
+        return self._native.static_observation()
+
+    def dynamic_observation(self) -> dict[str, Any]:
+        """Возвращает изменяемые растры, признаки состояния и маску допустимых пар."""
+
+        return self._native.dynamic_observation()
+
+    def reset_compact(self, seed: int | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Сбрасывает эпизод без повторного копирования статического наблюдения."""
+
+        observation = self._native.reset_compact()
+        return observation, {"seed": seed, "problemId": self.problem_id, "actionCount": self.action_count}
 
     def placement_observation(self, instance_index: int, rotation_degrees: int) -> dict[str, Any]:
         """Возвращает четыре канала и кандидаты выбранной иерархической пары."""
@@ -205,6 +221,11 @@ class PolygonNestingEnv:
         """Применяет индекс текущего каталога и возвращает переход в стиле Gymnasium."""
 
         return self._native.step(action_index)
+
+    def step_compact(self, action_index: int) -> tuple[dict[str, Any], float, bool, bool, dict[str, Any]]:
+        """Применяет действие и возвращает только изменяемую часть наблюдения."""
+
+        return self._native.step_compact(action_index)
 
     def snapshot_solution(self, provenance: Mapping[str, Any]) -> dict[str, Any]:
         """Возвращает независимо проверенное `polygon_solution` v1 текущего состояния."""

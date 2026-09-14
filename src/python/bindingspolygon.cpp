@@ -53,6 +53,35 @@ py::dict polygonObservationToDict(const PolygonObservation & observation)
   return result;
 }
 
+/// Преобразует неизменные маски ориентаций и признаки экземпляров в массивы NumPy.
+py::dict polygonStaticObservationToDict(const PolygonStaticObservation & observation)
+{
+  const py::ssize_t instances = static_cast<py::ssize_t>(observation.orientationMask.size() / 4);
+  py::dict result;
+  result["part_masks"] =
+    readonlyArray(observation.partMasks, {instances, 4, observation.shapeRasterRows, observation.shapeRasterColumns});
+  result["orientation_mask"] = readonlyBoolArray(observation.orientationMask, {instances, 4});
+  result["part_features"] = readonlyArray(observation.partFeatures, {instances, 7});
+  result["instance_part_ids"] = observation.instancePartIds;
+  result["instance_indices"] = readonlyArray(observation.instanceIndices, {instances});
+  result["shape_raster_rows"] = observation.shapeRasterRows;
+  result["shape_raster_columns"] = observation.shapeRasterColumns;
+  return result;
+}
+
+/// Преобразует изменяемое наблюдение и маску допустимых пар в массивы NumPy.
+py::dict polygonDynamicObservationToDict(const PolygonDynamicObservation & observation)
+{
+  const py::ssize_t instances = static_cast<py::ssize_t>(observation.remaining.size());
+  py::dict result;
+  result["occupied"] = readonlyArray(observation.occupied, {observation.rasterRows, observation.rasterColumns});
+  result["clearance"] = readonlyArray(observation.clearance, {observation.rasterRows, observation.rasterColumns});
+  result["remaining"] = readonlyBoolArray(observation.remaining, {instances});
+  result["pair_mask"] = readonlyBoolArray(observation.pairMask, {instances, 4});
+  result["objective"] = readonlyArray(observation.objective, {7});
+  return result;
+}
+
 /// Преобразует условное наблюдение размещения и его динамические действия.
 py::dict polygonPlacementObservationToDict(const PolygonPlacementObservation & observation)
 {
@@ -77,14 +106,29 @@ PolygonProblem parsePolygonProblem(const std::string & problemJson)
 }
 
 /// Создаёт динамическую полигональную среду из JSON формата обмена.
-std::unique_ptr<PolygonLearningEnvironment> createPolygonEnvironment(const std::string & problemJson)
+std::unique_ptr<PolygonLearningEnvironment> createPolygonEnvironment(const std::string & problemJson, int rewardVersion)
 {
   PolygonProblem problem = parsePolygonProblem(problemJson);
+  PolygonLearningConfig config;
+  config.rewardVersion = rewardVersion;
   std::string error;
-  std::unique_ptr<PolygonLearningEnvironment> environment = PolygonLearningEnvironment::Create(problem, error);
+  std::unique_ptr<PolygonLearningEnvironment> environment = PolygonLearningEnvironment::Create(problem, config, error);
   if (!environment)
     throw py::value_error(error);
   return environment;
+}
+
+/// Формирует расширенную диагностику компактного перехода для обучения политики.
+py::dict compactStepInfo(const PolygonLearningCompactStepResult & step)
+{
+  py::dict info;
+  info["complete"] = step.complete;
+  info["deadEnd"] = step.deadEnd;
+  info["rewardVersion"] = step.rewardVersion;
+  info["potentialBefore"] = step.potentialBefore;
+  info["potentialAfter"] = step.potentialAfter;
+  info["componentDeltas"] = step.componentDeltas;
+  return info;
 }
 
 /// Запускает полигональный базовый алгоритм и возвращает воспроизводимый JSON.
@@ -176,6 +220,12 @@ void bindPolygon(py::module_ & module)
     .def("reset", [](PolygonLearningEnvironment & environment) { return polygonObservationToDict(environment.reset()); })
     .def("observation",
          [](const PolygonLearningEnvironment & environment) { return polygonObservationToDict(environment.observation()); })
+    .def("static_observation", [](const PolygonLearningEnvironment & environment)
+         { return polygonStaticObservationToDict(environment.staticObservation()); })
+    .def("dynamic_observation", [](const PolygonLearningEnvironment & environment)
+         { return polygonDynamicObservationToDict(environment.dynamicObservation()); })
+    .def("reset_compact",
+         [](PolygonLearningEnvironment & environment) { return polygonDynamicObservationToDict(environment.resetCompact()); })
     .def("placement_observation", [](const PolygonLearningEnvironment & environment, std::size_t instance, int rotation)
          { return polygonPlacementObservationToDict(environment.placementObservation(instance, rotation)); })
     .def("actions",
@@ -185,6 +235,13 @@ void bindPolygon(py::module_ & module)
            for (const PolygonAction & action : environment.actions())
              result.append(polygonActionToDict(action));
            return result;
+         })
+    .def("step_compact",
+         [](PolygonLearningEnvironment & environment, std::size_t index)
+         {
+           const PolygonLearningCompactStepResult step = environment.stepCompact(index);
+           return py::make_tuple(polygonDynamicObservationToDict(step.observation), step.reward, step.terminated, false,
+                                 compactStepInfo(step));
          })
     .def("step",
          [](PolygonLearningEnvironment & environment, std::size_t index)
@@ -201,7 +258,7 @@ void bindPolygon(py::module_ & module)
     .def_property_readonly("is_terminal", &PolygonLearningEnvironment::isTerminal)
     .def_property_readonly("problem_id", &PolygonLearningEnvironment::problemId);
 
-  module.def("create_polygon_environment", &createPolygonEnvironment, py::arg("problem_json"));
+  module.def("create_polygon_environment", &createPolygonEnvironment, py::arg("problem_json"), py::arg("reward_version") = 1);
   module.def("solve_polygon_problem", &solvePolygonProblemJson, py::arg("problem_json"), py::arg("solver") = "area-left-bottom",
              py::arg("seed") = 42, py::arg("random_iterations") = 64, py::arg("beam_width") = 32,
              py::arg("max_expanded_states") = 50000, py::arg("timeout_ms") = 0);
