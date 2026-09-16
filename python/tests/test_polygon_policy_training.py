@@ -13,6 +13,7 @@ from jsonschema import Draft202012Validator
 from aipackaging_ml.environment import PolygonNestingEnv
 from aipackaging_ml import _aipackaging_solver as _native
 from aipackaging_ml.datasets.serialization import canonical_json
+from aipackaging_ml.datasets.serialization import sha256_file, write_canonical_json
 from aipackaging_ml.polygon_contracts import load_polygon_training_config, validate_polygon_training_config
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -137,6 +138,87 @@ def test_polygon_checkpoint_restores_rng_when_loaded_to_cuda(tmp_path: Path) -> 
     payload = load_polygon_checkpoint(path, target, torch.device("cuda"), restore_rng=True)
     assert payload["torchRandomState"].device.type == "cuda"
     assert torch.get_rng_state().device.type == "cpu"
+
+
+def test_polygon_training_budget_is_cumulative(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Продолжение получает только остаток общего бюджета, а не новый полный срок."""
+
+    from aipackaging_ml import polygon_training
+
+    now = 1000.0
+    monkeypatch.setattr(polygon_training.time, "monotonic", lambda: now)
+    budget = polygon_training.PolygonTrainingBudget(28_800.0, 21_600.0, now)
+    assert budget.deadline == 8200.0
+    now += 3600.0
+    assert budget.elapsed_seconds() == 25_200.0
+    assert budget.checkpoint_state({"bestScore": [1.0]})["elapsedTrainingSeconds"] == 25_200.0
+
+    assert polygon_training._resume_elapsed_seconds(
+        {"trainingState": {"elapsedTrainingSeconds": 21_600.0}}, 28_800.0
+    ) == 21_600.0
+    with pytest.raises(ValueError, match="не содержит накопленное время"):
+        polygon_training._resume_elapsed_seconds({"trainingState": {}}, 28_800.0)
+    with pytest.raises(ValueError, match="уже исчерпан"):
+        polygon_training._resume_elapsed_seconds(
+            {"trainingState": {"elapsedTrainingSeconds": 28_800.0}}, 28_800.0
+        )
+
+
+def test_finalize_polygon_run_does_not_change_weights(tmp_path: Path) -> None:
+    """Финализация проверяет файлы, выбирает лучшую точку и не меняет её байты."""
+
+    torch = pytest.importorskip("torch")
+    from aipackaging_ml import polygon_run
+    from aipackaging_ml.polygon_evaluation import verify_polygon_run
+    from aipackaging_ml.polygon_model import HierarchicalPolygonPolicyV1
+    from aipackaging_ml.polygon_training import save_polygon_checkpoint
+
+    dataset = tmp_path / "dataset"
+    run = tmp_path / "run"
+    dataset.mkdir()
+    run.mkdir()
+    write_canonical_json(dataset / "manifest.json", {"fixture": True})
+    config = load_polygon_training_config(ROOT / "configs" / "m6" / "polygon-policy-v1.json")
+    config["datasetManifestSha256"] = sha256_file(dataset / "manifest.json")
+    config_path = tmp_path / "config.json"
+    write_canonical_json(config_path, config)
+
+    model = HierarchicalPolygonPolicyV1(config["model"]["hiddenSize"])
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.0)
+    save_polygon_checkpoint(
+        run / "polygon-bc-best.pt", model, optimizer, scheduler, stage="bc", step=2, config=config,
+        training_state={"bestNll": 1.0},
+    )
+    save_polygon_checkpoint(
+        run / "polygon-ppo-best.pt", model, optimizer, scheduler, stage="ppo", step=12, config=config,
+        training_state={"bestScore": [64.0, 6.0, -100.0]},
+    )
+    selected_hash = sha256_file(run / "polygon-ppo-best.pt")
+    save_polygon_checkpoint(
+        run / "polygon-resume.pt", model, optimizer, scheduler, stage="ppo", step=25, config=config,
+        training_state={"bestScore": [64.0, 6.0, -100.0]},
+    )
+    (run / "polygon-observation-cache.zip").write_bytes(b"cache")
+    manifest = polygon_run.finalize_polygon_run(config_path, dataset, run)
+    assert manifest["status"] == "budget_exhausted"
+    assert manifest["ppoCheckpoint"]["sha256"] == selected_hash
+    assert sha256_file(run / "polygon-ppo-best.pt") == selected_hash
+    assert verify_polygon_run(run) == manifest
+
+    summary = json.loads((run / "training-summary.json").read_text(encoding="utf-8"))
+    schema = json.loads(
+        (ROOT / "schemas" / "polygon-training-summary-v1.schema.json").read_text(encoding="utf-8")
+    )
+    Draft202012Validator(schema).validate(summary)
+    assert summary["elapsedTrainingSeconds"] == 28_800.0
+    assert summary["selectedCheckpoint"]["step"] == 12
+    assert summary["latestCheckpoint"]["step"] == 25
+
+    summary["elapsedTrainingSeconds"] = 1.0
+    write_canonical_json(run / "training-summary.json", summary)
+    with pytest.raises(ValueError, match="контрольная сумма"):
+        verify_polygon_run(run)
 
 
 def _expert_episode():

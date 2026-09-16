@@ -104,6 +104,15 @@ def _parser() -> argparse.ArgumentParser:
     polygon_evaluate.add_argument("--device", choices=("cuda", "cpu"), default="cpu")
     polygon_evaluate.add_argument("--smoke", action="store_true")
 
+    polygon_finalize = commands.add_parser(
+        "finalize-polygon-run", help="зафиксировать остановленный запуск без продолжения обучения"
+    )
+    polygon_finalize.add_argument("--config", type=Path, required=True)
+    polygon_finalize.add_argument("--dataset", type=Path, required=True)
+    polygon_finalize.add_argument("--run-dir", type=Path, required=True)
+    polygon_finalize.add_argument("--elapsed-training-seconds", type=float)
+    polygon_finalize.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+
     polygon_run = commands.add_parser("verify-polygon-run", help="проверить файлы полигонального обучения")
     polygon_run.add_argument("--run-dir", type=Path, required=True)
     return parser
@@ -125,6 +134,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "verify-model": ml_commands.verify_model,
         "train-polygon": ml_commands.train_polygon,
         "evaluate-polygon": ml_commands.evaluate_polygon,
+        "finalize-polygon-run": ml_commands.finalize_polygon_run,
         "verify-polygon-run": ml_commands.verify_polygon_run,
     }
     result = handlers[arguments.command](arguments)

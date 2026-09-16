@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aipackaging.local/schemas/polygon-training-summary-v1.schema.json",
+  "title": "AIPackaging: сводка остановленного обучения полигональной политики v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "status", "terminationReason", "elapsedTrainingSeconds", "trainingHistoryComplete", "selectedCheckpoint", "latestCheckpoint"],
+  "properties": {
+    "format": {"const": "aipackaging.polygon_training_summary"},
+    "version": {"const": 1},
+    "status": {"const": "budget_exhausted"},
+    "terminationReason": {"const": "total_training_budget_reached"},
+    "elapsedTrainingSeconds": {"type": "number", "minimum": 0},
+    "trainingHistoryComplete": {"const": false},
+    "selectedCheckpoint": {"$ref": "#/$defs/checkpoint"},
+    "latestCheckpoint": {"$ref": "#/$defs/checkpoint"}
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "stage", "step", "validationScore"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha"},
+        "stage": {"const": "ppo"},
+        "step": {"type": "integer", "minimum": 0},
+        "validationScore": {
+          "type": ["array", "null"],
+          "items": {"type": "number"}
+        }
+      }
+    }
+  }
+}

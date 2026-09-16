@@ -208,7 +208,8 @@
       "evaluation": [
         "evaluation",
         "exporting",
-        "polygon_evaluation"
+        "polygon_evaluation",
+        "polygon_run"
       ],
       "dataset_cli": [
         "commands.datasets"
@@ -290,6 +291,7 @@
       "python/aipackaging_ml/polygon_evaluation.py",
       "python/aipackaging_ml/polygon_model.py",
       "python/aipackaging_ml/polygon_policy.py",
+      "python/aipackaging_ml/polygon_run.py",
       "python/aipackaging_ml/polygon_training.py"
     ]
   },

@@ -50,6 +50,59 @@ class PolygonPpoTransition:
     trace_end: bool = False
 
 
+@dataclass(frozen=True)
+class PolygonTrainingBudget:
+    """Учитывает единый временной бюджет во всех продолжениях обучения."""
+
+    limit_seconds: float
+    elapsed_before_seconds: float
+    invocation_started: float
+
+    @property
+    def deadline(self) -> float:
+        """Возвращает момент исчерпания оставшейся части общего бюджета."""
+
+        return self.invocation_started + max(0.0, self.limit_seconds - self.elapsed_before_seconds)
+
+    def elapsed_seconds(self) -> float:
+        """Возвращает накопленное время, ограниченное полным бюджетом."""
+
+        current = self.elapsed_before_seconds + max(0.0, time.monotonic() - self.invocation_started)
+        return min(self.limit_seconds, current)
+
+    def checkpoint_state(self, values: Mapping[str, Any]) -> dict[str, Any]:
+        """Добавляет накопленное время к состоянию контрольной точки."""
+
+        result = dict(values)
+        result["elapsedTrainingSeconds"] = self.elapsed_seconds()
+        return result
+
+
+def _resume_elapsed_seconds(payload: Mapping[str, Any], limit_seconds: float) -> float:
+    """Проверяет накопленное время перед продолжением контрольной точки."""
+
+    training_state = payload.get("trainingState")
+    if not isinstance(training_state, Mapping) or "elapsedTrainingSeconds" not in training_state:
+        raise ValueError(
+            "контрольная точка не содержит накопленное время; её можно оценить или завершить, но нельзя продолжить"
+        )
+    elapsed = training_state["elapsedTrainingSeconds"]
+    if isinstance(elapsed, bool) or not isinstance(elapsed, (int, float)) or not math.isfinite(float(elapsed)):
+        raise ValueError("контрольная точка содержит некорректное накопленное время")
+    elapsed_value = float(elapsed)
+    if elapsed_value < 0 or elapsed_value > limit_seconds:
+        raise ValueError("накопленное время контрольной точки выходит за общий бюджет")
+    if elapsed_value >= limit_seconds:
+        raise ValueError("общий временной бюджет обучения уже исчерпан")
+    return elapsed_value
+
+
+def _budget_state(budget: PolygonTrainingBudget | None, values: Mapping[str, Any]) -> dict[str, Any]:
+    """Возвращает состояние с накопленным временем, если бюджет предоставлен."""
+
+    return budget.checkpoint_state(values) if budget is not None else dict(values)
+
+
 def _checkpoint_payload(model: HierarchicalPolygonPolicyV1, optimizer: torch.optim.Optimizer,
                         scheduler: torch.optim.lr_scheduler.LRScheduler, *, stage: str, step: int,
                         config: Mapping[str, Any], training_state: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -152,7 +205,8 @@ def _validation_nll(model: HierarchicalPolygonPolicyV1, samples: Sequence[Cached
 def train_polygon_bc(model: HierarchicalPolygonPolicyV1, train_samples: Sequence[CachedPolygonExpertStep],
                      validation_samples: Sequence[CachedPolygonExpertStep], config: Mapping[str, Any],
                      run_dir: Path, device: torch.device, *, smoke: bool, deadline: float,
-                     resume: str | Path | None = None) -> tuple[Path, list[dict[str, Any]], str]:
+                     resume: str | Path | None = None,
+                     budget: PolygonTrainingBudget | None = None) -> tuple[Path, list[dict[str, Any]], str]:
     """Обучает три головы по экспертным действиям и критик по оставшейся отдаче."""
 
     settings = config["behavioralCloning"]
@@ -209,14 +263,14 @@ def train_polygon_bc(model: HierarchicalPolygonPolicyV1, train_samples: Sequence
             optimizer.zero_grad(set_to_none=True)
         if exhausted:
             save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="bc", step=epoch, config=config,
-                                    training_state={"bestNll": best_nll, "stale": stale})
+                                    training_state=_budget_state(budget, {"bestNll": best_nll, "stale": stale}))
             status = "budget_exhausted"
             break
         scheduler.step()
         nll = _validation_nll(model, validation_samples, device, deadline)
         if nll is None:
             save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="bc", step=epoch + 1, config=config,
-                                    training_state={"bestNll": best_nll, "stale": stale})
+                                    training_state=_budget_state(budget, {"bestNll": best_nll, "stale": stale}))
             status = "budget_exhausted"
             break
         history.append({"stage": "bc", "epoch": epoch + 1, "samples": samples,
@@ -225,16 +279,16 @@ def train_polygon_bc(model: HierarchicalPolygonPolicyV1, train_samples: Sequence
             best_nll = nll
             stale = 0
             save_polygon_checkpoint(best_path, model, optimizer, scheduler, stage="bc", step=epoch + 1, config=config,
-                                    training_state={"bestNll": best_nll, "stale": stale})
+                                    training_state=_budget_state(budget, {"bestNll": best_nll, "stale": stale}))
         else:
             stale += 1
             if stale >= settings["earlyStoppingPatience"]:
                 break
         save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="bc", step=epoch + 1, config=config,
-                                training_state={"bestNll": best_nll, "stale": stale})
+                                training_state=_budget_state(budget, {"bestNll": best_nll, "stale": stale}))
     if not best_path.exists():
         save_polygon_checkpoint(best_path, model, optimizer, scheduler, stage="bc", step=len(history), config=config,
-                                training_state={"bestNll": best_nll, "stale": stale})
+                                training_state=_budget_state(budget, {"bestNll": best_nll, "stale": stale}))
     load_polygon_checkpoint(best_path, model, device)
     return best_path, history, status
 
@@ -352,7 +406,8 @@ def _validation_score(model: HierarchicalPolygonPolicyV1, episodes: Sequence[Pol
 def train_polygon_ppo(model: HierarchicalPolygonPolicyV1, train_episodes: Sequence[PolygonExpertEpisode],
                       validation_episodes: Sequence[PolygonExpertEpisode], validation_baselines: Mapping[str, Any],
                       config: Mapping[str, Any], run_dir: Path, device: torch.device, *, smoke: bool,
-                      deadline: float, resume: str | Path | None = None) -> tuple[Path, list[dict[str, Any]], str]:
+                      deadline: float, resume: str | Path | None = None,
+                      budget: PolygonTrainingBudget | None = None) -> tuple[Path, list[dict[str, Any]], str]:
     """Дообучает BC-модель методом PPO и сохраняет лучший проверочный результат."""
 
     settings = config["ppo"]
@@ -414,13 +469,17 @@ def train_polygon_ppo(model: HierarchicalPolygonPolicyV1, train_episodes: Sequen
             if best_score is None or score > best_score:
                 best_score = score
                 save_polygon_checkpoint(best_path, model, optimizer, scheduler, stage="ppo", step=update + 1, config=config,
-                                        training_state={"bestScore": list(best_score)})
+                                        training_state=_budget_state(budget, {"bestScore": list(best_score)}))
         history.append(record)
         save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="ppo", step=update + 1, config=config,
-                                training_state={"bestScore": list(best_score) if best_score is not None else None})
+                                training_state=_budget_state(
+                                    budget, {"bestScore": list(best_score) if best_score is not None else None}
+                                ))
     if not best_path.exists():
         save_polygon_checkpoint(best_path, model, optimizer, scheduler, stage="ppo", step=start + len(history), config=config,
-                                training_state={"bestScore": list(best_score) if best_score is not None else None})
+                                training_state=_budget_state(
+                                    budget, {"bestScore": list(best_score) if best_score is not None else None}
+                                ))
     load_polygon_checkpoint(best_path, model, device)
     return best_path, history, status
 
@@ -435,9 +494,15 @@ def train_polygon_pipeline(config_path: str | Path, dataset_root: str | Path, ru
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("полигональное обучение требует доступного устройства CUDA")
     configure_determinism(config["seed"])
-    deadline = time.monotonic() + config["ppo"]["maxWallTimeSeconds"]
+    invocation_started = time.monotonic()
     output = Path(run_dir); output.mkdir(parents=True, exist_ok=True)
     write_canonical_json(output / "training-config.json", config)
+    model = HierarchicalPolygonPolicyV1(config["model"]["hiddenSize"]).to(device)
+    resume_payload = load_polygon_checkpoint(resume, model, device) if resume is not None else None
+    limit_seconds = float(config["ppo"]["maxWallTimeSeconds"])
+    elapsed_before = _resume_elapsed_seconds(resume_payload, limit_seconds) if resume_payload is not None else 0.0
+    budget = PolygonTrainingBudget(limit_seconds, elapsed_before, invocation_started)
+    deadline = budget.deadline
     train = load_polygon_expert_episodes(dataset_root, "train", expected_manifest_sha256=config["datasetManifestSha256"])
     validation = load_polygon_expert_episodes(dataset_root, "validation", expected_manifest_sha256=config["datasetManifestSha256"])
     baselines = load_polygon_baseline_solutions(dataset_root, "validation", expected_manifest_sha256=config["datasetManifestSha256"])
@@ -458,31 +523,32 @@ def train_polygon_pipeline(config_path: str | Path, dataset_root: str | Path, ru
     cached = load_or_build_polygon_observation_cache(
         cache_path, {"train": train, "validation": validation}, cache_fingerprint
     )
-    model = HierarchicalPolygonPolicyV1(config["model"]["hiddenSize"]).to(device)
     bc_history: list[dict[str, Any]] = []
     ppo_resume = None
     if resume is None:
         bc_path, bc_history, bc_status = train_polygon_bc(model, cached["train"], cached["validation"], config, output, device,
-                                                         smoke=smoke, deadline=deadline)
+                                                         smoke=smoke, deadline=deadline, budget=budget)
         if bc_status != "complete":
             ppo_path = bc_path; ppo_history = []; status = bc_status
         else:
             ppo_path, ppo_history, status = train_polygon_ppo(model, train, validation, baselines, config, output,
-                                                             device, smoke=smoke, deadline=deadline)
+                                                             device, smoke=smoke, deadline=deadline, budget=budget)
     else:
-        payload = load_polygon_checkpoint(resume, model, device)
+        payload = resume_payload
+        assert payload is not None
         bc_path = output / "polygon-bc-best.pt"
         if not bc_path.exists():
             bc_path = Path(resume)
         ppo_resume = resume if payload["stage"] == "ppo" else None
         if payload["stage"] == "bc":
             bc_path, bc_history, bc_status = train_polygon_bc(model, cached["train"], cached["validation"], config, output, device,
-                                                             smoke=smoke, deadline=deadline, resume=resume)
+                                                             smoke=smoke, deadline=deadline, resume=resume, budget=budget)
         else:
             bc_status = "complete"
         if bc_status == "complete":
             ppo_path, ppo_history, status = train_polygon_ppo(model, train, validation, baselines, config, output,
-                                                             device, smoke=smoke, deadline=deadline, resume=ppo_resume)
+                                                             device, smoke=smoke, deadline=deadline, resume=ppo_resume,
+                                                             budget=budget)
         else:
             ppo_path = bc_path; ppo_history = []; status = bc_status
     metrics_path = output / "metrics.jsonl"

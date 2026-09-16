@@ -83,6 +83,20 @@ def evaluate_polygon(arguments: Namespace) -> dict[str, Any]:
                                        split=arguments.split, device_name=arguments.device, smoke=arguments.smoke)
 
 
+def finalize_polygon_run(arguments: Namespace) -> dict[str, Any]:
+    """Фиксирует остановленный запуск без продолжения обучения."""
+
+    from ..polygon_run import finalize_polygon_run as finalize
+
+    return finalize(
+        arguments.config,
+        arguments.dataset,
+        arguments.run_dir,
+        elapsed_training_seconds=arguments.elapsed_training_seconds,
+        device_name=arguments.device,
+    )
+
+
 def verify_polygon_run(arguments: Namespace) -> dict[str, Any]:
     """Проверяет хеши и структуру файлов полигонального запуска."""
 

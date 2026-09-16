@@ -15,8 +15,10 @@ python -m aipackaging_ml train-polygon `
   --device cuda
 ```
 
-Один запуск ограничен восемью часами. Продолжение использует файл
-`polygon-resume.pt` из того же каталога:
+Восемь часов являются общим бюджетом эксперимента, а не бюджетом каждого
+отдельного процесса. Накопленное время записывается в новые контрольные точки.
+Продолжение использует файл `polygon-resume.pt` из того же каталога и получает
+только остаток общего бюджета:
 
 ```powershell
 python -m aipackaging_ml train-polygon `
@@ -25,6 +27,21 @@ python -m aipackaging_ml train-polygon `
   --run-dir artifacts/runs/m6-2-canonical `
   --device cuda `
   --resume artifacts/runs/m6-2-canonical/polygon-resume.pt
+```
+
+Старые контрольные точки без накопленного времени разрешено оценивать и
+фиксировать, но не продолжать. Остановленный извне запуск фиксируется без
+изменения весов отдельной командой:
+
+```powershell
+python -m aipackaging_ml finalize-polygon-run `
+  --config configs/m6/polygon-policy-v1.json `
+  --dataset artifacts/datasets/polygon-v2 `
+  --run-dir artifacts/runs/m6-2-canonical `
+  --elapsed-training-seconds 28800 `
+  --device cuda
+python -m aipackaging_ml verify-polygon-run `
+  --run-dir artifacts/runs/m6-2-canonical
 ```
 
 Перед BC конвейер создаёт проверяемый `polygon-observation-cache.zip`, связанный

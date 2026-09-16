@@ -13,6 +13,7 @@ from .datasets.serialization import canonical_json, read_canonical_json, sha256_
 from .polygon_contracts import load_polygon_training_config
 from .polygon_model import HierarchicalPolygonPolicyV1
 from .polygon_policy import PolygonPolicyRunner
+from .polygon_run import read_polygon_training_summary
 from .polygon_training import load_polygon_checkpoint
 from .polygon_training_data import load_polygon_baseline_solutions, load_polygon_expert_episodes
 
@@ -98,6 +99,8 @@ def verify_polygon_run(run_dir: str | Path) -> dict[str, Any]:
                 "bcCheckpoint", "ppoCheckpoint", "policy", "metrics", "observationCache", "software"}
     if set(manifest) != expected or manifest["format"] != "aipackaging.polygon_training_run" or manifest["version"] != 1:
         raise ValueError("неподдерживаемый манифест полигонального обучения")
+    if manifest["status"] not in {"complete", "budget_exhausted", "failed"}:
+        raise ValueError("манифест содержит неизвестный статус обучения")
     for field in ("bcCheckpoint", "ppoCheckpoint", "policy", "metrics", "observationCache"):
         descriptor = manifest[field]
         if set(descriptor) != {"path", "sha256"} or Path(descriptor["path"]).name != descriptor["path"]:
@@ -108,4 +111,23 @@ def verify_polygon_run(run_dir: str | Path) -> dict[str, Any]:
             sidecar = root / (descriptor["path"] + ".sha256")
             if not sidecar.is_file() or sidecar.read_text(encoding="ascii").strip() != descriptor["sha256"]:
                 raise ValueError(f"файл SHA-256 контрольной точки не совпадает: {field}")
+    policy = read_canonical_json(root / manifest["policy"]["path"])
+    policy_fields = {
+        "format", "version", "modelId", "architecture", "observationVersion", "rewardVersion",
+        "datasetManifestSha256", "configSha256", "checkpointSha256", "limits", "actionSelection",
+    }
+    if set(policy) != policy_fields or policy["format"] != "aipackaging.polygon_policy" or policy["version"] != 1:
+        raise ValueError("неподдерживаемые метаданные полигональной политики")
+    if policy["datasetManifestSha256"] != manifest["datasetManifestSha256"]:
+        raise ValueError("SHA-256 набора данных не совпадает между политикой и запуском")
+    if policy["configSha256"] != manifest["configSha256"]:
+        raise ValueError("SHA-256 конфигурации не совпадает между политикой и запуском")
+    if policy["checkpointSha256"] != manifest["ppoCheckpoint"]["sha256"]:
+        raise ValueError("SHA-256 выбранной контрольной точки не совпадает с политикой")
+    if manifest["metrics"]["path"] == "training-summary.json":
+        summary = read_polygon_training_summary(root / manifest["metrics"]["path"])
+        if summary["status"] != manifest["status"]:
+            raise ValueError("статус сводки обучения не совпадает с манифестом")
+        if summary["selectedCheckpoint"]["sha256"] != manifest["ppoCheckpoint"]["sha256"]:
+            raise ValueError("сводка ссылается на другую выбранную контрольную точку")
     return manifest
