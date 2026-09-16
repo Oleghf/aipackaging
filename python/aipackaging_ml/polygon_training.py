@@ -122,9 +122,11 @@ def load_polygon_checkpoint(path: str | Path, model: HierarchicalPolygonPolicyV1
     if restore_rng:
         random.setstate(payload["pythonRandomState"])
         np.random.set_state(payload["numpyRandomState"])
-        torch.set_rng_state(payload["torchRandomState"])
+        # `map_location` переносит все тензоры контрольной точки на устройство
+        # модели, но основной генератор PyTorch принимает состояние только с CPU.
+        torch.set_rng_state(payload["torchRandomState"].cpu())
         if torch.cuda.is_available() and "cudaRandomState" in payload:
-            torch.cuda.set_rng_state_all(payload["cudaRandomState"])
+            torch.cuda.set_rng_state_all([state.cpu() for state in payload["cudaRandomState"]])
     return payload
 
 

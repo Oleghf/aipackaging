@@ -119,6 +119,26 @@ def test_polygon_checkpoint_restores_model_and_rng(tmp_path: Path) -> None:
         load_polygon_checkpoint(path, model, torch.device("cpu"))
 
 
+def test_polygon_checkpoint_restores_rng_when_loaded_to_cuda(tmp_path: Path) -> None:
+    """Загрузка на CUDA оставляет состояние основного генератора на CPU."""
+
+    torch = pytest.importorskip("torch")
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA недоступна")
+    from aipackaging_ml.polygon_model import HierarchicalPolygonPolicyV1
+    from aipackaging_ml.polygon_training import load_polygon_checkpoint, save_polygon_checkpoint
+
+    source = HierarchicalPolygonPolicyV1(32)
+    optimizer = torch.optim.AdamW(source.parameters(), lr=1e-3)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.0)
+    path = tmp_path / "cuda-checkpoint.pt"
+    save_polygon_checkpoint(path, source, optimizer, scheduler, stage="ppo", step=1, config={"seed": 42})
+    target = HierarchicalPolygonPolicyV1(32).to("cuda")
+    payload = load_polygon_checkpoint(path, target, torch.device("cuda"), restore_rng=True)
+    assert payload["torchRandomState"].device.type == "cuda"
+    assert torch.get_rng_state().device.type == "cpu"
+
+
 def _expert_episode():
     """Строит полный экспертный эпизод из проверенного базового решения."""
 
