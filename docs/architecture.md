@@ -196,16 +196,18 @@ M5 сохраняет клеточный экран и добавляет отд
 рабочая область:
 
 ```text
-PolygonWorkspaceWidget
-  -> PolygonWorkspaceController
-    -> IPolygonSolverBackend
-      -> PolygonEnvironment + PolygonSolutionValidator
+PolygonWorkspaceWidget -> PolygonWorkspaceController -> INestingJobRunner
+                                                   -> IPolygonNestingBackend
+                                                   -> точный валидатор
 ```
 
-Контроллер владеет `std::jthread`; ход выполнения и завершение возвращаются в главный
-Qt-поток через поставленный в очередь диспетчер. Только независимо проверенный неотменённый
-результат разрешается сохранять. Модель представления уже содержит перенесённые
-кольца в миллиметрах, поэтому Qt выполняет только отрисовку.
+После A6 контроллер является однопоточным автоматом состояния и зависит только от
+`IPolygonDocumentGateway`, `INestingJobRunner` и `IPolygonWorkspaceOutput`.
+`StdThreadNestingJobRunner` владеет `std::jthread`, отменой и ограничением частоты,
+а `QtApplicationDispatcher` ставит события в очередь главного потока. Только
+независимо проверенный неотменённый результат получает `PolygonSolutionHandle` и
+может быть сохранён. Qt получает готовые кольца в миллиметрах и выполняет только
+отрисовку.
 
 ## Предлагаемый доменный контракт
 

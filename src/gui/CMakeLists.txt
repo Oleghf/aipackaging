@@ -7,7 +7,7 @@ add_library(${gui_static_lib_name} STATIC)
 # Указываем какие файлы необходимо включить в цель сборки.
 target_sources(${gui_static_lib_name} PRIVATE
 "qtview.cpp" "packagingwidget.cpp" "scenewidget.cpp" "painter.cpp" "qtadapters.cpp" "toastnotification.cpp"
-"polygoncanvaswidget.cpp" "polygonworkspacewidget.cpp")
+"polygoncanvaswidget.cpp" "polygonworkspacewidget.cpp" "qtapplicationdispatcher.cpp")
 
 # Указываем подключенные директории
 target_include_directories(${gui_static_lib_name} PUBLIC
@@ -22,4 +22,5 @@ Qt6::Widgets
 AIPackaging_Contract
 AIPackaging_Math
 AIPackaging_App
+AIPackaging_Application
 )

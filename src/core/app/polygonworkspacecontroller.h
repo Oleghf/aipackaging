@@ -1,70 +1,53 @@
-#ifndef AIPACKAGING_APP_POLYGONWORKSPACECONTROLLER_H
-#define AIPACKAGING_APP_POLYGONWORKSPACECONTROLLER_H
+#ifndef AIPACKAGING_APPLICATION_POLYGONWORKSPACECONTROLLER_H
+#define AIPACKAGING_APPLICATION_POLYGONWORKSPACECONTROLLER_H
 
 #include <memory>
 #include <optional>
 #include <string>
-#include <thread>
 
-#include <polygonenvironment.h>
 #include <polygonworkspaceview.h>
 
-/// Абстракция внутренней реализации полигонального поиска для базовых алгоритмов и модели.
-class IPolygonSolverBackend
-{
-public:
-  /// Обеспечивает корректное уничтожение реализации через интерфейс.
-  virtual ~IPolygonSolverBackend() = default;
-  /// Выполняет поиск с заданными настройками и внешним управлением.
-  virtual aipackaging::solver::PolygonSolverExecutionResult run(const aipackaging::solver::PolygonProblem & problem,
-                                                                const aipackaging::solver::SolverConfig & config,
-                                                                const aipackaging::solver::PolygonExecutionControl & control) = 0;
-};
-
-/// Управляет загрузкой, асинхронным поиском, проверкой и сохранением `polygon_solution`.
+/// Управляет полигональным пользовательским сценарием как однопоточный автомат состояния.
 class PolygonWorkspaceController : public std::enable_shared_from_this<PolygonWorkspaceController>
 {
 public:
-  /// Создаёт контроллер для представления и необязательной тестовой реализации.
-  explicit PolygonWorkspaceController(std::shared_ptr<IPolygonWorkspaceView> view,
-                                      std::shared_ptr<IPolygonSolverBackend> backend = {});
-  /// Останавливает активную работу и дожидается завершения рабочего потока.
+  /// Создаёт контроллер поверх прикладных портов документов, выполнения и вывода.
+  PolygonWorkspaceController(std::shared_ptr<IPolygonWorkspaceOutput> output, std::shared_ptr<IPolygonDocumentGateway> documents,
+                             std::shared_ptr<INestingJobRunner> jobs);
+  /// Освобождает документы и запрашивает отмену активной работы.
   ~PolygonWorkspaceController();
-
-  /// Привязывает безопасные слабые функции обратного вызова к представлению.
-  void bindActions();
-  /// Загружает строгий `polygon_problem`, сохраняя прежнюю сцену при ошибке.
+  /// Формирует безопасные слабые обработчики действий для интерфейса.
+  PolygonWorkspaceActions actions();
+  /// Загружает документ, сохраняя прежнюю сцену при ошибке.
   void openProblem(const std::string & filePath);
-  /// Сохраняет последнее разрешённое и независимо проверенное решение `polygon_solution`.
+  /// Сохраняет последнее разрешённое и проверенное решение.
   void saveSolution(const std::string & filePath);
-  /// Запускает выбранный базовый алгоритм асинхронно, если задача готова.
-  void start(const aipackaging::solver::SolverConfig & config);
-  /// Запрашивает отмену текущего поиска без блокировки GUI.
+  /// Запускает выбранный способ раскроя, если задача готова.
+  void start(const NestingRunRequest & request);
+  /// Запрашивает отмену текущей работы без блокировки вызывающего потока.
   void cancel();
   /// Возвращает последний опубликованный снимок модели представления.
   PolygonWorkspaceSnapshot snapshot() const;
 
 private:
-  /// Публикует текущее состояние и вычисляет доступность действий.
+  /// Публикует состояние и вычисляет доступность действий.
   void publish();
-  /// Принимает актуальное сообщение о ходе выполнения в потоке UI.
-  void acceptProgress(std::uint64_t runId, const aipackaging::solver::PolygonSolverProgress & progress);
-  /// Принимает результат актуального рабочего потока и повторно проверяет его.
-  void acceptResult(std::uint64_t runId, aipackaging::solver::PolygonSolverExecutionResult result);
-  /// Завершает актуальный запуск диагностируемой ошибкой внутренней реализации.
-  void acceptFailure(std::uint64_t runId, const std::string & error);
-  /// Формирует сцену модели представления и список неразмещённых экземпляров.
-  void rebuildPresentation(const aipackaging::solver::PolygonSolution * solution);
+  /// Принимает сообщение о ходе актуальной работы.
+  void acceptProgress(NestingJobHandle job, const NestingProgress & progress);
+  /// Принимает подготовленный результат актуальной работы.
+  void acceptResult(NestingJobHandle job, NestingRunResult result);
+  /// Завершает актуальную работу диагностируемой ошибкой.
+  void acceptFailure(NestingJobHandle job, const std::string & error);
+  /// Освобождает текущий сохраняемый результат.
+  void releaseSolution() noexcept;
 
-  std::shared_ptr<IPolygonWorkspaceView> view_;
-  std::shared_ptr<IPolygonSolverBackend> backend_;
-  std::optional<aipackaging::solver::PolygonProblem> problem_;
-  std::unique_ptr<aipackaging::solver::PolygonEnvironment> environment_;
-  std::optional<aipackaging::solver::PolygonSolution> solution_;
+  std::shared_ptr<IPolygonWorkspaceOutput> output_;
+  std::shared_ptr<IPolygonDocumentGateway> documents_;
+  std::shared_ptr<INestingJobRunner> jobs_;
+  std::optional<PolygonDocumentHandle> document_;
+  std::optional<PolygonSolutionHandle> solution_;
+  std::optional<NestingJobHandle> activeJob_;
   PolygonWorkspaceSnapshot snapshot_;
-  std::jthread worker_;
-  std::uint64_t runId_ = 0;
-  bool saveable_ = false;
 };
 
 #endif

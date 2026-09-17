@@ -123,9 +123,16 @@ function(aipackaging_check_production_target_graph)
     )
     aipackaging_assert_target_dependencies(
       TARGET AIPackaging_App
-      ALLOWED_DIRECT AIPackaging_Domain AIPackaging_Contract AIPackaging_Solver
-      ALLOWED_PUBLIC AIPackaging_Domain AIPackaging_Contract AIPackaging_Solver AIPackaging_SolverImpl AIPackaging_Math
-        ${aipackaging_nesting_modules}
+      ALLOWED_DIRECT AIPackaging_Domain AIPackaging_Contract
+      ALLOWED_PUBLIC AIPackaging_Domain AIPackaging_Contract AIPackaging_Math
+    )
+    aipackaging_assert_target_dependencies(
+      TARGET AIPackaging_Application
+    )
+    aipackaging_assert_target_dependencies(
+      TARGET AIPackaging_DesktopInfrastructure
+      ALLOWED_DIRECT AIPackaging_Application AIPackaging_Search AIPackaging_Json AIPackaging_PolygonCore
+      ALLOWED_PUBLIC AIPackaging_Application ${aipackaging_nesting_modules}
     )
   endif()
 
@@ -147,16 +154,15 @@ function(aipackaging_check_production_target_graph)
     aipackaging_assert_target_dependencies(
       TARGET AIPackaging_GUI
       ALLOW_QT
-      ALLOWED_DIRECT AIPackaging_Contract AIPackaging_Math AIPackaging_App
-      ALLOWED_PUBLIC AIPackaging_Contract AIPackaging_Math AIPackaging_App
-        AIPackaging_Domain AIPackaging_Solver AIPackaging_SolverImpl ${aipackaging_nesting_modules}
+      ALLOWED_DIRECT AIPackaging_Contract AIPackaging_Math AIPackaging_App AIPackaging_Application
+      ALLOWED_PUBLIC AIPackaging_Contract AIPackaging_Math AIPackaging_App AIPackaging_Application AIPackaging_Domain
     )
   endif()
   if (TARGET AIPackaging)
     aipackaging_assert_target_dependencies(
       TARGET AIPackaging
       ALLOW_QT
-      ALLOWED_DIRECT AIPackaging_App AIPackaging_GUI AIPackaging_Math
+      ALLOWED_DIRECT AIPackaging_App AIPackaging_Application AIPackaging_DesktopInfrastructure AIPackaging_GUI AIPackaging_Math
     )
   endif()
 endfunction()

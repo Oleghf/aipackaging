@@ -7,12 +7,14 @@
 #include <QListWidget>
 #include <QPushButton>
 #include <QTabWidget>
+#include <QThread>
 #include <QToolButton>
 #include <utility>
 
 #include <gtest/gtest.h>
 #include <polygoncanvaswidget.h>
 #include <polygonworkspacewidget.h>
+#include <qtapplicationdispatcher.h>
 #include <qtview.h>
 
 namespace
@@ -29,6 +31,25 @@ QApplication * ensureApplication()
   return application.get();
 }
 } // namespace
+
+/// Проверяет, что диспетчер не выполняет функцию синхронно и доставляет её в поток Qt.
+TEST(PolygonWorkspaceWidget, DispatcherQueuesCallbackToQtThread)
+{
+  QApplication * application = ensureApplication();
+  QtApplicationDispatcher dispatcher(application);
+  bool called = false;
+  QThread * deliveredThread = nullptr;
+  dispatcher.post(
+    [&]()
+    {
+      called = true;
+      deliveredThread = QThread::currentThread();
+    });
+  EXPECT_FALSE(called);
+  application->processEvents();
+  EXPECT_TRUE(called);
+  EXPECT_EQ(deliveredThread, application->thread());
+}
 
 /// Проверяет сохранение клеточного экрана и добавление отдельной полигональной вкладки.
 TEST(PolygonWorkspaceWidget, MainWindowContainsTwoWorkspaces)
@@ -48,7 +69,7 @@ TEST(PolygonWorkspaceWidget, ExposesConfiguredActionsAndRunningState)
   ensureApplication();
   PolygonWorkspaceWidget widget;
   const auto config = widget.solverConfig();
-  EXPECT_EQ(config.solver, aipackaging::solver::SolverKind::AreaLeftBottom);
+  EXPECT_EQ(config.algorithm, BaselineAlgorithm::AreaLeftBottom);
   EXPECT_EQ(config.seed, 42);
   EXPECT_EQ(config.randomIterations, 64);
   EXPECT_EQ(config.beamWidth, 32);

@@ -1,4 +1,11 @@
-# Статическая библиотека контроллеров
+# Независимый прикладной контур полигональной рабочей области.
+add_library(AIPackaging_Application STATIC
+  "polygonworkspacecontroller.cpp"
+)
+target_include_directories(AIPackaging_Application PUBLIC "${CMAKE_SOURCE_DIR}/src/core/app/")
+target_compile_features(AIPackaging_Application PUBLIC cxx_std_20)
+
+# Статическая библиотека унаследованных контроллеров.
 set(app_static_lib_name "AIPackaging_App")
 
 # Цель сборки - статическая библиотека
@@ -10,7 +17,6 @@ target_sources(${app_static_lib_name} PRIVATE
 "autopackcommand.cpp"
 "maincontroller.cpp"
 "packingcontroller.cpp"
-"polygonworkspacecontroller.cpp"
 "packagingstate.cpp"
 "movecommand.cpp"
 
@@ -46,5 +52,4 @@ target_include_directories(${app_static_lib_name} PUBLIC
 target_link_libraries(${app_static_lib_name} PUBLIC
 AIPackaging_Domain
 AIPackaging_Contract
-AIPackaging_Solver
 )

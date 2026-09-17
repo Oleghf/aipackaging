@@ -6,6 +6,7 @@ if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
   add_subdirectory("core/domain/")
   add_subdirectory("core/contract/")
   add_subdirectory("core/app/")
+  add_subdirectory("infrastructure/")
 endif()
 
 if (BUILD_SOLVER_CLI)
@@ -26,7 +27,8 @@ if (BUILD_DESKTOP)
 
   add_executable(${PROJECT_NAME} "main.cpp")
   target_include_directories(${PROJECT_NAME} PUBLIC "${CMAKE_SOURCE_DIR}/src")
-  target_link_libraries(${PROJECT_NAME} PRIVATE AIPackaging_App AIPackaging_GUI AIPackaging_Math)
+  target_link_libraries(${PROJECT_NAME} PRIVATE
+    AIPackaging_App AIPackaging_Application AIPackaging_DesktopInfrastructure AIPackaging_GUI AIPackaging_Math)
 
   copy_target_dll(${PROJECT_NAME} AIPackaging_Math)
   copy_target_qt_dll(${PROJECT_NAME})

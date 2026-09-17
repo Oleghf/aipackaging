@@ -158,6 +158,10 @@ M6.1.
 
 Сложность: `L`. Обязателен до M6.3 настольное приложение получение вывода модели.
 
+Статус: завершён. Прикладной контроллер выделен в `AIPackaging_Application`,
+а файловые, поисковые и потоковые обязанности перенесены в
+`AIPackaging_DesktopInfrastructure`.
+
 - Заменить типы решателя в `IPolygonWorkspaceView` на объекты передачи данных прикладного слоя.
 - Ввести `IPolygonDocumentGateway`, `INestingJobRunner` и
   `IPolygonWorkspaceOutput`.

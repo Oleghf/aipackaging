@@ -21,31 +21,29 @@
 
 namespace
 {
-using namespace aipackaging::solver;
-
 /// Преобразует внутренний статус базового алгоритма в подпись поля выбора.
-QString solverTitle(SolverKind kind)
+QString solverTitle(BaselineAlgorithm kind)
 {
   switch (kind)
   {
-    case SolverKind::InputFirstFit:
+    case BaselineAlgorithm::InputFirstFit:
       return QStringLiteral("Input first-fit");
-    case SolverKind::AreaLeftBottom:
+    case BaselineAlgorithm::AreaLeftBottom:
       return QStringLiteral("Area left-bottom");
-    case SolverKind::MaxSideLeftBottom:
+    case BaselineAlgorithm::MaxSideLeftBottom:
       return QStringLiteral("Max-side left-bottom");
-    case SolverKind::RandomLeftBottom:
+    case BaselineAlgorithm::RandomLeftBottom:
       return QStringLiteral("Random left-bottom");
-    case SolverKind::Beam:
+    case BaselineAlgorithm::Beam:
       return QStringLiteral("Beam search");
   }
   return {};
 }
 
 /// Добавляет вариант решателя с именем формата обмена в пользовательские данные.
-void addSolver(QComboBox * box, SolverKind kind)
+void addSolver(QComboBox * box, BaselineAlgorithm kind)
 {
-  box->addItem(solverTitle(kind), QString::fromStdString(toString(kind)));
+  box->addItem(solverTitle(kind), static_cast<int>(kind));
 }
 } // namespace
 
@@ -84,11 +82,11 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   progressBar_->setObjectName("polygonProgress");
   statusLabel_->setObjectName("polygonStatus");
 
-  addSolver(solverBox_, SolverKind::InputFirstFit);
-  addSolver(solverBox_, SolverKind::AreaLeftBottom);
-  addSolver(solverBox_, SolverKind::MaxSideLeftBottom);
-  addSolver(solverBox_, SolverKind::RandomLeftBottom);
-  addSolver(solverBox_, SolverKind::Beam);
+  addSolver(solverBox_, BaselineAlgorithm::InputFirstFit);
+  addSolver(solverBox_, BaselineAlgorithm::AreaLeftBottom);
+  addSolver(solverBox_, BaselineAlgorithm::MaxSideLeftBottom);
+  addSolver(solverBox_, BaselineAlgorithm::RandomLeftBottom);
+  addSolver(solverBox_, BaselineAlgorithm::Beam);
   solverBox_->setCurrentIndex(1);
 
   seedEdit_->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("[0-9]{1,20}")), seedEdit_));
@@ -169,10 +167,10 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
 }
 
 /// Разбирает имя решателя формата обмена и значения конфигурации из виджетов.
-SolverConfig PolygonWorkspaceWidget::solverConfig() const
+NestingRunRequest PolygonWorkspaceWidget::solverConfig() const
 {
-  SolverConfig result;
-  parseSolverKind(solverBox_->currentData().toString().toStdString(), result.solver);
+  NestingRunRequest result;
+  result.algorithm = static_cast<BaselineAlgorithm>(solverBox_->currentData().toInt());
   bool seedValid = false;
   result.seed = seedEdit_->text().toULongLong(&seedValid);
   if (!seedValid)

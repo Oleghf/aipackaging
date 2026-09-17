@@ -25,7 +25,7 @@ class ToastNotification;
 ////////////////////////////////////////////////////////////////////////////////
 class QtView : public QMainWindow,
                public IView,
-               public IPolygonWorkspaceView
+               public IPolygonWorkspaceOutput
 {
   Q_OBJECT
 public:
@@ -55,11 +55,9 @@ public:
   void statisticChangeCountOccupiedCells(unsigned int occupiedCells) override;
 
   /// Устанавливает обработчики действий полигональной вкладки.
-  void setPolygonWorkspaceActions(PolygonWorkspaceActions actions) override;
+  void setPolygonWorkspaceActions(PolygonWorkspaceActions actions);
   /// Передаёт снимок модели представления полигональному виджету.
   void presentPolygonWorkspace(const PolygonWorkspaceSnapshot & snapshot) override;
-  /// Ставит функцию обратного вызова в очередь главного потока Qt.
-  void postToPolygonUi(std::function<void()> callback) override;
 
 private slots:
   // Получает объект рисования с основной сцены

@@ -11,6 +11,7 @@
     "search": "src/solver/search",
     "json": "src/solver/json",
     "learning": "src/solver/learning",
+    "desktop_infrastructure": "src/infrastructure/desktop",
     "gui": "src/gui",
     "cli": "src/cli",
     "python_binding": "src/python"
@@ -73,6 +74,15 @@
       "polygon_core",
       "nesting_core"
     ],
+    "desktop_infrastructure": [
+      "desktop_infrastructure",
+      "app",
+      "search",
+      "search_contracts",
+      "json",
+      "polygon_core",
+      "nesting_core"
+    ],
     "gui": [
       "gui",
       "app",
@@ -98,57 +108,7 @@
       "nesting_core"
     ]
   },
-  "includeExceptions": [
-    {
-      "source": "src/core/app/polygonworkspacecontroller.h",
-      "include": "polygonenvironment.h",
-      "target": "solver_compat",
-      "reason": "Контроллер M5 пока напрямую владеет полигональной средой.",
-      "removeBy": "A6"
-    },
-    {
-      "source": "src/core/app/polygonworkspacecontroller.cpp",
-      "include": "polygonio.h",
-      "target": "solver_compat",
-      "reason": "Контроллер M5 пока напрямую использует JSON-адаптер solver.",
-      "removeBy": "A6"
-    },
-    {
-      "source": "src/core/app/polygonworkspacecontroller.cpp",
-      "include": "polygonsolver.h",
-      "target": "solver_compat",
-      "reason": "Контроллер M5 пока напрямую запускает baseline solver.",
-      "removeBy": "A6"
-    },
-    {
-      "source": "src/core/app/polygonworkspaceview.h",
-      "include": "gridtypes.h",
-      "target": "solver_compat",
-      "reason": "Presentation API M5 повторно использует общие статусы solver.",
-      "removeBy": "A6"
-    },
-    {
-      "source": "src/core/app/polygonworkspaceview.h",
-      "include": "polygonsolver.h",
-      "target": "solver_compat",
-      "reason": "Presentation API M5 публикует progress конкретного solver.",
-      "removeBy": "A6"
-    },
-    {
-      "source": "src/core/app/polygonworkspaceview.h",
-      "include": "polygontypes.h",
-      "target": "solver_compat",
-      "reason": "Presentation API M5 публикует wire/domain типы solver.",
-      "removeBy": "A6"
-    },
-    {
-      "source": "src/gui/polygonworkspacewidget.h",
-      "include": "gridtypes.h",
-      "target": "solver_compat",
-      "reason": "Qt-виджет M5 отображает общий статус solver.",
-      "removeBy": "A6"
-    }
-  ],
+  "includeExceptions": [],
   "externalIncludes": {
     "qtPrefixes": [
       "Q",

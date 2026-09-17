@@ -1,0 +1,213 @@
+#include <atomic>
+#include <deque>
+#include <filesystem>
+#include <fstream>
+#include <memory>
+#include <mutex>
+#include <thread>
+
+#include <aipackaging/nesting/polygon_environment.h>
+#include <aipackaging/nesting/polygon_io.h>
+#include <aipackaging/nesting/polygon_solver.h>
+#include <gtest/gtest.h>
+#include <polygondesktopinfrastructure.h>
+
+namespace
+{
+using namespace aipackaging::solver;
+
+/// Создаёт прямоугольный аналитический путь.
+PolygonPath rectangle(double width, double height)
+{
+  PolygonPath result;
+  result.start = {0.0, 0.0};
+  result.segments = {{PolygonSegmentKind::Line, {width, 0.0}},
+                     {PolygonSegmentKind::Line, {width, height}},
+                     {PolygonSegmentKind::Line, {0.0, height}},
+                     {PolygonSegmentKind::Line, {0.0, 0.0}}};
+  return result;
+}
+
+/// Создаёт минимальную задачу с двумя экземплярами.
+PolygonProblem testProblem()
+{
+  PolygonProblem result;
+  result.problemId = "a6-infrastructure";
+  result.sheet = {100.0, 60.0, "mm"};
+  result.manufacturing = {2.0, 1.0, 0.2, 0.05};
+  PolygonPart part;
+  part.id = "part";
+  part.quantity = 2;
+  part.outer = rectangle(30.0, 20.0);
+  part.allowedRotations = {0, 90};
+  result.parts.push_back(std::move(part));
+  return result;
+}
+
+/// Записывает задачу во временный JSON-файл.
+std::filesystem::path writeProblem()
+{
+  const auto path = std::filesystem::temp_directory_path() / "aipackaging-a6-problem.json";
+  std::ofstream output(path, std::ios::binary | std::ios::trunc);
+  output << savePolygonProblemToText(testProblem());
+  return path;
+}
+
+/// Накапливает функции до явного выполнения в тестовом потоке.
+class QueueDispatcher final : public IApplicationDispatcher
+{
+public:
+  /// Добавляет функцию в защищённую очередь.
+  void post(std::function<void()> callback) override
+  {
+    std::lock_guard lock(mutex_);
+    queue_.push_back(std::move(callback));
+  }
+
+  /// Выполняет накопленные функции и возвращает их число.
+  std::size_t drain()
+  {
+    std::deque<std::function<void()>> pending;
+    {
+      std::lock_guard lock(mutex_);
+      pending.swap(queue_);
+    }
+    for (auto & callback : pending)
+      callback();
+    return pending.size();
+  }
+
+private:
+  std::mutex mutex_;
+  std::deque<std::function<void()>> queue_;
+};
+
+/// Ожидает выполнения условия с коротким предельным сроком.
+bool waitUntil(const std::function<bool()> & predicate)
+{
+  for (int attempt = 0; attempt < 3000; ++attempt)
+  {
+    if (predicate())
+      return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  return false;
+}
+} // namespace
+
+/// Проверяет строгую загрузку, выполнение, точную регистрацию и сохранение результата.
+TEST(PolygonDesktopInfrastructure, LoadsRunsValidatesAndSaves)
+{
+  const auto input = writeProblem();
+  const auto output = std::filesystem::temp_directory_path() / "aipackaging-a6-solution.json";
+  const auto store = std::make_shared<PolygonArtifactStore>();
+  LocalPolygonDocumentGateway gateway(store);
+  BaselinePolygonBackend backend(store);
+  const PolygonDocumentLoadResult loaded = gateway.load(input.string());
+  ASSERT_TRUE(loaded.success) << loaded.error;
+  ASSERT_EQ(loaded.unplacedInstances.size(), 2);
+
+  for (const BaselineAlgorithm algorithm :
+       {BaselineAlgorithm::InputFirstFit, BaselineAlgorithm::AreaLeftBottom, BaselineAlgorithm::MaxSideLeftBottom,
+        BaselineAlgorithm::RandomLeftBottom, BaselineAlgorithm::Beam})
+  {
+    NestingRunRequest request;
+    request.algorithm = algorithm;
+    request.timeoutMs = 0;
+    request.randomIterations = 2;
+    request.beamWidth = 2;
+    request.maxExpandedStates = 100;
+    NestingRunResult result = backend.run(loaded.document, request, {});
+    ASSERT_TRUE(result.solution.has_value());
+    EXPECT_EQ(result.provenance, NestingProvenance::Baseline);
+    EXPECT_FALSE(result.implementationName.empty());
+    const PolygonDocumentOperationResult saved = gateway.save(output.string(), *result.solution);
+    ASSERT_TRUE(saved.success) << saved.error;
+    const PolygonSolutionLoadResult parsed = loadPolygonSolutionFromFile(output.string());
+    ASSERT_TRUE(parsed.success) << parsed.error;
+    EXPECT_TRUE(validatePolygonSolution(testProblem(), parsed.solution).success);
+    gateway.release(*result.solution);
+  }
+  gateway.release(loaded.document);
+  std::filesystem::remove(input);
+  std::filesystem::remove(output);
+}
+
+/// Проверяет, что повреждённое решение не получает сохраняемый идентификатор.
+TEST(PolygonDesktopInfrastructure, RejectsCorruptSolution)
+{
+  const auto store = std::make_shared<PolygonArtifactStore>();
+  std::string error;
+  std::unique_ptr<PolygonEnvironment> created = PolygonEnvironment::Create(testProblem(), error);
+  ASSERT_NE(created, nullptr) << error;
+  std::shared_ptr<PolygonEnvironment> environment(std::move(created));
+  const PolygonDocumentHandle document = store->addDocument(testProblem(), environment);
+  SolverConfig config;
+  config.timeoutMs = 0;
+  PolygonSolution corrupt = solvePolygonProblem(testProblem(), config);
+  ++corrupt.objective.usedLength;
+  EXPECT_FALSE(store->addValidatedSolution(document, std::move(corrupt), error).has_value());
+  EXPECT_FALSE(error.empty());
+}
+
+/// Проверяет асинхронную доставку результата только через очередь диспетчера.
+TEST(PolygonDesktopInfrastructure, DeliversCompletionThroughDispatcherQueue)
+{
+  const auto input = writeProblem();
+  const auto store = std::make_shared<PolygonArtifactStore>();
+  auto gateway = std::make_shared<LocalPolygonDocumentGateway>(store);
+  const PolygonDocumentLoadResult loaded = gateway->load(input.string());
+  ASSERT_TRUE(loaded.success) << loaded.error;
+  auto backend = std::make_shared<BaselinePolygonBackend>(store);
+  auto dispatcher = std::make_shared<QueueDispatcher>();
+  StdThreadNestingJobRunner runner(backend, dispatcher);
+  std::atomic<bool> delivered = false;
+  NestingJobCallbacks callbacks;
+  callbacks.completed = [&delivered](NestingJobHandle, const NestingRunResult &)
+  {
+    delivered = true;
+  };
+  std::string error;
+  NestingRunRequest request;
+  request.timeoutMs = 0;
+  ASSERT_TRUE(runner.start(loaded.document, request, std::move(callbacks), error).has_value()) << error;
+  EXPECT_FALSE(delivered.load());
+  ASSERT_TRUE(waitUntil([&]() { return dispatcher->drain() > 0; }));
+  EXPECT_TRUE(delivered.load());
+  std::filesystem::remove(input);
+}
+
+/// Проверяет согласованную отмену и отсутствие сохраняемого решения.
+TEST(PolygonDesktopInfrastructure, CancellationReturnsUnsavablePartial)
+{
+  const auto input = writeProblem();
+  const auto store = std::make_shared<PolygonArtifactStore>();
+  auto gateway = std::make_shared<LocalPolygonDocumentGateway>(store);
+  const PolygonDocumentLoadResult loaded = gateway->load(input.string());
+  auto backend = std::make_shared<BaselinePolygonBackend>(store);
+  auto dispatcher = std::make_shared<QueueDispatcher>();
+  StdThreadNestingJobRunner runner(backend, dispatcher);
+  std::optional<NestingRunResult> result;
+  NestingJobCallbacks callbacks;
+  callbacks.completed = [&result](NestingJobHandle, NestingRunResult value)
+  {
+    result = std::move(value);
+  };
+  std::string error;
+  NestingRunRequest request;
+  request.algorithm = BaselineAlgorithm::Beam;
+  request.maxExpandedStates = 1'000'000;
+  const auto job = runner.start(loaded.document, request, std::move(callbacks), error);
+  ASSERT_TRUE(job.has_value()) << error;
+  runner.cancel(*job);
+  ASSERT_TRUE(waitUntil(
+    [&]()
+    {
+      dispatcher->drain();
+      return result.has_value();
+    }));
+  const NestingRunResult completed = result.value_or(NestingRunResult{});
+  EXPECT_EQ(completed.completion, NestingCompletion::Cancelled);
+  EXPECT_FALSE(completed.solution.has_value());
+  std::filesystem::remove(input);
+}

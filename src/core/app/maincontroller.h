@@ -13,8 +13,6 @@ class IView;
 class IFileDialogView;
 class IRedrawView;
 class IStatisticsView;
-class IPolygonWorkspaceView;
-class PolygonWorkspaceController;
 enum class PackingMode;
 namespace ApplicationStateService
 {
@@ -61,8 +59,6 @@ private:
 
   std::shared_ptr<DrawController> drawController_;
   std::shared_ptr<PackingController> packingController_;
-  std::shared_ptr<IPolygonWorkspaceView> polygonWorkspaceView_;
-  std::shared_ptr<PolygonWorkspaceController> polygonWorkspaceController_;
 };
 
 #endif

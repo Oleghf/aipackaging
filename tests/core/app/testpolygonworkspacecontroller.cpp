@@ -1,403 +1,269 @@
-#include <atomic>
-#include <chrono>
-#include <deque>
-#include <filesystem>
-#include <fstream>
-#include <functional>
 #include <memory>
-#include <mutex>
-#include <thread>
+#include <utility>
 
 #include <gtest/gtest.h>
-#include <polygonio.h>
 #include <polygonworkspacecontroller.h>
 
 namespace
 {
-using namespace aipackaging::solver;
-using namespace std::chrono_literals;
-
-/// Тестовый двойник представления с управляемой очередью обратных вызовов UI.
-class PolygonWorkspaceViewStub final : public IPolygonWorkspaceView
+/// Сохраняет последний опубликованный прикладной снимок.
+class OutputStub final : public IPolygonWorkspaceOutput
 {
 public:
-  /// Сохраняет привязанные контроллером пользовательские действия.
-  void setPolygonWorkspaceActions(PolygonWorkspaceActions value) override { actions = std::move(value); }
-
-  /// Сохраняет последний снимок модели представления под взаимной блокировкой.
-  void presentPolygonWorkspace(const PolygonWorkspaceSnapshot & value) override
-  {
-    std::lock_guard lock(mutex_);
-    latest_ = value;
-  }
-
-  /// Ставит обратный вызов рабочего потока в очередь вместо выполнения в чужом потоке.
-  void postToPolygonUi(std::function<void()> callback) override
-  {
-    std::lock_guard lock(mutex_);
-    queue_.push_back(std::move(callback));
-  }
-
-  /// Возвращает потокобезопасную копию последнего снимка.
-  PolygonWorkspaceSnapshot latest() const
-  {
-    std::lock_guard lock(mutex_);
-    return latest_;
-  }
-
-  /// Выполняет поставленные в очередь функции обратного вызова до выполнения условия либо истечения срока.
-  bool pumpUntil(const std::function<bool(const PolygonWorkspaceSnapshot &)> & predicate,
-                 std::chrono::milliseconds timeout = 3000ms)
-  {
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline)
-    {
-      std::deque<std::function<void()>> pending;
-      {
-        std::lock_guard lock(mutex_);
-        pending.swap(queue_);
-      }
-      for (auto & callback : pending)
-        callback();
-      if (predicate(latest()))
-        return true;
-      std::this_thread::sleep_for(1ms);
-    }
-    return false;
-  }
-
-  /// Ожидает накопления указанного числа обратных вызовов без их выполнения.
-  bool waitForQueued(std::size_t count, std::chrono::milliseconds timeout = 3000ms) const
-  {
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline)
-    {
-      {
-        std::lock_guard lock(mutex_);
-        if (queue_.size() >= count)
-          return true;
-      }
-      std::this_thread::sleep_for(1ms);
-    }
-    return false;
-  }
-
-  /// Выполняет новый обратный вызов раньше поставленных сообщений о ходе работы.
-  void executeNewest()
-  {
-    std::function<void()> callback;
-    {
-      std::lock_guard lock(mutex_);
-      callback = std::move(queue_.back());
-      queue_.pop_back();
-    }
-    callback();
-  }
-
-  PolygonWorkspaceActions actions;
-
-private:
-  mutable std::mutex mutex_;
-  PolygonWorkspaceSnapshot latest_;
-  std::deque<std::function<void()>> queue_;
+  /// Заменяет последний снимок переданным значением.
+  void presentPolygonWorkspace(const PolygonWorkspaceSnapshot & value) override { snapshot = value; }
+  PolygonWorkspaceSnapshot snapshot;
 };
 
-/// Тестовый двойник реализации, ожидающий остановки и возвращающий частичное решение.
-class BlockingPolygonBackend final : public IPolygonSolverBackend
+/// Имитирует загрузку, сохранение и освобождение процессных артефактов.
+class DocumentGatewayStub final : public IPolygonDocumentGateway
 {
 public:
-  /// Ожидает внешнюю отмену, затем использует рабочий решатель для частичного решения.
-  PolygonSolverExecutionResult run(const PolygonProblem & problem, const SolverConfig & config,
-                                   const PolygonExecutionControl & control) override
+  /// Возвращает подготовленный результат либо ошибку для специального пути.
+  PolygonDocumentLoadResult load(const std::string & filePath) override
   {
-    ++calls;
-    while (!control.cancellationRequested || !control.cancellationRequested())
-      std::this_thread::sleep_for(1ms);
-    PolygonExecutionControl cancelled;
-    cancelled.cancellationRequested = []()
-    {
-      return true;
-    };
-    return runPolygonProblem(problem, config, cancelled);
-  }
-
-  std::atomic<int> calls = 0;
-};
-
-/// Тестовый двойник реализации, имитирующий нарушение целевой функции.
-class CorruptPolygonBackend final : public IPolygonSolverBackend
-{
-public:
-  /// Возвращает геометрически построенное решение с намеренно подменённой метрикой.
-  PolygonSolverExecutionResult run(const PolygonProblem & problem, const SolverConfig & config,
-                                   const PolygonExecutionControl &) override
-  {
-    PolygonSolution solution = solvePolygonProblem(problem, config);
-    ++solution.objective.usedLength;
-    return {std::move(solution), false};
-  }
-};
-
-/// Тестовый двойник реализации, возвращающий корректный результат при первом запуске.
-class ValidThenCorruptPolygonBackend final : public IPolygonSolverBackend
-{
-public:
-  /// Делает второй и последующие результаты невалидными без изменения их геометрии.
-  PolygonSolverExecutionResult run(const PolygonProblem & problem, const SolverConfig & config,
-                                   const PolygonExecutionControl &) override
-  {
-    PolygonSolution solution = solvePolygonProblem(problem, config);
-    if (++calls > 1)
-      ++solution.objective.usedLength;
-    return {std::move(solution), false};
-  }
-
-private:
-  std::atomic<int> calls = 0;
-};
-
-/// Тестовый двойник, возвращающий частичное решение после ограничения времени.
-class TimedOutPolygonBackend final : public IPolygonSolverBackend
-{
-public:
-  /// Строит точный пустой снимок и помечает его остановленным по времени.
-  PolygonSolverExecutionResult run(const PolygonProblem & problem, const SolverConfig & config,
-                                   const PolygonExecutionControl &) override
-  {
-    PolygonExecutionControl stopped;
-    stopped.cancellationRequested = []()
-    {
-      return true;
-    };
-    PolygonSolverExecutionResult result = runPolygonProblem(problem, config, stopped);
-    result.cancelled = false;
-    result.solution.status = SolveStatus::TimedOut;
+    if (filePath == "bad")
+      return {false, "повреждённый документ"};
+    PolygonDocumentLoadResult result;
+    result.success = true;
+    result.document = {nextDocument++};
+    result.problemId = filePath;
+    result.scene.sheetWidth = 100.0;
+    result.unplacedInstances = {"part #0"};
     return result;
   }
+
+  /// Запоминает решение и возвращает настраиваемый результат записи.
+  PolygonDocumentOperationResult save(const std::string &, PolygonSolutionHandle solution) override
+  {
+    saved = solution;
+    return saveSucceeds ? PolygonDocumentOperationResult{true, {}} : PolygonDocumentOperationResult{false, "запись запрещена"};
+  }
+
+  /// Запоминает освобождённую задачу.
+  void release(PolygonDocumentHandle document) noexcept override
+  {
+    ++releasedDocumentCount;
+    lastReleasedDocument = document;
+  }
+  /// Запоминает освобождённое решение.
+  void release(PolygonSolutionHandle solution) noexcept override
+  {
+    ++releasedSolutionCount;
+    lastReleasedSolution = solution;
+  }
+
+  std::uint64_t nextDocument = 1;
+  bool saveSucceeds = true;
+  std::optional<PolygonSolutionHandle> saved;
+  std::size_t releasedDocumentCount = 0;
+  std::size_t releasedSolutionCount = 0;
+  PolygonDocumentHandle lastReleasedDocument;
+  PolygonSolutionHandle lastReleasedSolution;
 };
 
-/// Создаёт прямоугольный путь для тестов контроллера.
-PolygonPath rectangle(double width, double height)
+/// Имитирует средство запуска с ручной доставкой событий.
+class JobRunnerStub final : public INestingJobRunner
 {
-  PolygonPath result;
-  result.start = {0.0, 0.0};
-  result.segments = {{PolygonSegmentKind::Line, {width, 0.0}},
-                     {PolygonSegmentKind::Line, {width, height}},
-                     {PolygonSegmentKind::Line, {0.0, height}},
-                     {PolygonSegmentKind::Line, {0.0, 0.0}}};
-  return result;
+public:
+  /// Сохраняет запрос и функции событий, не выполняя работу автоматически.
+  std::optional<NestingJobHandle> start(PolygonDocumentHandle document, const NestingRunRequest & request,
+                                        NestingJobCallbacks value, std::string & error) override
+  {
+    if (rejectStart)
+    {
+      error = "нет свободного исполнителя";
+      return std::nullopt;
+    }
+    ++startCount;
+    startedDocument = document;
+    startedRequest = request;
+    callbacks = std::move(value);
+    current = {nextJob++};
+    return current;
+  }
+
+  /// Запоминает запрос отмены указанной работы.
+  void cancel(NestingJobHandle job) noexcept override { cancelled = job; }
+
+  /// Доставляет подготовленный результат с выбранным идентификатором.
+  void complete(NestingRunResult result, NestingJobHandle job = {})
+  {
+    callbacks.completed(job ? job : current, std::move(result));
+  }
+
+  /// Доставляет подготовленную ошибку текущей работы.
+  void fail(const std::string & error) { callbacks.failed(current, error); }
+
+  std::uint64_t nextJob = 1;
+  int startCount = 0;
+  bool rejectStart = false;
+  PolygonDocumentHandle startedDocument;
+  NestingRunRequest startedRequest;
+  NestingJobHandle current;
+  std::optional<NestingJobHandle> cancelled;
+  NestingJobCallbacks callbacks;
+};
+
+/// Создаёт контроллер и возвращает совместно используемые тестовые порты.
+std::shared_ptr<PolygonWorkspaceController> makeController(std::shared_ptr<OutputStub> & output,
+                                                           std::shared_ptr<DocumentGatewayStub> & documents,
+                                                           std::shared_ptr<JobRunnerStub> & jobs)
+{
+  output = std::make_shared<OutputStub>();
+  documents = std::make_shared<DocumentGatewayStub>();
+  jobs = std::make_shared<JobRunnerStub>();
+  return std::make_shared<PolygonWorkspaceController>(output, documents, jobs);
 }
 
-/// Создаёт минимальную задачу с двумя экземплярами.
-PolygonProblem testProblem(double sheetWidth = 100.0, double sheetHeight = 60.0)
+/// Создаёт полный проверенный результат для тестов автомата состояния.
+NestingRunResult solvedResult(std::uint64_t handle = 7)
 {
-  PolygonProblem result;
-  result.problemId = "desktop-polygon-test";
-  result.sheet = {sheetWidth, sheetHeight, "mm"};
-  result.manufacturing = {2.0, 1.0, 0.2, 0.05};
-  PolygonPart part;
-  part.id = "part";
-  part.quantity = 2;
-  part.outer = rectangle(30.0, 20.0);
-  part.allowedRotations = {0, 90};
-  result.parts.push_back(std::move(part));
+  NestingRunResult result;
+  result.completion = NestingCompletion::Solved;
+  result.partial = false;
+  result.implementationName = "area-left-bottom";
+  result.solutionStatus = "solved";
+  result.solution = PolygonSolutionHandle{handle};
+  result.objective.placedParts = 1;
+  result.objective.totalParts = 1;
+  result.scene.placements.push_back({});
   return result;
-}
-
-/// Записывает задачу в изолированный временный файл JSON для файлового сценария.
-std::filesystem::path writeProblem(const PolygonProblem & problem, const std::string & suffix)
-{
-  const std::filesystem::path path = std::filesystem::temp_directory_path() / ("aipackaging-" + suffix + ".json");
-  std::ofstream output(path, std::ios::binary | std::ios::trunc);
-  output << savePolygonProblemToText(problem);
-  return path;
 }
 } // namespace
 
-/// Проверяет полный сценарий загрузки, асинхронного поиска и сохранения.
-TEST(PolygonWorkspaceController, LoadsRunsAndSavesValidatedSolution)
+/// Проверяет полный прикладной цикл без решателя, Qt и файловой системы.
+TEST(PolygonWorkspaceController, LoadsRunsAndSavesThroughPorts)
 {
-  const auto input = writeProblem(testProblem(), "polygon-controller-input");
-  const auto output = std::filesystem::temp_directory_path() / "aipackaging-polygon-controller-solution.json";
-  const auto view = std::make_shared<PolygonWorkspaceViewStub>();
-  const auto controller = std::make_shared<PolygonWorkspaceController>(view);
-  controller->bindActions();
-  view->actions.openProblem(input.string());
-  ASSERT_EQ(view->latest().state, PolygonWorkspaceState::Ready);
-
-  SolverConfig config;
-  config.timeoutMs = 0;
-  view->actions.start(config);
-  ASSERT_TRUE(view->pumpUntil([](const auto & snapshot) { return snapshot.state == PolygonWorkspaceState::Completed; }));
-  EXPECT_TRUE(view->latest().canSave);
-  EXPECT_FALSE(view->latest().partial);
-  EXPECT_EQ(view->latest().scene.placements.size(), 2);
-
-  view->actions.saveSolution(output.string());
-  const PolygonSolutionLoadResult loaded = loadPolygonSolutionFromFile(output.string());
-  ASSERT_TRUE(loaded.success) << loaded.error;
-  EXPECT_TRUE(validatePolygonSolution(testProblem(), loaded.solution).success);
-  std::filesystem::remove(input);
-  std::filesystem::remove(output);
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto controller = makeController(output, documents, jobs);
+  const auto actions = controller->actions();
+  actions.openProblem("problem");
+  ASSERT_EQ(output->snapshot.state, PolygonWorkspaceState::Ready);
+  actions.start({});
+  ASSERT_EQ(output->snapshot.state, PolygonWorkspaceState::Running);
+  jobs->complete(solvedResult());
+  EXPECT_EQ(output->snapshot.state, PolygonWorkspaceState::Completed);
+  EXPECT_TRUE(output->snapshot.canSave);
+  actions.saveSolution("solution");
+  ASSERT_TRUE(documents->saved.has_value());
+  EXPECT_EQ(documents->saved.value_or(PolygonSolutionHandle{}).value, 7);
 }
 
-/// Проверяет сохранение предыдущей корректной сцены после ошибки нового файла.
+/// Проверяет сохранение прежнего документа и сцены после ошибки загрузки.
 TEST(PolygonWorkspaceController, KeepsPreviousSceneAfterLoadError)
 {
-  const auto input = writeProblem(testProblem(), "polygon-controller-valid");
-  const auto invalid = std::filesystem::temp_directory_path() / "aipackaging-polygon-controller-invalid.json";
-  {
-    std::ofstream output(invalid, std::ios::binary | std::ios::trunc);
-    output << "{ invalid";
-  }
-  const auto view = std::make_shared<PolygonWorkspaceViewStub>();
-  const auto controller = std::make_shared<PolygonWorkspaceController>(view);
-  controller->bindActions();
-  view->actions.openProblem(input.string());
-  const std::string problemId = view->latest().problemId;
-  view->actions.openProblem(invalid.string());
-  EXPECT_EQ(view->latest().problemId, problemId);
-  EXPECT_EQ(view->latest().state, PolygonWorkspaceState::Ready);
-  EXPECT_NE(view->latest().statusText.find("Ошибка загрузки"), std::string::npos);
-  std::filesystem::remove(input);
-  std::filesystem::remove(invalid);
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto controller = makeController(output, documents, jobs);
+  controller->openProblem("valid");
+  controller->openProblem("bad");
+  EXPECT_EQ(output->snapshot.problemId, "valid");
+  EXPECT_EQ(output->snapshot.state, PolygonWorkspaceState::Ready);
+  EXPECT_NE(output->snapshot.statusText.find("Ошибка загрузки"), std::string::npos);
 }
 
-/// Проверяет запрет параллельного запуска и несохраняемое частичное решение после отмены.
+/// Проверяет запрет параллельного запуска и несохраняемость отменённого результата.
 TEST(PolygonWorkspaceController, CancelsWithoutStartingSecondRun)
 {
-  const auto input = writeProblem(testProblem(), "polygon-controller-cancel");
-  const auto view = std::make_shared<PolygonWorkspaceViewStub>();
-  const auto backend = std::make_shared<BlockingPolygonBackend>();
-  const auto controller = std::make_shared<PolygonWorkspaceController>(view, backend);
-  controller->bindActions();
-  view->actions.openProblem(input.string());
-  SolverConfig config;
-  config.timeoutMs = 0;
-  view->actions.start(config);
-  view->actions.start(config);
-  while (backend->calls.load() == 0)
-    std::this_thread::sleep_for(1ms);
-  EXPECT_EQ(backend->calls.load(), 1);
-  view->actions.cancel();
-  ASSERT_TRUE(view->pumpUntil([](const auto & snapshot) { return snapshot.state == PolygonWorkspaceState::Cancelled; }));
-  EXPECT_FALSE(view->latest().canSave);
-  EXPECT_TRUE(view->latest().partial);
-  std::filesystem::remove(input);
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto controller = makeController(output, documents, jobs);
+  controller->openProblem("problem");
+  controller->start({});
+  controller->start({});
+  EXPECT_EQ(jobs->startCount, 1);
+  controller->cancel();
+  EXPECT_EQ(jobs->cancelled, jobs->current);
+  NestingRunResult cancelled;
+  cancelled.completion = NestingCompletion::Cancelled;
+  cancelled.partial = true;
+  jobs->complete(std::move(cancelled));
+  EXPECT_EQ(output->snapshot.state, PolygonWorkspaceState::Cancelled);
+  EXPECT_FALSE(output->snapshot.canSave);
 }
 
-/// Проверяет показ и сохранение независимо проверенного частичного решения.
-TEST(PolygonWorkspaceController, PublishesAndSavesOrdinaryPartial)
+/// Проверяет сохранение обычного частичного результата после ограничения времени.
+TEST(PolygonWorkspaceController, KeepsValidatedTimedOutPartialSaveable)
 {
-  const PolygonProblem problem = testProblem(34.0, 24.0);
-  const auto input = writeProblem(problem, "polygon-controller-partial");
-  const auto output = std::filesystem::temp_directory_path() / "aipackaging-polygon-controller-partial-solution.json";
-  const auto view = std::make_shared<PolygonWorkspaceViewStub>();
-  const auto controller = std::make_shared<PolygonWorkspaceController>(view);
-  controller->bindActions();
-  view->actions.openProblem(input.string());
-  SolverConfig config;
-  config.timeoutMs = 0;
-  view->actions.start(config);
-  ASSERT_TRUE(view->pumpUntil([](const auto & snapshot) { return snapshot.state == PolygonWorkspaceState::Completed; }));
-  EXPECT_TRUE(view->latest().partial);
-  EXPECT_TRUE(view->latest().canSave);
-  EXPECT_EQ(view->latest().objective.placedParts, 1);
-  view->actions.saveSolution(output.string());
-  const PolygonSolutionLoadResult loaded = loadPolygonSolutionFromFile(output.string());
-  ASSERT_TRUE(loaded.success) << loaded.error;
-  EXPECT_TRUE(validatePolygonSolution(problem, loaded.solution).success);
-  std::filesystem::remove(input);
-  std::filesystem::remove(output);
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto controller = makeController(output, documents, jobs);
+  controller->openProblem("problem");
+  controller->start({});
+  NestingRunResult result = solvedResult();
+  result.completion = NestingCompletion::TimedOut;
+  result.partial = true;
+  jobs->complete(std::move(result));
+  EXPECT_EQ(output->snapshot.state, PolygonWorkspaceState::Completed);
+  EXPECT_TRUE(output->snapshot.canSave);
+  EXPECT_TRUE(output->snapshot.partial);
 }
 
-/// Проверяет, что контроллер не публикует некорректный результат внутренней реализации.
-TEST(PolygonWorkspaceController, RejectsCorruptBackendResult)
+/// Проверяет отклонение недоступного нейросетевого режима без обращения к средству запуска.
+TEST(PolygonWorkspaceController, RejectsUnavailableMethod)
 {
-  const auto input = writeProblem(testProblem(), "polygon-controller-corrupt");
-  const auto view = std::make_shared<PolygonWorkspaceViewStub>();
-  const auto backend = std::make_shared<CorruptPolygonBackend>();
-  const auto controller = std::make_shared<PolygonWorkspaceController>(view, backend);
-  controller->bindActions();
-  view->actions.openProblem(input.string());
-  SolverConfig config;
-  config.timeoutMs = 0;
-  view->actions.start(config);
-  ASSERT_TRUE(view->pumpUntil([](const auto & snapshot) { return snapshot.state == PolygonWorkspaceState::Error; }));
-  EXPECT_FALSE(view->latest().canSave);
-  EXPECT_TRUE(view->latest().scene.placements.empty());
-  EXPECT_NE(view->latest().statusText.find("некорректный"), std::string::npos);
-  std::filesystem::remove(input);
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto controller = makeController(output, documents, jobs);
+  controller->openProblem("problem");
+  NestingRunRequest request;
+  request.method = NestingMethod::Neural;
+  controller->start(request);
+  EXPECT_EQ(jobs->startCount, 0);
+  EXPECT_NE(output->snapshot.statusText.find("недоступен"), std::string::npos);
 }
 
-/// Проверяет сохранение последней корректной раскладки при ошибке следующего запуска.
-TEST(PolygonWorkspaceController, KeepsValidatedSolutionAfterLaterBackendError)
+/// Проверяет сохранение последней корректной сцены при ошибке следующего запуска.
+TEST(PolygonWorkspaceController, KeepsValidatedSolutionAfterLaterFailure)
 {
-  const auto input = writeProblem(testProblem(), "polygon-controller-retained-result");
-  const auto view = std::make_shared<PolygonWorkspaceViewStub>();
-  const auto backend = std::make_shared<ValidThenCorruptPolygonBackend>();
-  const auto controller = std::make_shared<PolygonWorkspaceController>(view, backend);
-  controller->bindActions();
-  view->actions.openProblem(input.string());
-  SolverConfig config;
-  config.timeoutMs = 0;
-  view->actions.start(config);
-  ASSERT_TRUE(view->pumpUntil([](const auto & snapshot) { return snapshot.state == PolygonWorkspaceState::Completed; }));
-  const std::size_t retainedPlacements = view->latest().scene.placements.size();
-  ASSERT_TRUE(view->latest().canSave);
-
-  view->actions.start(config);
-  ASSERT_TRUE(view->pumpUntil([](const auto & snapshot) { return snapshot.state == PolygonWorkspaceState::Error; }));
-  EXPECT_EQ(view->latest().scene.placements.size(), retainedPlacements);
-  EXPECT_TRUE(view->latest().canSave);
-  std::filesystem::remove(input);
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto controller = makeController(output, documents, jobs);
+  controller->openProblem("problem");
+  controller->start({});
+  jobs->complete(solvedResult());
+  controller->start({});
+  jobs->fail("сбой");
+  EXPECT_EQ(output->snapshot.state, PolygonWorkspaceState::Error);
+  EXPECT_TRUE(output->snapshot.canSave);
+  EXPECT_EQ(output->snapshot.scene.placements.size(), 1);
 }
 
-/// Проверяет частичное решение после ограничения времени отдельно от отмены пользователя.
-TEST(PolygonWorkspaceController, PublishesSaveableTimedOutPartial)
+/// Проверяет освобождение результата запоздалого события без изменения текущего состояния.
+TEST(PolygonWorkspaceController, IgnoresAndReleasesStaleResult)
 {
-  const auto input = writeProblem(testProblem(), "polygon-controller-timeout");
-  const auto output = std::filesystem::temp_directory_path() / "aipackaging-polygon-controller-timeout-solution.json";
-  const auto view = std::make_shared<PolygonWorkspaceViewStub>();
-  const auto backend = std::make_shared<TimedOutPolygonBackend>();
-  const auto controller = std::make_shared<PolygonWorkspaceController>(view, backend);
-  controller->bindActions();
-  view->actions.openProblem(input.string());
-  SolverConfig config;
-  config.timeoutMs = 1;
-  view->actions.start(config);
-  ASSERT_TRUE(view->pumpUntil([](const auto & snapshot) { return snapshot.state == PolygonWorkspaceState::Completed; }));
-  EXPECT_TRUE(view->latest().partial);
-  EXPECT_TRUE(view->latest().canSave);
-  view->actions.saveSolution(output.string());
-  const PolygonSolutionLoadResult loaded = loadPolygonSolutionFromFile(output.string());
-  ASSERT_TRUE(loaded.success) << loaded.error;
-  EXPECT_EQ(loaded.solution.status, SolveStatus::TimedOut);
-  std::filesystem::remove(input);
-  std::filesystem::remove(output);
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto controller = makeController(output, documents, jobs);
+  controller->openProblem("problem");
+  controller->start({});
+  jobs->complete(solvedResult(19), NestingJobHandle{999});
+  EXPECT_EQ(output->snapshot.state, PolygonWorkspaceState::Running);
+  ASSERT_EQ(documents->releasedSolutionCount, 1);
+  EXPECT_EQ(documents->lastReleasedSolution.value, 19);
 }
 
-/// Проверяет, что устаревшее сообщение о ходе работы не меняет завершённое состояние.
-TEST(PolygonWorkspaceController, IgnoresLateProgressAfterResult)
+/// Проверяет диагностируемую ошибку сохранения без потери проверенного результата.
+TEST(PolygonWorkspaceController, ReportsSaveFailureAndKeepsResult)
 {
-  const auto input = writeProblem(testProblem(), "polygon-controller-late-progress");
-  const auto view = std::make_shared<PolygonWorkspaceViewStub>();
-  const auto controller = std::make_shared<PolygonWorkspaceController>(view);
-  controller->bindActions();
-  view->actions.openProblem(input.string());
-  SolverConfig config;
-  config.solver = SolverKind::InputFirstFit;
-  config.timeoutMs = 0;
-  view->actions.start(config);
-
-  // Рабочий решатель ставит два сообщения о ходе и итог; исполняем итог первым.
-  ASSERT_TRUE(view->waitForQueued(3));
-  view->executeNewest();
-  ASSERT_EQ(view->latest().state, PolygonWorkspaceState::Completed);
-  EXPECT_TRUE(view->latest().canSave);
-
-  view->pumpUntil([](const auto &) { return false; }, 10ms);
-  EXPECT_EQ(view->latest().state, PolygonWorkspaceState::Completed);
-  EXPECT_TRUE(view->latest().canSave);
-  std::filesystem::remove(input);
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto controller = makeController(output, documents, jobs);
+  controller->openProblem("problem");
+  controller->start({});
+  jobs->complete(solvedResult());
+  documents->saveSucceeds = false;
+  controller->saveSolution("solution");
+  EXPECT_TRUE(output->snapshot.canSave);
+  EXPECT_NE(output->snapshot.statusText.find("Ошибка сохранения"), std::string::npos);
 }

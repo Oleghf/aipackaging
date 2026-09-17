@@ -71,7 +71,6 @@ if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
     "core/app/testpackingscenesaver.cpp"
     "core/app/testdrawcontroller.cpp"
     "core/app/testfigurescenegeometry.cpp"
-    "core/app/testpolygonworkspacecontroller.cpp"
   )
   target_include_directories(AIPackaging_AppTests PRIVATE
     "${CMAKE_SOURCE_DIR}/src/core/app"
@@ -80,9 +79,23 @@ if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
     "${CMAKE_SOURCE_DIR}/src/core/app/services/io"
   )
   target_link_libraries(AIPackaging_AppTests PRIVATE
-    AIPackaging_App AIPackaging_Math AIPackaging_Domain AIPackaging_Contract AIPackaging_Solver
+    AIPackaging_App AIPackaging_Math AIPackaging_Domain AIPackaging_Contract
   )
   set_tests_properties(AIPackaging_AppTests PROPERTIES LABELS "app")
+
+  aipackaging_add_test_executable(AIPackaging_ApplicationTests
+    "core/app/testpolygonworkspacecontroller.cpp"
+  )
+  target_link_libraries(AIPackaging_ApplicationTests PRIVATE AIPackaging_Application)
+  set_tests_properties(AIPackaging_ApplicationTests PROPERTIES LABELS "app;application")
+
+  aipackaging_add_test_executable(AIPackaging_DesktopInfrastructureTests
+    "infrastructure/testpolygondesktopinfrastructure.cpp"
+  )
+  target_link_libraries(AIPackaging_DesktopInfrastructureTests PRIVATE
+    AIPackaging_DesktopInfrastructure AIPackaging_Search AIPackaging_Json AIPackaging_PolygonCore
+  )
+  set_tests_properties(AIPackaging_DesktopInfrastructureTests PROPERTIES LABELS "app;infrastructure;polygon")
 
   aipackaging_add_test_executable(AIPackaging_LegacyGeometryTests
     "aipackaging_math/geometry/testpoint2d.cpp"
@@ -109,7 +122,7 @@ if (BUILD_DESKTOP)
   )
   target_include_directories(AIPackaging_GuiTests PRIVATE "${CMAKE_SOURCE_DIR}/src/gui")
   target_link_libraries(AIPackaging_GuiTests PRIVATE
-    AIPackaging_GUI AIPackaging_App AIPackaging_Solver AIPackaging_Math AIPackaging_Contract
+    AIPackaging_GUI AIPackaging_App AIPackaging_Application AIPackaging_Math AIPackaging_Contract
   )
   set_tests_properties(AIPackaging_GuiTests PROPERTIES LABELS "gui")
 endif()
@@ -222,7 +235,15 @@ aipackaging_assert_target_dependencies(
 if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_AppTests
-    ALLOWED_DIRECT AIPackaging_App AIPackaging_Math AIPackaging_Domain AIPackaging_Contract AIPackaging_Solver
+    ALLOWED_DIRECT AIPackaging_App AIPackaging_Math AIPackaging_Domain AIPackaging_Contract
+  )
+  aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_ApplicationTests
+    ALLOWED_DIRECT AIPackaging_Application
+  )
+  aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_DesktopInfrastructureTests
+    ALLOWED_DIRECT AIPackaging_DesktopInfrastructure AIPackaging_Search AIPackaging_Json AIPackaging_PolygonCore
   )
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_LegacyGeometryTests
@@ -233,6 +254,6 @@ if (BUILD_DESKTOP)
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_GuiTests
     ALLOW_QT
-    ALLOWED_DIRECT AIPackaging_GUI AIPackaging_App AIPackaging_Solver AIPackaging_Math AIPackaging_Contract
+    ALLOWED_DIRECT AIPackaging_GUI AIPackaging_App AIPackaging_Application AIPackaging_Math AIPackaging_Contract
   )
 endif()

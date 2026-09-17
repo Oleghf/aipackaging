@@ -3,7 +3,6 @@
 
 #include <QWidget>
 
-#include <gridtypes.h>
 #include <polygonworkspaceview.h>
 
 class QComboBox;
@@ -26,7 +25,7 @@ public:
   /// Создаёт полотно, панель файлов, настройки решателя, ход выполнения и метрики.
   explicit PolygonWorkspaceWidget(QWidget * parent = nullptr);
   /// Возвращает проверяемые числовые настройки, выбранные пользователем.
-  aipackaging::solver::SolverConfig solverConfig() const;
+  NestingRunRequest solverConfig() const;
   /// Применяет снимок модели представления и согласованно переключает доступность элементов управления.
   void present(const PolygonWorkspaceSnapshot & snapshot);
 

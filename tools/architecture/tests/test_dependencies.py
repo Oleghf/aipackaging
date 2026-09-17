@@ -88,6 +88,29 @@ class DependencyCheckerTests(unittest.TestCase):
             self.assertEqual(1, len(violations))
             self.assertIn("search не может включать json", violations[0].message)
 
+    def test_rejects_application_and_gui_to_search_include(self) -> None:
+        """Прикладной слой и GUI не должны повторно получить типы поискового модуля."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            application = root / "src/core/app/example.cpp"
+            gui = root / "src/gui/example.cpp"
+            header = root / "src/solver/include/aipackaging/nesting/polygon_solver.h"
+            application.parent.mkdir(parents=True)
+            gui.parent.mkdir(parents=True)
+            header.parent.mkdir(parents=True)
+            application.write_text("#include <aipackaging/nesting/polygon_solver.h>\n", encoding="utf-8")
+            gui.write_text("#include <aipackaging/nesting/polygon_solver.h>\n", encoding="utf-8")
+            header.write_text("#pragma once\n", encoding="utf-8")
+            rules = self._rules(
+                {"app": "src/core/app", "gui": "src/gui"},
+                {"app": ["app"], "gui": ["gui", "app"]},
+                {"src/solver/include/aipackaging/nesting/polygon_solver.h": "search"},
+            )
+            violations = self._check(root, rules)
+            self.assertEqual(2, len(violations))
+            self.assertTrue(all("не может включать search" in item.message for item in violations))
+
     def test_rejects_external_libraries_outside_owner(self) -> None:
         """GridCore и PolygonCore не могут напрямую включать чужие внешние библиотеки."""
 

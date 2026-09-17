@@ -327,13 +327,6 @@ void QtView::presentPolygonWorkspace(const PolygonWorkspaceSnapshot & snapshot)
 }
 
 
-/// Использует вызов через очередь, чтобы рабочий поток не менял QWidget напрямую.
-void QtView::postToPolygonUi(std::function<void()> callback)
-{
-  QMetaObject::invokeMethod(this, std::move(callback), Qt::QueuedConnection);
-}
-
-
 //------------------------------------------------------------------------------
 /**
   Отправляет событие отрисовки основной сцены

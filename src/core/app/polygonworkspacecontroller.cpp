@@ -1,382 +1,261 @@
-#include <chrono>
-#include <exception>
-#include <set>
 #include <utility>
 
-#include <polygonio.h>
-#include <polygonsolver.h>
 #include <polygonworkspacecontroller.h>
 
 namespace
 {
-using namespace aipackaging::solver;
-
-/// Выполняет обычный базовый алгоритм через общий управляемый API решателя.
-class BaselinePolygonSolverBackend final : public IPolygonSolverBackend
+/// Проверяет положительные бюджеты, обязательные для выбранных алгоритмов.
+bool validRequest(const NestingRunRequest & request)
 {
-public:
-  /// Передаёт задачу, настройки и управление выполнением полигональному решателю.
-  PolygonSolverExecutionResult run(const PolygonProblem & problem, const SolverConfig & config,
-                                   const PolygonExecutionControl & control) override
-  {
-    return runPolygonProblem(problem, config, control);
-  }
-};
-
-/// Переводит микронную точку кольца в миллиметровую точку модели представления.
-PolygonViewPoint toViewPoint(const PolygonPoint64 & point, std::int64_t offsetX, std::int64_t offsetY)
-{
-  return {static_cast<double>(point.x + offsetX) / 1000.0, static_cast<double>(point.y + offsetY) / 1000.0};
-}
-
-/// Проверяет положительные детерминированные бюджеты GUI-запуска.
-bool validConfig(const SolverConfig & config)
-{
-  return config.randomIterations > 0 && config.beamWidth > 0 && config.maxExpandedStates > 0;
+  return request.randomIterations > 0 && request.beamWidth > 0 && request.maxExpandedStates > 0 && request.neuralRollouts > 0 &&
+         request.fallbackRandomIterations > 0;
 }
 } // namespace
 
-/// Сохраняет зависимости и публикует исходное пустое состояние.
-PolygonWorkspaceController::PolygonWorkspaceController(std::shared_ptr<IPolygonWorkspaceView> view,
-                                                       std::shared_ptr<IPolygonSolverBackend> backend)
-  : view_(std::move(view))
-  , backend_(backend ? std::move(backend) : std::make_shared<BaselinePolygonSolverBackend>())
+/// Сохраняет прикладные порты и публикует исходное пустое состояние.
+PolygonWorkspaceController::PolygonWorkspaceController(std::shared_ptr<IPolygonWorkspaceOutput> output,
+                                                       std::shared_ptr<IPolygonDocumentGateway> documents,
+                                                       std::shared_ptr<INestingJobRunner> jobs)
+  : output_(std::move(output))
+  , documents_(std::move(documents))
+  , jobs_(std::move(jobs))
 {
   snapshot_.statusText = "Откройте задачу `polygon_problem` v1";
   publish();
 }
 
-/// Запрашивает совместную отмену и синхронно завершает принадлежащий рабочий поток.
+/// Запрашивает отмену и освобождает зарегистрированные артефакты без ожидания потока.
 PolygonWorkspaceController::~PolygonWorkspaceController()
 {
-  if (worker_.joinable())
-  {
-    worker_.request_stop();
-    worker_.join();
-  }
+  if (activeJob_)
+    jobs_->cancel(*activeJob_);
+  releaseSolution();
+  if (document_)
+    documents_->release(*document_);
 }
 
-/// Устанавливает функции обратного вызова, удерживающие контроллер только на время конкретного вызова.
-void PolygonWorkspaceController::bindActions()
+/// Создаёт функции, которые удерживают контроллер только на время конкретного вызова.
+PolygonWorkspaceActions PolygonWorkspaceController::actions()
 {
   const std::weak_ptr<PolygonWorkspaceController> weak = weak_from_this();
-  PolygonWorkspaceActions actions;
-  actions.openProblem = [weak](const std::string & path)
+  PolygonWorkspaceActions result;
+  result.openProblem = [weak](const std::string & path)
   {
     if (const auto self = weak.lock())
       self->openProblem(path);
   };
-  actions.saveSolution = [weak](const std::string & path)
+  result.saveSolution = [weak](const std::string & path)
   {
     if (const auto self = weak.lock())
       self->saveSolution(path);
   };
-  actions.start = [weak](const SolverConfig & config)
+  result.start = [weak](const NestingRunRequest & request)
   {
     if (const auto self = weak.lock())
-      self->start(config);
+      self->start(request);
   };
-  actions.cancel = [weak]()
+  result.cancel = [weak]()
   {
     if (const auto self = weak.lock())
       self->cancel();
   };
-  view_->setPolygonWorkspaceActions(std::move(actions));
+  return result;
 }
 
-/// Загружает и повторно нормализует задачу, заменяя рабочую сцену только после успеха.
+/// Загружает документ через порт и заменяет текущий только после полного успеха.
 void PolygonWorkspaceController::openProblem(const std::string & filePath)
 {
   if (filePath.empty() || snapshot_.state == PolygonWorkspaceState::Running)
     return;
-  const PolygonProblemLoadResult loaded = loadPolygonProblemFromFile(filePath);
+  PolygonDocumentLoadResult loaded = documents_->load(filePath);
   if (!loaded.success)
   {
-    if (!problem_)
+    if (!document_)
       snapshot_.state = PolygonWorkspaceState::Error;
     snapshot_.statusText = "Ошибка загрузки: " + loaded.error;
     publish();
     return;
   }
-  std::string error;
-  std::unique_ptr<PolygonEnvironment> environment = PolygonEnvironment::Create(loaded.problem, error);
-  if (!environment)
-  {
-    if (!problem_)
-      snapshot_.state = PolygonWorkspaceState::Error;
-    snapshot_.statusText = "Ошибка геометрии: " + error;
-    publish();
-    return;
-  }
 
-  problem_ = loaded.problem;
-  environment_ = std::move(environment);
-  solution_.reset();
-  saveable_ = false;
+  releaseSolution();
+  if (document_)
+    documents_->release(*document_);
+  document_ = loaded.document;
   snapshot_ = {};
   snapshot_.state = PolygonWorkspaceState::Ready;
-  snapshot_.problemId = problem_->problemId;
+  snapshot_.problemId = std::move(loaded.problemId);
   snapshot_.statusText = "Задача загружена";
-  rebuildPresentation(nullptr);
+  snapshot_.scene = std::move(loaded.scene);
+  snapshot_.unplacedInstances = std::move(loaded.unplacedInstances);
   publish();
 }
 
-/// Проверяет доступность результата и делегирует запись строгому сериализатору.
+/// Делегирует запись шлюзу только для зарегистрированного проверенного результата.
 void PolygonWorkspaceController::saveSolution(const std::string & filePath)
 {
-  if (filePath.empty() || !saveable_ || !solution_ || !problem_)
+  if (filePath.empty() || !solution_ || snapshot_.state == PolygonWorkspaceState::Running)
     return;
-  const ValidationResult validation = validatePolygonSolution(*problem_, *solution_);
-  if (!validation.success)
-  {
-    saveable_ = false;
-    snapshot_.statusText = "Сохранение запрещено: " + validation.error;
-    publish();
-    return;
-  }
-  std::string error;
-  snapshot_.statusText =
-    savePolygonSolutionToFile(filePath, *solution_, error) ? "Решение сохранено" : "Ошибка сохранения: " + error;
+  const PolygonDocumentOperationResult saved = documents_->save(filePath, *solution_);
+  snapshot_.statusText = saved.success ? "Решение сохранено" : "Ошибка сохранения: " + saved.error;
   publish();
 }
 
-/// Копирует вход в рабочий поток и доставляет ход выполнения и итог через диспетчер UI.
-void PolygonWorkspaceController::start(const SolverConfig & config)
+/// Проверяет запрос, создаёт функции событий и передаёт выполнение средству запуска.
+void PolygonWorkspaceController::start(const NestingRunRequest & request)
 {
-  if (!problem_ || snapshot_.state == PolygonWorkspaceState::Running)
+  if (!document_ || activeJob_)
     return;
-  if (!validConfig(config))
+  if (!validRequest(request))
   {
     snapshot_.statusText = "Параметры решателя должны быть положительными";
     publish();
     return;
   }
-  if (worker_.joinable())
-    worker_.join();
+  if (request.method != NestingMethod::Baseline)
+  {
+    snapshot_.statusText = "Выбранный способ раскроя пока недоступен";
+    publish();
+    return;
+  }
 
-  const PolygonProblem problem = *problem_;
-  const std::shared_ptr<IPolygonSolverBackend> backend = backend_;
   const std::weak_ptr<PolygonWorkspaceController> weak = weak_from_this();
-  const std::uint64_t currentRun = ++runId_;
+  NestingJobCallbacks callbacks;
+  callbacks.progress = [weak](NestingJobHandle job, const NestingProgress & progress)
+  {
+    if (const auto self = weak.lock())
+      self->acceptProgress(job, progress);
+  };
+  callbacks.completed = [weak](NestingJobHandle job, NestingRunResult result)
+  {
+    if (const auto self = weak.lock())
+      self->acceptResult(job, std::move(result));
+  };
+  callbacks.failed = [weak](NestingJobHandle job, const std::string & error)
+  {
+    if (const auto self = weak.lock())
+      self->acceptFailure(job, error);
+  };
+
+  std::string error;
+  const std::optional<NestingJobHandle> job = jobs_->start(*document_, request, std::move(callbacks), error);
+  if (!job)
+  {
+    snapshot_.statusText = "Не удалось запустить поиск: " + error;
+    publish();
+    return;
+  }
+  activeJob_ = job;
   snapshot_.state = PolygonWorkspaceState::Running;
   snapshot_.statusText = "Выполняется полигональный поиск";
-  snapshot_.solverName = toString(config.solver);
   snapshot_.progress = {};
   publish();
-
-  worker_ = std::jthread(
-    [weak, backend, problem, config, currentRun](const std::stop_token & stopToken)
-    {
-      auto lastProgress = std::chrono::steady_clock::time_point::min();
-      PolygonExecutionControl control;
-      control.cancellationRequested = [stopToken]()
-      {
-        return stopToken.stop_requested();
-      };
-      control.progress = [weak, currentRun, &lastProgress](const PolygonSolverProgress & progress)
-      {
-        const auto now = std::chrono::steady_clock::now();
-        const bool finalUpdate = progress.total > 0 && progress.completed >= progress.total;
-        if (!finalUpdate && lastProgress != std::chrono::steady_clock::time_point::min() &&
-            now - lastProgress < std::chrono::milliseconds(100))
-          return;
-        lastProgress = now;
-        if (const auto self = weak.lock())
-        {
-          const auto view = self->view_;
-          view->postToPolygonUi(
-            [weak, currentRun, progress]()
-            {
-              if (const auto target = weak.lock())
-                target->acceptProgress(currentRun, progress);
-            });
-        }
-      };
-      try
-      {
-        PolygonSolverExecutionResult result = backend->run(problem, config, control);
-        if (const auto self = weak.lock())
-        {
-          const auto view = self->view_;
-          view->postToPolygonUi(
-            [weak, currentRun, result = std::move(result)]() mutable
-            {
-              if (const auto target = weak.lock())
-                target->acceptResult(currentRun, std::move(result));
-            });
-        }
-      }
-      catch (const std::exception & error)
-      {
-        if (const auto self = weak.lock())
-        {
-          const auto view = self->view_;
-          const std::string message = error.what();
-          view->postToPolygonUi(
-            [weak, currentRun, message]()
-            {
-              if (const auto target = weak.lock())
-                target->acceptFailure(currentRun, message);
-            });
-        }
-      }
-    });
 }
 
-/// Передаёт запрос остановки рабочему потоку и оставляет итог завершающему вызову.
+/// Передаёт запрос отмены активному средству запуска и немедленно обновляет сообщение.
 void PolygonWorkspaceController::cancel()
 {
-  if (snapshot_.state != PolygonWorkspaceState::Running || !worker_.joinable())
+  if (!activeJob_)
     return;
-  worker_.request_stop();
+  jobs_->cancel(*activeJob_);
   snapshot_.statusText = "Запрошена отмена…";
   publish();
 }
 
-/// Возвращает копию последнего UI-снимка.
+/// Возвращает копию последнего прикладного снимка.
 PolygonWorkspaceSnapshot PolygonWorkspaceController::snapshot() const
 {
   return snapshot_;
 }
 
-/// Вычисляет доступность кнопок из единственного состояния и отправляет снимок представлению.
+/// Вычисляет доступность действий из состояния и передаёт снимок выходному порту.
 void PolygonWorkspaceController::publish()
 {
   const bool running = snapshot_.state == PolygonWorkspaceState::Running;
   snapshot_.canOpen = !running;
-  snapshot_.canRun = problem_.has_value() && !running;
+  snapshot_.canRun = document_.has_value() && !running;
   snapshot_.canCancel = running;
-  snapshot_.canSave = saveable_ && !running;
-  if (view_)
-    view_->presentPolygonWorkspace(snapshot_);
+  snapshot_.canSave = solution_.has_value() && !running;
+  if (output_)
+    output_->presentPolygonWorkspace(snapshot_);
 }
 
-/// Игнорирует устаревшие события и обновляет только диагностические счётчики.
-void PolygonWorkspaceController::acceptProgress(std::uint64_t runId, const PolygonSolverProgress & progress)
+/// Игнорирует устаревшие сообщения и обновляет ход только текущей работы.
+void PolygonWorkspaceController::acceptProgress(NestingJobHandle job, const NestingProgress & progress)
 {
-  if (runId != runId_ || snapshot_.state != PolygonWorkspaceState::Running)
+  if (!activeJob_ || job != *activeJob_ || snapshot_.state != PolygonWorkspaceState::Running)
     return;
   snapshot_.progress = progress;
   publish();
 }
 
-/// Повторно проверяет результат и атомарно заменяет модель представления актуального запуска.
-void PolygonWorkspaceController::acceptResult(std::uint64_t runId, PolygonSolverExecutionResult result)
+/// Публикует подготовленную сцену и сохраняет только выданный инфраструктурой артефакт.
+void PolygonWorkspaceController::acceptResult(NestingJobHandle job, NestingRunResult result)
 {
-  if (runId != runId_ || snapshot_.state != PolygonWorkspaceState::Running || !problem_)
-    return;
-  const ValidationResult validation = validatePolygonSolution(*problem_, result.solution);
-  if (!validation.success)
+  if (!activeJob_ || job != *activeJob_ || snapshot_.state != PolygonWorkspaceState::Running)
   {
-    snapshot_.state = PolygonWorkspaceState::Error;
-    snapshot_.statusText = "Решатель вернул некорректный результат: " + validation.error;
-    publish();
+    if (result.solution)
+      documents_->release(*result.solution);
     return;
   }
 
-  const bool complete = result.solution.complete();
-  const SolveStatus solutionStatus = result.solution.status;
-  solution_ = std::move(result.solution);
-  rebuildPresentation(&*solution_);
-  if (result.cancelled)
+  activeJob_.reset();
+  releaseSolution();
+  snapshot_.solverName = std::move(result.implementationName);
+  snapshot_.solutionStatus = std::move(result.solutionStatus);
+  snapshot_.partial = result.partial;
+  snapshot_.objective = result.objective;
+  snapshot_.metrics = result.metrics;
+  snapshot_.scene = std::move(result.scene);
+  snapshot_.unplacedInstances = std::move(result.unplacedInstances);
+
+  if (result.completion == NestingCompletion::Cancelled)
   {
     snapshot_.state = PolygonWorkspaceState::Cancelled;
     snapshot_.statusText = "Поиск отменён; показано последнее частичное решение";
-    saveable_ = false;
+    if (result.solution)
+      documents_->release(*result.solution);
   }
   else
   {
     snapshot_.state = PolygonWorkspaceState::Completed;
-    switch (solutionStatus)
+    solution_ = result.solution;
+    switch (result.completion)
     {
-      case SolveStatus::TimedOut:
+      case NestingCompletion::TimedOut:
         snapshot_.statusText = "Истекло время поиска; показано лучшее проверенное частичное решение";
         break;
-      case SolveStatus::BudgetExhausted:
+      case NestingCompletion::BudgetExhausted:
         snapshot_.statusText = "Исчерпан бюджет; показано лучшее проверенное решение";
         break;
-      case SolveStatus::UnsupportedEnvironment:
+      case NestingCompletion::UnsupportedEnvironment:
         snapshot_.statusText = "Превышен предел среды; показано лучшее проверенное частичное решение";
         break;
-      case SolveStatus::NoSolutionFound:
+      case NestingCompletion::NoSolutionFound:
         snapshot_.statusText = "Полное решение не найдено; показано проверенное частичное решение";
         break;
       default:
-        snapshot_.statusText = complete ? "Полная раскладка построена" : "Показано лучшее частичное решение";
+        snapshot_.statusText = result.partial ? "Показано лучшее частичное решение" : "Полная раскладка построена";
         break;
     }
-    saveable_ = true;
   }
   publish();
 }
 
-/// Сохраняет прежнюю сцену и переводит только актуальный запуск в состояние ошибки.
-void PolygonWorkspaceController::acceptFailure(std::uint64_t runId, const std::string & error)
+/// Сохраняет предыдущую сцену и переводит только актуальную работу в состояние ошибки.
+void PolygonWorkspaceController::acceptFailure(NestingJobHandle job, const std::string & error)
 {
-  if (runId != runId_ || snapshot_.state != PolygonWorkspaceState::Running)
+  if (!activeJob_ || job != *activeJob_ || snapshot_.state != PolygonWorkspaceState::Running)
     return;
+  activeJob_.reset();
   snapshot_.state = PolygonWorkspaceState::Error;
   snapshot_.statusText = "Ошибка внутренней реализации решателя: " + error;
   publish();
 }
 
-/// Переводит авторитетные микронные кольца и целевую функцию в миллиметровый снимок представления.
-void PolygonWorkspaceController::rebuildPresentation(const PolygonSolution * solution)
+/// Освобождает зарегистрированное решение и очищает прикладной идентификатор.
+void PolygonWorkspaceController::releaseSolution() noexcept
 {
-  snapshot_.scene = {};
-  snapshot_.unplacedInstances.clear();
-  snapshot_.objective = {};
-  snapshot_.metrics = {};
-  snapshot_.solutionStatus.clear();
-  snapshot_.partial = false;
-  if (!problem_ || !environment_)
-    return;
-
-  snapshot_.problemId = problem_->problemId;
-  snapshot_.scene.sheetWidth = problem_->sheet.width;
-  snapshot_.scene.sheetHeight = problem_->sheet.height;
-  snapshot_.scene.sheetMargin = problem_->manufacturing.sheetMargin;
-  std::set<std::pair<std::string, std::uint32_t>> placed;
-  if (solution)
-  {
-    snapshot_.objective = solution->objective;
-    snapshot_.metrics = solution->metrics;
-    snapshot_.solutionStatus = toString(solution->status);
-    snapshot_.solverName = solution->solver.name;
-    snapshot_.partial = !solution->complete();
-    snapshot_.scene.usedLength = static_cast<double>(solution->objective.usedLength) / 1000.0;
-    snapshot_.scene.primaryRemnantWidth = static_cast<double>(solution->objective.primaryRemnantWidth) / 1000.0;
-    for (const PolygonPlacement & placement : solution->placements)
-    {
-      const std::size_t instancePosition = environment_->findInstance(placement.partId, placement.instanceIndex);
-      if (instancePosition >= environment_->instances().size())
-        continue;
-      const std::size_t partIndex = environment_->instances()[instancePosition].partIndex;
-      const PolygonOrientation * orientation = environment_->findOrientation(partIndex, placement.rotationDegrees);
-      if (!orientation)
-        continue;
-      PolygonPlacedPartView part;
-      part.partId = placement.partId;
-      part.instanceIndex = placement.instanceIndex;
-      part.colorIndex = partIndex;
-      for (const PolygonPoint64 & point : orientation->outer)
-        part.outer.push_back(toViewPoint(point, placement.x, placement.y));
-      for (const PolygonRing64 & hole : orientation->holes)
-      {
-        std::vector<PolygonViewPoint> viewHole;
-        for (const PolygonPoint64 & point : hole)
-          viewHole.push_back(toViewPoint(point, placement.x, placement.y));
-        part.holes.push_back(std::move(viewHole));
-      }
-      snapshot_.scene.placements.push_back(std::move(part));
-      placed.emplace(placement.partId, placement.instanceIndex);
-    }
-  }
-
-  for (const PolygonPartInstance & instance : environment_->instances())
-  {
-    const std::string & id = problem_->parts[instance.partIndex].id;
-    if (!placed.contains({id, instance.instanceIndex}))
-      snapshot_.unplacedInstances.push_back(id + " #" + std::to_string(instance.instanceIndex));
-  }
+  if (solution_)
+    documents_->release(*solution_);
+  solution_.reset();
 }
