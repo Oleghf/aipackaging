@@ -170,15 +170,23 @@ bool isBetterPolygonSolution(const PolygonSolution & candidate, const PolygonSol
                                       reference.placements.end(), actionLess);
 }
 
-/// Проверяет задачу, запускает общий жизненный цикл через полигональный адаптер и независимо проверяет результат.
+/// Выбирает исправленный каталог для существующей формы управляемого вызова.
 PolygonSolverExecutionResult runPolygonProblem(const PolygonProblem & problem, const SolverConfig & config,
                                                const PolygonExecutionControl & control)
+{
+  return runPolygonProblem(problem, config, control, PolygonActionCatalogVersion::Corrected);
+}
+
+/// Проверяет задачу, запускает поиск через выбранный каталог и независимо проверяет результат.
+PolygonSolverExecutionResult runPolygonProblem(const PolygonProblem & problem, const SolverConfig & config,
+                                               const PolygonExecutionControl & control,
+                                               PolygonActionCatalogVersion catalogVersion)
 {
   PolygonSolution solution;
   solution.problemId = problem.problemId;
   solution.solver = detail::makeBaselineMetadata(config);
   std::string error;
-  std::unique_ptr<PolygonEnvironment> environment = PolygonEnvironment::Create(problem, error);
+  std::unique_ptr<PolygonEnvironment> environment = PolygonEnvironment::Create(problem, catalogVersion, error);
   if (!environment)
   {
     solution.status = SolveStatus::InvalidProblem;
@@ -228,5 +236,12 @@ PolygonSolverExecutionResult runPolygonProblem(const PolygonProblem & problem, c
 PolygonSolution solvePolygonProblem(const PolygonProblem & problem, const SolverConfig & config)
 {
   return runPolygonProblem(problem, config).solution;
+}
+
+/// Передаёт явно выбранную версию каталога общему управляемому запуску.
+PolygonSolution solvePolygonProblem(const PolygonProblem & problem, const SolverConfig & config,
+                                    PolygonActionCatalogVersion catalogVersion)
+{
+  return runPolygonProblem(problem, config, {}, catalogVersion).solution;
 }
 } // namespace aipackaging::solver

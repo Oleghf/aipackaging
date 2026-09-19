@@ -1,6 +1,7 @@
 #ifndef AIPACKAGING_NESTING_POLYGON_SOLVER_H
 #define AIPACKAGING_NESTING_POLYGON_SOLVER_H
 
+#include <aipackaging/nesting/polygon_environment.h>
 #include <aipackaging/nesting/polygon_types.h>
 #include <aipackaging/nesting/search_contracts.h>
 
@@ -27,8 +28,15 @@ bool isBetterPolygonSolution(const PolygonSolution & candidate, const PolygonSol
 /// Запускает базовый алгоритм с отменой, ходом выполнения и лучшим частичным решением.
 PolygonSolverExecutionResult runPolygonProblem(const PolygonProblem & problem, const SolverConfig & config,
                                                const PolygonExecutionControl & control = {});
+/// Запускает базовый алгоритм с явно выбранной версией каталога действий.
+PolygonSolverExecutionResult runPolygonProblem(const PolygonProblem & problem, const SolverConfig & config,
+                                               const PolygonExecutionControl & control,
+                                               PolygonActionCatalogVersion catalogVersion);
 /// Запускает выбранный базовый алгоритм над полигональной средой.
 PolygonSolution solvePolygonProblem(const PolygonProblem & problem, const SolverConfig & config = {});
+/// Запускает базовый алгоритм с явно выбранной версией каталога действий.
+PolygonSolution solvePolygonProblem(const PolygonProblem & problem, const SolverConfig & config,
+                                    PolygonActionCatalogVersion catalogVersion);
 } // namespace aipackaging::solver
 
 #endif

@@ -72,7 +72,7 @@ def replay_polygon_expert_steps(episode: PolygonExpertEpisode) -> Iterator[Polyg
 
     actions = [step["action"] for step in episode.trajectory["steps"]]
     rewards: list[float] = []
-    probe = PolygonNestingEnv.from_dict(episode.problem, reward_version=2)
+    probe = PolygonNestingEnv.from_dict(episode.problem, reward_version=2, catalog_version=1)
     probe.reset_compact()
     for action in actions:
         _, reward, _, truncated, _ = probe.step_compact(probe.find_action(action))
@@ -85,7 +85,7 @@ def replay_polygon_expert_steps(episode: PolygonExpertEpisode) -> Iterator[Polyg
         accumulated += rewards[index]
         returns[index] = accumulated
 
-    environment = PolygonNestingEnv.from_dict(episode.problem, reward_version=2)
+    environment = PolygonNestingEnv.from_dict(episode.problem, reward_version=2, catalog_version=1)
     fixed = environment.static_observation()
     dynamic, _ = environment.reset_compact()
     for action, value_target in zip(actions, returns, strict=True):

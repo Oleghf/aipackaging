@@ -415,8 +415,11 @@ bool GridEnvironment::canApply(const GridState & state, const GridAction & actio
   }
   const GridPartInstance & instance = instances_[instancePosition];
   const GridOrientation * orientation = findOrientation(instance.partIndex, action.rotationDegrees);
-  if (!orientation || action.column < 0 || action.row < 0 || action.column + orientation->width > problem_.sheet.columns ||
-      action.row + orientation->height > problem_.sheet.rows)
+  // Сравнение с оставшимся размером выполняется до сложения: координаты из
+  // недоверенного решения могут быть равны INT_MAX.
+  if (!orientation || action.column < 0 || action.row < 0 || orientation->width > problem_.sheet.columns ||
+      orientation->height > problem_.sheet.rows || action.column > problem_.sheet.columns - orientation->width ||
+      action.row > problem_.sheet.rows - orientation->height)
   {
     return false;
   }

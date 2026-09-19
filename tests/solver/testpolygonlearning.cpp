@@ -94,6 +94,7 @@ TEST(PolygonLearning, SelectsCompatibleRewardVersion)
 
   PolygonLearningConfig config;
   config.rewardVersion = 2;
+  EXPECT_EQ(config.catalogVersion, PolygonActionCatalogVersion::Corrected);
   std::unique_ptr<PolygonLearningEnvironment> current = PolygonLearningEnvironment::Create(problem(), config, error);
   ASSERT_NE(current, nullptr) << error;
   const PolygonLearningCompactStepResult step = current->stepCompact(0);

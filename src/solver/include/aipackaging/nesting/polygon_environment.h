@@ -10,12 +10,22 @@
 
 namespace aipackaging::solver
 {
+/// Выбирает неизменный исторический либо исправленный каталог полигональных действий.
+enum class PolygonActionCatalogVersion : int
+{
+  Legacy = 1,
+  Corrected = 2
+};
+
 /// Детерминированная среда раскроя нормализованных полигональных деталей.
 class PolygonEnvironment
 {
 public:
-  /// Проверяет исходную задачу, аппроксимирует кривые и создаёт среду либо возвращает ошибку.
+  /// Создаёт среду с исправленным каталогом действий либо возвращает ошибку.
   static std::unique_ptr<PolygonEnvironment> Create(const PolygonProblem & problem, std::string & error);
+  /// Создаёт среду с явно выбранной версией каталога действий.
+  static std::unique_ptr<PolygonEnvironment> Create(const PolygonProblem & problem, PolygonActionCatalogVersion catalogVersion,
+                                                    std::string & error);
 
   /// Возвращает исходную проверенную задачу.
   const PolygonProblem & problem() const { return problem_; }
@@ -54,7 +64,7 @@ private:
   /// Сохраняет проверенную задачу и подготовленные геометрические индексы.
   PolygonEnvironment(PolygonProblem problem, std::int64_t sheetWidth, std::int64_t sheetHeight, std::int64_t sheetMargin,
                      std::int64_t partSpacing, std::vector<std::vector<PolygonOrientation>> orientations,
-                     std::vector<PolygonPartInstance> instances);
+                     std::vector<PolygonPartInstance> instances, PolygonActionCatalogVersion catalogVersion);
 
   PolygonProblem problem_;
   std::int64_t sheetWidth_ = 0;
@@ -63,6 +73,7 @@ private:
   std::int64_t partSpacing_ = 0;
   std::vector<std::vector<PolygonOrientation>> orientations_;
   std::vector<PolygonPartInstance> instances_;
+  PolygonActionCatalogVersion catalogVersion_ = PolygonActionCatalogVersion::Corrected;
 };
 
 /// Проверяет исходные поля и производственные ограничения `polygon_problem` v1.

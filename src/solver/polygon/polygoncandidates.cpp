@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <set>
 #include <stdexcept>
 #include <tuple>
@@ -29,6 +30,53 @@ bool interiorsOverlap(const PolygonRing64 & lhs, const PolygonRing64 & rhs)
                      [](const Clipper2Lib::Path64 & path) { return std::abs(Clipper2Lib::Area(path)) > 0.0; });
 }
 
+/// Добавляет микронные точки контакта границы NFP с допустимым отрезком переноса.
+void addLineContacts(const Clipper2Lib::Paths64 & obstacles, bool vertical, std::int64_t fixed, std::int64_t low,
+                     std::int64_t high, int rotation, std::set<std::tuple<int, std::int64_t, std::int64_t>> & unique)
+{
+  const auto add = [&](std::int64_t variable)
+  {
+    if (variable >= low && variable <= high)
+      unique.emplace(rotation, vertical ? fixed : variable, vertical ? variable : fixed);
+  };
+  add(low);
+  add(high);
+  for (const Clipper2Lib::Path64 & path : obstacles)
+  {
+    for (std::size_t index = 0; index < path.size(); ++index)
+    {
+      const Clipper2Lib::Point64 & a = path[index];
+      const Clipper2Lib::Point64 & b = path[(index + 1) % path.size()];
+      const std::int64_t aFixed = vertical ? a.x : a.y;
+      const std::int64_t bFixed = vertical ? b.x : b.y;
+      const std::int64_t aVariable = vertical ? a.y : a.x;
+      const std::int64_t bVariable = vertical ? b.y : b.x;
+      if (aFixed == bFixed)
+      {
+        if (aFixed == fixed)
+        {
+          // Совпадающее ребро задаёт два возможных края свободного промежутка.
+          add(aVariable);
+          add(bVariable);
+        }
+        continue;
+      }
+      if (fixed < std::min(aFixed, bFixed) || fixed > std::max(aFixed, bFixed))
+        continue;
+      const long double fraction = static_cast<long double>(fixed - aFixed) / static_cast<long double>(bFixed - aFixed);
+      const long double crossing =
+        static_cast<long double>(aVariable) + fraction * static_cast<long double>(bVariable - aVariable);
+      if (crossing < static_cast<long double>(low) - 1.0L || crossing > static_cast<long double>(high) + 1.0L)
+        continue;
+      // Соседние микронные позиции защищают от округления дробного пересечения;
+      // геометрическая допустимость каждой затем проверяется отдельно.
+      const auto floorValue = static_cast<std::int64_t>(std::floor(crossing));
+      for (std::int64_t offset = -1; offset <= 2; ++offset)
+        add(floorValue + offset);
+    }
+  }
+}
+
 } // namespace internal
 
 using namespace internal;
@@ -50,7 +98,7 @@ std::vector<PolygonAction> PolygonEnvironment::enumerateCandidates(const Polygon
     const std::int64_t top = sheetHeight_ - sheetMargin_ - orientation.height;
     if (right < left || top < bottom)
       continue;
-    if (right == left || top == bottom)
+    if ((right == left || top == bottom) && catalogVersion_ == PolygonActionCatalogVersion::Legacy)
     {
       // Вырожденная область допустимого внутреннего размещения является отрезком либо точкой. Clipper2
       // не возвращает её как полигон с площадью, поэтому явно сохраняем
@@ -61,7 +109,6 @@ std::vector<PolygonAction> PolygonEnvironment::enumerateCandidates(const Polygon
       unique.emplace(orientation.rotationDegrees, right, top);
       continue;
     }
-    Clipper2Lib::Path64 feasibleRectangle{{left, bottom}, {right, bottom}, {right, top}, {left, top}};
     Clipper2Lib::Path64 reflectedMoving;
     reflectedMoving.reserve(orientation.outer.size());
     for (const PolygonPoint64 & point : orientation.outer)
@@ -80,6 +127,16 @@ std::vector<PolygonAction> PolygonEnvironment::enumerateCandidates(const Polygon
                                         Clipper2Lib::EndType::Polygon, 2.0, 1.0);
       obstacles.insert(obstacles.end(), nfp.begin(), nfp.end());
     }
+    if (right == left || top == bottom)
+    {
+      if (right == left && top == bottom)
+        unique.emplace(orientation.rotationDegrees, left, bottom);
+      else
+        addLineContacts(obstacles, right == left, right == left ? left : bottom, right == left ? bottom : left,
+                        right == left ? top : right, orientation.rotationDegrees, unique);
+      continue;
+    }
+    Clipper2Lib::Path64 feasibleRectangle{{left, bottom}, {right, bottom}, {right, top}, {left, top}};
     // Вычитание объединения NFP из прямоугольной области допустимого внутреннего размещения даёт конфигурационное
     // пространство переносов. Его вершины включают контакты и пересечения
     // ограничений, которые теряются при простом попарном совмещении вершин.

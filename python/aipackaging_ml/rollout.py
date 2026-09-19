@@ -22,7 +22,7 @@ def _worker(connection: Connection, environment_kind: str) -> None:
                 if command == "reset":
                     environment_type = GridNestingEnv if environment_kind == "grid" else PolygonNestingEnv
                     if environment_kind == "polygon":
-                        environment = environment_type.from_dict(payload["problem"], reward_version=2)
+                        environment = environment_type.from_dict(payload["problem"], reward_version=2, catalog_version=1)
                     else:
                         environment = environment_type.from_dict(payload["problem"])
                     fixed = environment.static_observation()
@@ -112,11 +112,21 @@ class MultiprocessRolloutPool:
 
         if len(pairs) != self.workers:
             raise ValueError("число пар должно совпадать с числом рабочих процессов")
-        for connection, (instance, rotation) in zip(self._connections, pairs, strict=True):
+        result = self.polygon_placements_lanes(dict(enumerate(pairs)))
+        return [result[lane] for lane in range(self.workers)]
+
+    def polygon_placements_lanes(self, pairs: Mapping[int, tuple[int, int]]) -> dict[int, dict[str, Any]]:
+        """Получает условные наблюдения только перечисленных рабочих каналов."""
+
+        for lane in sorted(pairs):
+            if lane < 0 or lane >= self.workers:
+                raise IndexError("индекс канала траектории находится вне допустимого диапазона")
+        for lane, (instance, rotation) in sorted(pairs.items()):
+            connection = self._connections[lane]
             connection.send(
                 ("polygon-placement", {"instance": int(instance), "rotationDegrees": int(rotation) * 90})
             )
-        return [self._receive(connection) for connection in self._connections]
+        return {lane: self._receive(self._connections[lane]) for lane in sorted(pairs)}
 
     def polygon_step_actions(
         self, actions: Sequence[Mapping[str, Any]]
@@ -125,9 +135,21 @@ class MultiprocessRolloutPool:
 
         if len(actions) != self.workers:
             raise ValueError("число действий должно совпадать с числом рабочих процессов")
-        for connection, action in zip(self._connections, actions, strict=True):
+        result = self.polygon_step_actions_lanes(dict(enumerate(actions)))
+        return [result[lane] for lane in range(self.workers)]
+
+    def polygon_step_actions_lanes(
+        self, actions: Mapping[int, Mapping[str, Any]]
+    ) -> dict[int, tuple[int, tuple[dict[str, Any], float, bool, bool, dict[str, Any]]]]:
+        """Применяет действия только в перечисленных рабочих каналах."""
+
+        for lane in sorted(actions):
+            if lane < 0 or lane >= self.workers:
+                raise IndexError("индекс канала траектории находится вне допустимого диапазона")
+        for lane, action in sorted(actions.items()):
+            connection = self._connections[lane]
             connection.send(("polygon-step-action", dict(action)))
-        return [self._receive(connection) for connection in self._connections]
+        return {lane: self._receive(self._connections[lane]) for lane in sorted(actions)}
 
     def reset_lanes(
         self, tasks: Mapping[int, tuple[Mapping[str, Any], int]]

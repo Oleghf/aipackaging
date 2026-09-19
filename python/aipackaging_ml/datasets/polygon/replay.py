@@ -33,7 +33,7 @@ def verify_replay(problem: Mapping[str, Any], trajectory: Mapping[str, Any]) -> 
     wire = canonical_json(problem)
     if _native.validate_polygon_solution(wire, canonical_json(solution)):
         raise ValueError(f"некорректное итоговое решение: {trajectory['trajectoryId']}")
-    environment = PolygonNestingEnv.from_dict(problem)
+    environment = PolygonNestingEnv.from_dict(problem, catalog_version=1)
     environment.reset()
     if trajectory["actionIndices"] != [step["actionIndex"] for step in trajectory["steps"]]:
         raise ValueError(f"проверочные индексы действий не совпадают: {trajectory['trajectoryId']}")

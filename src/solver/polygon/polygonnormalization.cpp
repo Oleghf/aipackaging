@@ -18,10 +18,58 @@ bool toMicrons(double value, std::int64_t & result)
   if (!std::isfinite(value))
     return false;
   const Wide scaled = static_cast<Wide>(value) * MICRONS_PER_MM;
-  if (scaled < static_cast<Wide>(std::numeric_limits<std::int64_t>::min()) ||
-      scaled > static_cast<Wide>(std::numeric_limits<std::int64_t>::max()))
+  // На MSVC тип `long double` имеет точность `double`: верхняя граница `int64`
+  // при приведении округляется до 2^63 и не годится для проверки через `max()`.
+  const Wide upper = std::ldexp(1.0L, 63);
+  if (scaled < -upper || scaled >= upper)
     return false;
-  result = static_cast<std::int64_t>(std::llround(scaled));
+  const Wide rounded = std::round(scaled);
+  if (rounded < -upper || rounded >= upper)
+    return false;
+  result = static_cast<std::int64_t>(rounded);
+  return true;
+}
+
+/// Проверяет микронный габарит без знакового вычитания до нормализации кольца.
+bool extentWithinLimit(std::int64_t minimum, std::int64_t maximum)
+{
+  return static_cast<std::uint64_t>(maximum) - static_cast<std::uint64_t>(minimum) <= static_cast<std::uint64_t>(MAX_SHEET_UM);
+}
+
+/// Находит общий габарит колец и переводит все точки в безопасную локальную систему координат.
+bool localizeRings(PolygonRing64 & outer, std::vector<PolygonRing64> & holes)
+{
+  std::int64_t minX = std::numeric_limits<std::int64_t>::max();
+  std::int64_t minY = std::numeric_limits<std::int64_t>::max();
+  std::int64_t maxX = std::numeric_limits<std::int64_t>::min();
+  std::int64_t maxY = std::numeric_limits<std::int64_t>::min();
+  const auto inspect = [&](const PolygonRing64 & ring)
+  {
+    for (const PolygonPoint64 & point : ring)
+    {
+      minX = std::min(minX, point.x);
+      minY = std::min(minY, point.y);
+      maxX = std::max(maxX, point.x);
+      maxY = std::max(maxY, point.y);
+    }
+  };
+  inspect(outer);
+  for (const PolygonRing64 & hole : holes)
+    inspect(hole);
+  if (!extentWithinLimit(minX, maxX) || !extentWithinLimit(minY, maxY))
+    return false;
+  const auto shift = [minX, minY](PolygonRing64 & ring)
+  {
+    for (PolygonPoint64 & point : ring)
+    {
+      // После проверки общего габарита обе разности лежат в [0, 10^7].
+      point.x -= minX;
+      point.y -= minY;
+    }
+  };
+  shift(outer);
+  for (PolygonRing64 & hole : holes)
+    shift(hole);
   return true;
 }
 
@@ -140,6 +188,25 @@ bool flattenPath(const PolygonPath & path, double tolerance, PolygonRing64 & res
   }
   if (result.size() > 1 && result.front() == result.back())
     result.pop_back();
+
+  // Очистка коллинеарных точек вызывает векторное произведение. Сначала
+  // отклоняем кольца, чьи разности координат не представимы безопасно.
+  std::int64_t minX = std::numeric_limits<std::int64_t>::max();
+  std::int64_t minY = std::numeric_limits<std::int64_t>::max();
+  std::int64_t maxX = std::numeric_limits<std::int64_t>::min();
+  std::int64_t maxY = std::numeric_limits<std::int64_t>::min();
+  for (const PolygonPoint64 & point : result)
+  {
+    minX = std::min(minX, point.x);
+    minY = std::min(minY, point.y);
+    maxX = std::max(maxX, point.x);
+    maxY = std::max(maxY, point.y);
+  }
+  if (!extentWithinLimit(minX, maxX) || !extentWithinLimit(minY, maxY))
+  {
+    error = "polygon part extent is outside normalized M4 limits";
+    return false;
+  }
 
   // Коллинеарные вершины не несут геометрии, но резко увеличивают NFP-каталог.
   bool changed = true;
@@ -279,9 +346,21 @@ bool sameGeometry(const PolygonOrientation & lhs, const PolygonOrientation & rhs
 
 using namespace internal;
 
-/// Нормализует все пути, проверяет топологию и создаёт уникальные ориентации.
+/// Создаёт среду с исправленным каталогом, сохраняя прежнюю форму вызова.
 std::unique_ptr<PolygonEnvironment> PolygonEnvironment::Create(const PolygonProblem & problem, std::string & error)
 {
+  return Create(problem, PolygonActionCatalogVersion::Corrected, error);
+}
+
+/// Нормализует все пути, проверяет топологию и создаёт уникальные ориентации.
+std::unique_ptr<PolygonEnvironment> PolygonEnvironment::Create(const PolygonProblem & problem,
+                                                               PolygonActionCatalogVersion catalogVersion, std::string & error)
+{
+  if (catalogVersion != PolygonActionCatalogVersion::Legacy && catalogVersion != PolygonActionCatalogVersion::Corrected)
+  {
+    error = "неподдерживаемая версия полигонального каталога действий";
+    return nullptr;
+  }
   const ValidationResult basic = validatePolygonProblem(problem);
   if (!basic.success)
   {
@@ -306,8 +385,24 @@ std::unique_ptr<PolygonEnvironment> PolygonEnvironment::Create(const PolygonProb
   {
     const PolygonPart & part = problem.parts[partIndex];
     PolygonRing64 outer;
-    if (!flattenPath(part.outer, problem.manufacturing.curveTolerance, outer, error) || !simpleRing(outer) ||
-        signedDoubleArea(outer) == 0)
+    if (!flattenPath(part.outer, problem.manufacturing.curveTolerance, outer, error))
+      return nullptr;
+    std::vector<PolygonRing64> holes;
+    std::size_t vertexCount = outer.size();
+    for (const PolygonPath & path : part.holes)
+    {
+      PolygonRing64 hole;
+      if (!flattenPath(path, problem.manufacturing.curveTolerance, hole, error))
+        return nullptr;
+      vertexCount += hole.size();
+      holes.push_back(std::move(hole));
+    }
+    if (vertexCount > MAX_VERTICES || !localizeRings(outer, holes))
+    {
+      error = "polygon part extent or vertex count is outside M4 limits";
+      return nullptr;
+    }
+    if (!simpleRing(outer) || signedDoubleArea(outer) == 0)
     {
       if (error.empty())
         error = "outer ring is degenerate or self-intersecting";
@@ -315,19 +410,17 @@ std::unique_ptr<PolygonEnvironment> PolygonEnvironment::Create(const PolygonProb
     }
     if (signedDoubleArea(outer) < 0)
       std::reverse(outer.begin(), outer.end());
-    std::vector<PolygonRing64> holes;
-    std::size_t vertexCount = outer.size();
-    for (const PolygonPath & path : part.holes)
+    std::vector<PolygonRing64> acceptedHoles;
+    for (PolygonRing64 & hole : holes)
     {
-      PolygonRing64 hole;
-      if (!flattenPath(path, problem.manufacturing.curveTolerance, hole, error) || !simpleRing(hole) ||
-          signedDoubleArea(hole) == 0 || !ringsDisjoint(outer, hole) || pointInRing(hole.front(), outer) != 1)
+      if (!simpleRing(hole) || signedDoubleArea(hole) == 0 || !ringsDisjoint(outer, hole) ||
+          pointInRing(hole.front(), outer) != 1)
       {
         if (error.empty())
           error = "hole must be simple and strictly inside outer ring";
         return nullptr;
       }
-      for (const PolygonRing64 & previous : holes)
+      for (const PolygonRing64 & previous : acceptedHoles)
         if (!ringsDisjoint(previous, hole) || pointInRing(hole.front(), previous) >= 0 ||
             pointInRing(previous.front(), hole) >= 0)
         {
@@ -336,14 +429,9 @@ std::unique_ptr<PolygonEnvironment> PolygonEnvironment::Create(const PolygonProb
         }
       if (signedDoubleArea(hole) > 0)
         std::reverse(hole.begin(), hole.end());
-      vertexCount += hole.size();
-      holes.push_back(std::move(hole));
+      acceptedHoles.push_back(std::move(hole));
     }
-    if (vertexCount > MAX_VERTICES)
-    {
-      error = "polygon part exceeds 2000 vertices after approximation";
-      return nullptr;
-    }
+    holes = std::move(acceptedHoles);
     std::vector<PolygonOrientation> orientations;
     for (int rotation : part.allowedRotations)
     {
@@ -367,8 +455,8 @@ std::unique_ptr<PolygonEnvironment> PolygonEnvironment::Create(const PolygonProb
       instances.push_back({partIndex, instanceIndex, canonical.materialArea, std::max(canonical.width, canonical.height)});
     allOrientations.push_back(std::move(orientations));
   }
-  return std::unique_ptr<PolygonEnvironment>(
-    new PolygonEnvironment(problem, width, height, margin, spacing, std::move(allOrientations), std::move(instances)));
+  return std::unique_ptr<PolygonEnvironment>(new PolygonEnvironment(
+    problem, width, height, margin, spacing, std::move(allOrientations), std::move(instances), catalogVersion));
 }
 
 } // namespace aipackaging::solver

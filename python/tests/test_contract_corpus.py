@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from jsonschema import Draft202012Validator
 
 from aipackaging_ml import _aipackaging_solver as native
@@ -60,3 +61,27 @@ def test_schema_and_native_classification_match_manifest() -> None:
         schema = _read_json(CORPUS / item["schema"])
         assert Draft202012Validator(schema).is_valid(document) is item["expectedSchema"], item["id"]
         assert _native_accepts(item, document) is item["expectedDomain"], item["id"]
+
+
+def test_grid_validator_rejects_extreme_placement_without_crashing() -> None:
+    """Повреждённая координата решения должна дать ошибку, а не завершить процесс."""
+
+    problem = _read_json(CORPUS / "grid/problem-valid.json")
+    solution = _read_json(CORPUS / "grid/solution-valid-v1.json")
+    for field in ("column", "row"):
+        for value in (-(2**31), 2**31 - 1):
+            solution["placements"][0][field] = value
+            assert native.validate_solution(_wire(problem), _wire(solution))
+        solution["placements"][0][field] = 0
+
+
+def test_polygon_parser_rejects_extent_overflow_before_search() -> None:
+    """Большой размах микронных координат отклоняется как невалидная геометрия."""
+
+    problem = _read_json(CORPUS / "polygon/problem-valid.json")
+    outer = problem["parts"][0]["outer"]
+    outer["start"]["x"] = -9e15
+    for segment in outer["segments"]:
+        segment["end"]["x"] = -9e15 if segment["end"]["x"] == 0 else 9e15
+    with pytest.raises(ValueError, match="extent"):
+        native.create_polygon_environment(_wire(problem))

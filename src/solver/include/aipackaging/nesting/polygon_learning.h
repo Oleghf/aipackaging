@@ -10,10 +10,11 @@
 
 namespace aipackaging::solver
 {
-/// Настраивает версию вознаграждения полигональной обучаемой среды.
+/// Настраивает версии вознаграждения и каталога полигональной обучаемой среды.
 struct PolygonLearningConfig
 {
   int rewardVersion = 1;
+  PolygonActionCatalogVersion catalogVersion = PolygonActionCatalogVersion::Corrected;
 };
 
 /// Результат одного перехода динамической полигональной обучаемой среды.

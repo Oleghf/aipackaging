@@ -50,13 +50,14 @@ def rollout_problem(
                 beam_width=budgets["beamWidth"],
                 max_expanded_states=budgets["maxExpandedStates"],
                 timeout_ms=budgets["timeoutMs"],
+                catalog_version=1,
             )
         )
         _freeze_time_metrics(solution)
         error = _native.validate_polygon_solution(wire, canonical_json(solution))
         if error:
             raise RuntimeError(f"{problem['problemId']}/{solver}: {error}")
-        environment = PolygonNestingEnv.from_dict(problem)
+        environment = PolygonNestingEnv.from_dict(problem, catalog_version=1)
         environment.reset(seed=seed)
         indices = []
         steps = []

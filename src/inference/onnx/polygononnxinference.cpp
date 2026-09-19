@@ -439,6 +439,7 @@ public:
     std::string error;
     PolygonLearningConfig learningConfig;
     learningConfig.rewardVersion = 2;
+    learningConfig.catalogVersion = PolygonActionCatalogVersion::Legacy;
     std::unique_ptr<PolygonLearningEnvironment> learning = PolygonLearningEnvironment::Create(problem, learningConfig, error);
     if (!learning)
       throw std::runtime_error("Не удалось создать обучаемую среду: " + error);
@@ -632,7 +633,8 @@ PolygonPolicyExecutionResult PolygonOnnxPolicy::runHybrid(const PolygonProblem &
     boundedFallback.timeoutMs = policyConfig.timeoutMs;
   PolygonExecutionControl baselineControl;
   baselineControl.cancellationRequested = control.cancellationRequested;
-  PolygonSolverExecutionResult baseline = runPolygonProblem(problem, boundedFallback, baselineControl);
+  PolygonSolverExecutionResult baseline =
+    runPolygonProblem(problem, boundedFallback, baselineControl, PolygonActionCatalogVersion::Legacy);
   const ValidationResult baselineValidation = validatePolygonSolution(problem, baseline.solution);
   if (!baselineValidation.success)
     throw std::runtime_error("Резервный базовый алгоритм вернул некорректное решение: " + baselineValidation.error);
@@ -663,6 +665,7 @@ PolygonPolicyExecutionResult PolygonOnnxPolicy::runHybrid(const PolygonProblem &
     std::string error;
     PolygonLearningConfig learningConfig;
     learningConfig.rewardVersion = 2;
+    learningConfig.catalogVersion = PolygonActionCatalogVersion::Legacy;
     std::unique_ptr<PolygonLearningEnvironment> learning = PolygonLearningEnvironment::Create(problem, learningConfig, error);
     if (!learning)
       throw std::runtime_error("Не удалось повторить гибридное решение: " + error);

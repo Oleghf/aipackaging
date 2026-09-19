@@ -308,7 +308,7 @@ class PolygonPolicyRunner:
     def _rollout(self, problem: Mapping[str, Any], seed: int, sampled: bool, rollouts: int) -> dict[str, Any]:
         """Выполняет эпизод исключительно через допустимые действия среды C++."""
 
-        environment = PolygonNestingEnv.from_dict(problem, reward_version=2)
+        environment = PolygonNestingEnv.from_dict(problem, reward_version=2, catalog_version=1)
         fixed = environment.static_observation()
         dynamic, _ = environment.reset_compact(seed=seed)
         generator = None
@@ -354,7 +354,8 @@ class PolygonPolicyRunner:
         if baseline_solution is None:
             baseline = json.loads(_native.solve_polygon_problem(canonical_json(problem), solver="random-left-bottom",
                                                                 seed=seed, random_iterations=64, beam_width=8,
-                                                                max_expanded_states=5000, timeout_ms=0))
+                                                                max_expanded_states=5000, timeout_ms=0,
+                                                                catalog_version=1))
         else:
             baseline = dict(baseline_solution)
             error = _native.validate_polygon_solution(canonical_json(problem), canonical_json(baseline))
@@ -382,7 +383,7 @@ class PolygonPolicyRunner:
             if _native.is_better_polygon_solution(canonical_json(baseline_solution), canonical_json(neural_solution))
             else neural_solution
         )
-        environment = PolygonNestingEnv.from_dict(problem, reward_version=2)
+        environment = PolygonNestingEnv.from_dict(problem, reward_version=2, catalog_version=1)
         environment.reset_compact(seed=seed)
         for placement in chosen["placements"]:
             environment.step_compact(environment.find_action(placement))

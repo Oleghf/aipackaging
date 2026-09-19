@@ -141,7 +141,7 @@ PolygonLearningEnvironment::Create(const PolygonProblem & problem, const Polygon
     error = "поддерживаются только версии полигонального вознаграждения 1 и 2";
     return nullptr;
   }
-  std::unique_ptr<PolygonEnvironment> environment = PolygonEnvironment::Create(problem, error);
+  std::unique_ptr<PolygonEnvironment> environment = PolygonEnvironment::Create(problem, config.catalogVersion, error);
   if (!environment)
     return nullptr;
   try

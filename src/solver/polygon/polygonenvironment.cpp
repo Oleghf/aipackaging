@@ -11,7 +11,7 @@ using namespace internal;
 PolygonEnvironment::PolygonEnvironment(PolygonProblem problem, std::int64_t sheetWidth, std::int64_t sheetHeight,
                                        std::int64_t sheetMargin, std::int64_t partSpacing,
                                        std::vector<std::vector<PolygonOrientation>> orientations,
-                                       std::vector<PolygonPartInstance> instances)
+                                       std::vector<PolygonPartInstance> instances, PolygonActionCatalogVersion catalogVersion)
   : problem_(std::move(problem))
   , sheetWidth_(sheetWidth)
   , sheetHeight_(sheetHeight)
@@ -19,6 +19,7 @@ PolygonEnvironment::PolygonEnvironment(PolygonProblem problem, std::int64_t shee
   , partSpacing_(partSpacing)
   , orientations_(std::move(orientations))
   , instances_(std::move(instances))
+  , catalogVersion_(catalogVersion)
 {
 }
 

@@ -154,16 +154,16 @@ class PolygonNestingEnv:
         self._native = native_environment
 
     @classmethod
-    def from_file(cls, path: str | Path, *, reward_version: int = 1) -> "PolygonNestingEnv":
-        """Загружает строгий `polygon_problem` v1 из файла в кодировке UTF-8."""
+    def from_file(cls, path: str | Path, *, reward_version: int = 1, catalog_version: int = 2) -> "PolygonNestingEnv":
+        """Загружает `polygon_problem` v1; по умолчанию выбирает исправленный каталог v2."""
 
-        return cls(_native.create_polygon_environment(Path(path).read_text(encoding="utf-8"), reward_version))
+        return cls(_native.create_polygon_environment(Path(path).read_text(encoding="utf-8"), reward_version, catalog_version))
 
     @classmethod
-    def from_dict(cls, problem: Mapping[str, Any], *, reward_version: int = 1) -> "PolygonNestingEnv":
-        """Создаёт эпизод из JSON-совместимого словаря `polygon_problem` v1."""
+    def from_dict(cls, problem: Mapping[str, Any], *, reward_version: int = 1, catalog_version: int = 2) -> "PolygonNestingEnv":
+        """Создаёт эпизод из `polygon_problem` v1 с выбранной версией каталога."""
 
-        return cls(_native.create_polygon_environment(canonical_json(problem), reward_version))
+        return cls(_native.create_polygon_environment(canonical_json(problem), reward_version, catalog_version))
 
     def reset(self, seed: int | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
         """Сбрасывает эпизод и сообщает текущий размер пространства действий."""

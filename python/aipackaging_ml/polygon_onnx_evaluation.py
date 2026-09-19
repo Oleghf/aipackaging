@@ -47,7 +47,7 @@ def verify_polygon_model_bundle(
     checked = 0
     maximum_error = 0.0
     for episode in episodes:
-        environment = PolygonNestingEnv.from_dict(episode.problem, reward_version=2)
+        environment = PolygonNestingEnv.from_dict(episode.problem, reward_version=2, catalog_version=1)
         fixed = environment.static_observation()
         dynamic, _ = environment.reset_compact(seed=config["seed"])
         while not environment.is_terminal:

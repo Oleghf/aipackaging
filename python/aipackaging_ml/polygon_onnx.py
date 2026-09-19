@@ -119,7 +119,7 @@ class OnnxPolygonPolicyRunner:
     def _rollout(self, problem: Mapping[str, Any], seed: int, sampled: bool, rollouts: int) -> dict[str, Any]:
         """Проигрывает эпизод, применяя только текущие действия среды C++."""
 
-        environment = PolygonNestingEnv.from_dict(problem, reward_version=2)
+        environment = PolygonNestingEnv.from_dict(problem, reward_version=2, catalog_version=1)
         fixed = environment.static_observation()
         dynamic, _ = environment.reset_compact(seed=seed)
         generator = SplitMix64(seed) if sampled else None
@@ -165,7 +165,7 @@ class OnnxPolygonPolicyRunner:
             baseline_solution = json.loads(
                 _native.solve_polygon_problem(
                     canonical_json(problem), solver="random-left-bottom", seed=seed, random_iterations=64,
-                    beam_width=8, max_expanded_states=5000, timeout_ms=0,
+                    beam_width=8, max_expanded_states=5000, timeout_ms=0, catalog_version=1,
                 )
             )
         return self.hybrid_solution(problem, best, baseline_solution, seed=seed, rollouts=rollouts)
@@ -192,7 +192,7 @@ class OnnxPolygonPolicyRunner:
             if _native.is_better_polygon_solution(canonical_json(baseline_solution), canonical_json(neural_solution))
             else neural_solution
         )
-        environment = PolygonNestingEnv.from_dict(problem, reward_version=2)
+        environment = PolygonNestingEnv.from_dict(problem, reward_version=2, catalog_version=1)
         environment.reset_compact(seed=seed)
         for action in chosen["placements"]:
             environment.step_compact(environment.find_action(action))

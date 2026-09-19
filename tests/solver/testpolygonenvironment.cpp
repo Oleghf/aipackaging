@@ -1,6 +1,8 @@
+#include <algorithm>
 #include <memory>
 #include <numbers>
 #include <string>
+#include <vector>
 
 #include <aipackaging/nesting/polygon_environment.h>
 #include <gtest/gtest.h>
@@ -161,4 +163,91 @@ TEST(PolygonEnvironment, RejectsContractComplexityLimits)
   value = problem();
   value.parts[0].quantity = 101;
   EXPECT_EQ(PolygonEnvironment::Create(value, error), nullptr);
+}
+
+/// Проверяет отказ до знакового переполнения при огромных противоположных координатах контура.
+TEST(PolygonEnvironment, RejectsOverflowingPartExtentBeforeTopologyAndRotation)
+{
+  PolygonProblem value = problem();
+  value.parts[0].quantity = 1;
+  value.parts[0].outer = rectangle(18e15, 10.0, -9e15, 0.0);
+  for (const std::vector<int> & rotations : {std::vector<int>{0}, std::vector<int>{90}})
+  {
+    value.parts[0].allowedRotations = rotations;
+    std::string error;
+    EXPECT_EQ(PolygonEnvironment::Create(value, error), nullptr);
+    EXPECT_FALSE(error.empty());
+  }
+  value.parts[0].outer = rectangle(10.0, 10.0, 9.223372036854776e15, 0.0);
+  std::string error;
+  EXPECT_EQ(PolygonEnvironment::Create(value, error), nullptr);
+  EXPECT_FALSE(error.empty());
+}
+
+/// Проверяет точки контакта внутри одномерной области и неизменность старого каталога.
+TEST(PolygonEnvironment, RecoversContactOnDegenerateInnerFitSegment)
+{
+  PolygonProblem value = problem();
+  value.sheet = {10.0, 30.0, "mm"};
+  value.manufacturing.sheetMargin = 0.0;
+  value.manufacturing.partSpacing = 0.0;
+  value.parts.clear();
+  value.parts.push_back({"small", 2, rectangle(10.0, 5.0), {}, {0}});
+  value.parts.push_back({"big", 1, rectangle(10.0, 10.0), {}, {0}});
+  std::string error;
+  std::unique_ptr<PolygonEnvironment> corrected = PolygonEnvironment::Create(value, error);
+  std::unique_ptr<PolygonEnvironment> legacy = PolygonEnvironment::Create(value, PolygonActionCatalogVersion::Legacy, error);
+  ASSERT_NE(corrected, nullptr) << error;
+  ASSERT_NE(legacy, nullptr) << error;
+  PolygonState state = corrected->initialState();
+  ASSERT_TRUE(corrected->apply(state, {"small", 0, 0, 0, 0}));
+  ASSERT_TRUE(corrected->apply(state, {"small", 1, 0, 25000, 0}));
+  const PolygonAction contact{"big", 0, 0, 5000, 0};
+  const auto candidates = corrected->enumerateCandidates(state, 2);
+  EXPECT_NE(std::find(candidates.begin(), candidates.end(), contact), candidates.end());
+  EXPECT_EQ(candidates, corrected->enumerateCandidates(state, 2));
+  EXPECT_TRUE(legacy->enumerateCandidates(state, 2).empty());
+  EXPECT_TRUE(corrected->canApply(state, contact));
+}
+
+/// Проверяет аналогичный внутренний контакт на горизонтальном отрезке переноса.
+TEST(PolygonEnvironment, RecoversRotatedContactOnDegenerateInnerFitSegment)
+{
+  PolygonProblem value = problem();
+  value.sheet = {30.0, 10.0, "mm"};
+  value.manufacturing.sheetMargin = 0.0;
+  value.manufacturing.partSpacing = 0.0;
+  value.parts.clear();
+  value.parts.push_back({"small", 2, rectangle(10.0, 5.0), {}, {90}});
+  value.parts.push_back({"big", 1, rectangle(10.0, 10.0), {}, {0}});
+  std::string error;
+  std::unique_ptr<PolygonEnvironment> environment = PolygonEnvironment::Create(value, error);
+  ASSERT_NE(environment, nullptr) << error;
+  PolygonState state = environment->initialState();
+  ASSERT_TRUE(environment->apply(state, {"small", 0, 0, 0, 90}));
+  ASSERT_TRUE(environment->apply(state, {"small", 1, 25000, 0, 90}));
+  const auto candidates = environment->enumerateCandidates(state, 2);
+  EXPECT_NE(std::find(candidates.begin(), candidates.end(), PolygonAction{"big", 0, 5000, 0, 0}), candidates.end());
+}
+
+/// Проверяет, что исправленный контакт учитывает отступ от листа и междетальный зазор.
+TEST(PolygonEnvironment, RecoversLineContactWithMarginAndSpacing)
+{
+  PolygonProblem value = problem();
+  value.sheet = {12.0, 32.0, "mm"};
+  value.manufacturing.sheetMargin = 1.0;
+  value.manufacturing.partSpacing = 1.0;
+  value.parts.clear();
+  value.parts.push_back({"small", 2, rectangle(10.0, 5.0), {}, {0}});
+  value.parts.push_back({"big", 1, rectangle(10.0, 10.0), {}, {0}});
+  std::string error;
+  std::unique_ptr<PolygonEnvironment> environment = PolygonEnvironment::Create(value, error);
+  ASSERT_NE(environment, nullptr) << error;
+  PolygonState state = environment->initialState();
+  ASSERT_TRUE(environment->apply(state, {"small", 0, 1000, 1000, 0}));
+  ASSERT_TRUE(environment->apply(state, {"small", 1, 1000, 26000, 0}));
+  const PolygonAction contact{"big", 0, 1000, 7000, 0};
+  EXPECT_TRUE(environment->canApply(state, contact));
+  const auto candidates = environment->enumerateCandidates(state, 2);
+  EXPECT_NE(std::find(candidates.begin(), candidates.end(), contact), candidates.end());
 }

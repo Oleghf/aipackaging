@@ -106,11 +106,13 @@ PolygonProblem parsePolygonProblem(const std::string & problemJson)
 }
 
 /// Создаёт динамическую полигональную среду из JSON формата обмена.
-std::unique_ptr<PolygonLearningEnvironment> createPolygonEnvironment(const std::string & problemJson, int rewardVersion)
+std::unique_ptr<PolygonLearningEnvironment> createPolygonEnvironment(const std::string & problemJson, int rewardVersion,
+                                                                     int catalogVersion)
 {
   PolygonProblem problem = parsePolygonProblem(problemJson);
   PolygonLearningConfig config;
   config.rewardVersion = rewardVersion;
+  config.catalogVersion = static_cast<PolygonActionCatalogVersion>(catalogVersion);
   std::string error;
   std::unique_ptr<PolygonLearningEnvironment> environment = PolygonLearningEnvironment::Create(problem, config, error);
   if (!environment)
@@ -134,7 +136,7 @@ py::dict compactStepInfo(const PolygonLearningCompactStepResult & step)
 /// Запускает полигональный базовый алгоритм и возвращает воспроизводимый JSON.
 std::string solvePolygonProblemJson(const std::string & problemJson, const std::string & solverName, std::uint64_t seed,
                                     std::size_t randomIterations, std::size_t beamWidth, std::size_t maxExpandedStates,
-                                    std::uint64_t timeoutMs)
+                                    std::uint64_t timeoutMs, int catalogVersion)
 {
   const PolygonProblem problem = parsePolygonProblem(problemJson);
   SolverConfig config;
@@ -145,7 +147,7 @@ std::string solvePolygonProblemJson(const std::string & problemJson, const std::
   config.beamWidth = beamWidth;
   config.maxExpandedStates = maxExpandedStates;
   config.timeoutMs = timeoutMs;
-  PolygonSolution solution = solvePolygonProblem(problem, config);
+  PolygonSolution solution = solvePolygonProblem(problem, config, static_cast<PolygonActionCatalogVersion>(catalogVersion));
   solution.metrics.candidateGenerationTimeUs = 0;
   solution.metrics.validationTimeUs = 0;
   solution.metrics.searchTimeUs = 0;
@@ -258,10 +260,11 @@ void bindPolygon(py::module_ & module)
     .def_property_readonly("is_terminal", &PolygonLearningEnvironment::isTerminal)
     .def_property_readonly("problem_id", &PolygonLearningEnvironment::problemId);
 
-  module.def("create_polygon_environment", &createPolygonEnvironment, py::arg("problem_json"), py::arg("reward_version") = 1);
+  module.def("create_polygon_environment", &createPolygonEnvironment, py::arg("problem_json"), py::arg("reward_version") = 1,
+             py::arg("catalog_version") = 2);
   module.def("solve_polygon_problem", &solvePolygonProblemJson, py::arg("problem_json"), py::arg("solver") = "area-left-bottom",
              py::arg("seed") = 42, py::arg("random_iterations") = 64, py::arg("beam_width") = 32,
-             py::arg("max_expanded_states") = 50000, py::arg("timeout_ms") = 0);
+             py::arg("max_expanded_states") = 50000, py::arg("timeout_ms") = 0, py::arg("catalog_version") = 2);
   module.def("validate_polygon_solution", &validatePolygonSolutionJson, py::arg("problem_json"), py::arg("solution_json"));
   module.def("is_better_polygon_solution", &isBetterPolygonSolutionJson, py::arg("candidate_json"), py::arg("reference_json"));
   module.def("validate_hidden_polygon_layout", &validateHiddenPolygonLayout, py::arg("problem_json"), py::arg("placements"));

@@ -1,3 +1,4 @@
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -89,6 +90,32 @@ TEST(GridEnvironment, RejectsOverlapAndDuplicateInstance)
   EXPECT_FALSE(environment->canApply(state, {"single", 1, -1, 0, 0}));
   EXPECT_FALSE(environment->canApply(state, {"single", 1, 2, 0, 0}));
   EXPECT_TRUE(environment->canApply(state, {"single", 1, 1, 0, 0}));
+}
+
+/// Проверяет, что крайние координаты недоверенного решения не переполняют проверку границ.
+TEST(GridSolutionValidator, RejectsExtremeCoordinatesWithoutAccessingOccupancy)
+{
+  const GridProblem problem = problemWith({"single", 1, {{0, 0}}, {0}}, 2, 2);
+  std::string error;
+  std::unique_ptr<GridEnvironment> environment = GridEnvironment::Create(problem, error);
+  ASSERT_NE(environment, nullptr) << error;
+  const GridState empty = environment->initialState();
+  for (const int coordinate : {std::numeric_limits<int>::min(), std::numeric_limits<int>::max()})
+  {
+    const GridAction horizontal{"single", 0, coordinate, 0, 0};
+    const GridAction vertical{"single", 0, 0, coordinate, 0};
+    EXPECT_FALSE(environment->canApply(empty, horizontal));
+    EXPECT_FALSE(environment->canApply(empty, vertical));
+    GridSolution solution;
+    solution.problemId = problem.problemId;
+    solution.status = SolveStatus::Solved;
+    solution.placements = {horizontal};
+    EXPECT_FALSE(validateGridSolution(problem, solution).success);
+    solution.placements = {vertical};
+    EXPECT_FALSE(validateGridSolution(problem, solution).success);
+  }
+  EXPECT_TRUE(environment->canApply(empty, {"single", 0, 1, 1, 0}));
+  EXPECT_FALSE(environment->canApply(empty, {"single", 0, 2, 1, 0}));
 }
 
 TEST(GridEnvironment, ComputesValuableRemnantObjective)
