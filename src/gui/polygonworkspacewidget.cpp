@@ -43,7 +43,19 @@ QString solverTitle(BaselineAlgorithm kind)
 /// Добавляет вариант решателя с именем формата обмена в пользовательские данные.
 void addSolver(QComboBox * box, BaselineAlgorithm kind)
 {
-  box->addItem(solverTitle(kind), static_cast<int>(kind));
+  box->addItem(solverTitle(kind));
+  const int index = box->count() - 1;
+  box->setItemData(index, static_cast<int>(NestingMethod::Baseline), Qt::UserRole + 1);
+  box->setItemData(index, static_cast<int>(kind), Qt::UserRole + 2);
+}
+
+/// Добавляет нейросетевой вариант с явно заданным способом выбора.
+void addNeuralSolver(QComboBox * box, const QString & title, NestingMethod method, NeuralSelectionMode selection)
+{
+  box->addItem(title);
+  const int index = box->count() - 1;
+  box->setItemData(index, static_cast<int>(method), Qt::UserRole + 1);
+  box->setItemData(index, static_cast<int>(selection), Qt::UserRole + 3);
 }
 } // namespace
 
@@ -56,6 +68,7 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   , startButton_(new QPushButton(tr("Запустить"), this))
   , cancelButton_(new QPushButton(tr("Отменить"), this))
   , fitButton_(new QPushButton(tr("Вписать лист"), this))
+  , modelButton_(new QPushButton(tr("Загрузить модель"), this))
   , solverBox_(new QComboBox(this))
   , advancedToggle_(new QToolButton(this))
   , advancedGroup_(new QGroupBox(this))
@@ -64,7 +77,9 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   , beamWidthSpin_(new QSpinBox(advancedGroup_))
   , maxExpandedSpin_(new QSpinBox(advancedGroup_))
   , timeoutSpin_(new QSpinBox(advancedGroup_))
+  , neuralRolloutsSpin_(new QSpinBox(advancedGroup_))
   , problemLabel_(new QLabel(tr("Задача: —"), this))
+  , modelLabel_(new QLabel(tr("Модель: не загружена"), this))
   , statusLabel_(new QLabel(tr("Откройте polygon_problem v1"), this))
   , progressBar_(new QProgressBar(this))
   , metricsText_(new QTextEdit(this))
@@ -77,6 +92,8 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   startButton_->setObjectName("polygonStartButton");
   cancelButton_->setObjectName("polygonCancelButton");
   solverBox_->setObjectName("polygonSolverBox");
+  modelButton_->setObjectName("polygonModelButton");
+  modelLabel_->setObjectName("polygonModelStatus");
   advancedToggle_->setObjectName("polygonAdvancedToggle");
   advancedGroup_->setObjectName("polygonAdvancedGroup");
   progressBar_->setObjectName("polygonProgress");
@@ -87,16 +104,21 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   addSolver(solverBox_, BaselineAlgorithm::MaxSideLeftBottom);
   addSolver(solverBox_, BaselineAlgorithm::RandomLeftBottom);
   addSolver(solverBox_, BaselineAlgorithm::Beam);
+  addNeuralSolver(solverBox_, tr("Нейросетевая: жадный режим"), NestingMethod::Neural, NeuralSelectionMode::Greedy);
+  addNeuralSolver(solverBox_, tr("Нейросетевая: лучшее из прогонов"), NestingMethod::Neural, NeuralSelectionMode::BestOf);
+  addNeuralSolver(solverBox_, tr("Гибридный режим"), NestingMethod::Hybrid, NeuralSelectionMode::BestOf);
   solverBox_->setCurrentIndex(1);
 
   seedEdit_->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("[0-9]{1,20}")), seedEdit_));
   for (QSpinBox * spin : {randomIterationsSpin_, beamWidthSpin_, maxExpandedSpin_})
     spin->setRange(1, 1'000'000);
   timeoutSpin_->setRange(0, 3'600'000);
+  neuralRolloutsSpin_->setRange(1, 1024);
   randomIterationsSpin_->setValue(64);
   beamWidthSpin_->setValue(32);
   maxExpandedSpin_->setValue(50'000);
   timeoutSpin_->setValue(30'000);
+  neuralRolloutsSpin_->setValue(16);
 
   QFormLayout * advancedLayout = new QFormLayout(advancedGroup_);
   advancedLayout->addRow(tr("Seed"), seedEdit_);
@@ -104,6 +126,7 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   advancedLayout->addRow(tr("Beam width"), beamWidthSpin_);
   advancedLayout->addRow(tr("Expanded states"), maxExpandedSpin_);
   advancedLayout->addRow(tr("Timeout, мс"), timeoutSpin_);
+  advancedLayout->addRow(tr("Нейросетевые прогоны"), neuralRolloutsSpin_);
   advancedToggle_->setText(tr("Расширенные настройки"));
   advancedToggle_->setCheckable(true);
   advancedToggle_->setChecked(false);
@@ -120,6 +143,7 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   fileLayout->addWidget(openButton_);
   fileLayout->addWidget(saveButton_);
   fileLayout->addWidget(fitButton_);
+  fileLayout->addWidget(modelButton_);
 
   QHBoxLayout * runLayout = new QHBoxLayout();
   runLayout->addWidget(solverBox_, 1);
@@ -131,6 +155,7 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   side->setMaximumWidth(380);
   QVBoxLayout * sideLayout = new QVBoxLayout(side);
   sideLayout->addWidget(problemLabel_);
+  sideLayout->addWidget(modelLabel_);
   sideLayout->addWidget(statusLabel_);
   sideLayout->addWidget(progressBar_);
   sideLayout->addLayout(runLayout);
@@ -153,6 +178,7 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
 
   connect(openButton_, &QPushButton::clicked, this, &PolygonWorkspaceWidget::requestOpenProblem);
   connect(saveButton_, &QPushButton::clicked, this, &PolygonWorkspaceWidget::requestSaveSolution);
+  connect(modelButton_, &QPushButton::clicked, this, &PolygonWorkspaceWidget::requestOpenModel);
   connect(startButton_, &QPushButton::clicked, this, &PolygonWorkspaceWidget::requestStart);
   connect(cancelButton_, &QPushButton::clicked, this, &PolygonWorkspaceWidget::requestCancel);
   connect(fitButton_, &QPushButton::clicked, canvas_, &PolygonCanvasWidget::fitToView);
@@ -162,6 +188,15 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
             advancedToggle_->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
             advancedGroup_->setVisible(expanded);
           });
+  connect(solverBox_, &QComboBox::currentIndexChanged, this,
+          [this]()
+          {
+            const auto method = static_cast<NestingMethod>(solverBox_->currentData(Qt::UserRole + 1).toInt());
+            timeoutSpin_->setValue(method == NestingMethod::Baseline ? 30'000 : 300'000);
+            const bool canRun = solverBox_->property("workspaceCanRun").toBool();
+            const bool modelReady = solverBox_->property("modelReady").toBool();
+            startButton_->setEnabled(canRun && (method == NestingMethod::Baseline || modelReady));
+          });
 
   present({});
 }
@@ -170,7 +205,9 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
 NestingRunRequest PolygonWorkspaceWidget::solverConfig() const
 {
   NestingRunRequest result;
-  result.algorithm = static_cast<BaselineAlgorithm>(solverBox_->currentData().toInt());
+  result.method = static_cast<NestingMethod>(solverBox_->currentData(Qt::UserRole + 1).toInt());
+  result.algorithm = static_cast<BaselineAlgorithm>(solverBox_->currentData(Qt::UserRole + 2).toInt());
+  result.neuralSelection = static_cast<NeuralSelectionMode>(solverBox_->currentData(Qt::UserRole + 3).toInt());
   bool seedValid = false;
   result.seed = seedEdit_->text().toULongLong(&seedValid);
   if (!seedValid)
@@ -179,6 +216,7 @@ NestingRunRequest PolygonWorkspaceWidget::solverConfig() const
   result.beamWidth = static_cast<std::size_t>(beamWidthSpin_->value());
   result.maxExpandedStates = static_cast<std::size_t>(maxExpandedSpin_->value());
   result.timeoutMs = static_cast<std::uint64_t>(timeoutSpin_->value());
+  result.neuralRollouts = static_cast<std::size_t>(neuralRolloutsSpin_->value());
   return result;
 }
 
@@ -188,14 +226,25 @@ void PolygonWorkspaceWidget::present(const PolygonWorkspaceSnapshot & snapshot)
   problemLabel_->setText(snapshot.problemId.empty() ? tr("Задача: —")
                                                     : tr("Задача: %1").arg(QString::fromStdString(snapshot.problemId)));
   statusLabel_->setText(QString::fromStdString(snapshot.statusText));
+  const QString modelHash = snapshot.modelSha256.empty() ? QString() : QString::fromStdString(snapshot.modelSha256.substr(0, 12));
+  modelLabel_->setText(
+    snapshot.modelReady
+      ? tr("Модель: %1 (%2)").arg(QString::fromStdString(snapshot.modelId), modelHash)
+      : tr("Модель: не загружена%1")
+          .arg(snapshot.modelStatusText.empty() ? QString() : tr(" — %1").arg(QString::fromStdString(snapshot.modelStatusText))));
   statusLabel_->setStyleSheet(snapshot.partial ? QStringLiteral("color:#B45309;font-weight:600") : QString());
   openButton_->setEnabled(snapshot.canOpen);
   saveButton_->setEnabled(snapshot.canSave);
   startButton_->setEnabled(snapshot.canRun);
+  const NestingMethod selectedMethod = static_cast<NestingMethod>(solverBox_->currentData(Qt::UserRole + 1).toInt());
+  solverBox_->setProperty("workspaceCanRun", snapshot.canRun);
+  solverBox_->setProperty("modelReady", snapshot.modelReady);
+  startButton_->setEnabled(snapshot.canRun && (selectedMethod == NestingMethod::Baseline || snapshot.modelReady));
   cancelButton_->setEnabled(snapshot.canCancel);
   solverBox_->setEnabled(snapshot.canRun);
   advancedToggle_->setEnabled(snapshot.canRun);
   advancedGroup_->setEnabled(snapshot.canRun);
+  modelButton_->setEnabled(snapshot.canLoadModel);
 
   if (snapshot.canCancel && snapshot.progress.total == 0)
   {
@@ -214,21 +263,22 @@ void PolygonWorkspaceWidget::present(const PolygonWorkspaceSnapshot & snapshot)
 
   const auto & objective = snapshot.objective;
   const auto & metrics = snapshot.metrics;
-  metricsText_->setPlainText(tr("Solver: %1\nСтатус решения: %2\nРазмещено: %3 / %4\nUsed length: %5 мм\nПравая полоса: %6 мм\n"
-                                "Доп. прямоугольник: %7 мм²\nФрагментация: %8 мм²\nUtilization: %9 %\n"
-                                "Кандидаты: %10\nExpanded states: %11\nВремя: %12 мс")
-                               .arg(QString::fromStdString(snapshot.solverName.empty() ? "—" : snapshot.solverName))
-                               .arg(QString::fromStdString(snapshot.solutionStatus.empty() ? "—" : snapshot.solutionStatus))
-                               .arg(objective.placedParts)
-                               .arg(objective.totalParts)
-                               .arg(static_cast<double>(objective.usedLength) / 1000.0, 0, 'f', 3)
-                               .arg(static_cast<double>(objective.primaryRemnantWidth) / 1000.0, 0, 'f', 3)
-                               .arg(static_cast<double>(objective.largestExtraRectangleArea) / 1'000'000.0, 0, 'f', 3)
-                               .arg(static_cast<double>(objective.fragmentationPenalty) / 1'000'000.0, 0, 'f', 3)
-                               .arg(objective.materialUtilization * 100.0, 0, 'f', 2)
-                               .arg(metrics.candidatesGenerated)
-                               .arg(metrics.expandedStates)
-                               .arg(static_cast<double>(metrics.totalTimeUs) / 1000.0, 0, 'f', 3));
+  metricsText_->setPlainText(
+    tr("Решатель: %1\nСтатус решения: %2\nРазмещено: %3 / %4\nЗанятая длина: %5 мм\nПравая полоса: %6 мм\n"
+       "Доп. прямоугольник: %7 мм²\nФрагментация: %8 мм²\nИспользование материала: %9 %\n"
+       "Кандидаты: %10\nРаскрытые состояния: %11\nВремя: %12 мс")
+      .arg(QString::fromStdString(snapshot.solverName.empty() ? "—" : snapshot.solverName))
+      .arg(QString::fromStdString(snapshot.solutionStatus.empty() ? "—" : snapshot.solutionStatus))
+      .arg(objective.placedParts)
+      .arg(objective.totalParts)
+      .arg(static_cast<double>(objective.usedLength) / 1000.0, 0, 'f', 3)
+      .arg(static_cast<double>(objective.primaryRemnantWidth) / 1000.0, 0, 'f', 3)
+      .arg(static_cast<double>(objective.largestExtraRectangleArea) / 1'000'000.0, 0, 'f', 3)
+      .arg(static_cast<double>(objective.fragmentationPenalty) / 1'000'000.0, 0, 'f', 3)
+      .arg(objective.materialUtilization * 100.0, 0, 'f', 2)
+      .arg(metrics.candidatesGenerated)
+      .arg(metrics.expandedStates)
+      .arg(static_cast<double>(metrics.totalTimeUs) / 1000.0, 0, 'f', 3));
 
   unplacedList_->clear();
   for (const std::string & instance : snapshot.unplacedInstances)

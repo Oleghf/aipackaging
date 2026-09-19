@@ -24,6 +24,11 @@ data/local/
 *.pt
 *.pth
 
+# Малый синтетический комплект нужен только для автоматических тестов ONNX.
+!tests/fixtures/models/
+!tests/fixtures/models/polygon-policy-smoke/
+!tests/fixtures/models/polygon-policy-smoke/*.onnx
+
 # IDE and OS metadata
 .idea/
 .vscode/

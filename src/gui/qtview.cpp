@@ -7,6 +7,7 @@
 #include <QPaintDevice>
 #include <QPainter>
 #include <QResizeEvent>
+#include <QSettings>
 #include <QTabWidget>
 #include <QWheelEvent>
 #include <QWidget>
@@ -110,6 +111,15 @@ QtView::QtView()
               openSaveFileDialog("Сохраните полигональное решение", "polygon-solution.json", "JSON (*.json);;All Files (*)");
             if (!path.empty())
               polygonActions_.saveSolution(path);
+          });
+  connect(polygonWorkspace_, &PolygonWorkspaceWidget::requestOpenModel, this,
+          [this]()
+          {
+            if (!polygonActions_.openModel)
+              return;
+            const QString path = QFileDialog::getExistingDirectory(this, tr("Выберите каталог модели ONNX"));
+            if (!path.isEmpty() && polygonActions_.openModel(path.toStdString()))
+              QSettings().setValue(QStringLiteral("polygon/modelDirectory"), path);
           });
   connect(polygonWorkspace_, &PolygonWorkspaceWidget::requestStart, this,
           [this]()
@@ -317,6 +327,9 @@ void QtView::statisticChangeCountOccupiedCells(unsigned int occupiedCells)
 void QtView::setPolygonWorkspaceActions(PolygonWorkspaceActions actions)
 {
   polygonActions_ = std::move(actions);
+  const QString remembered = QSettings().value(QStringLiteral("polygon/modelDirectory")).toString();
+  if (!remembered.isEmpty() && polygonActions_.openModel)
+    polygonActions_.openModel(remembered.toStdString());
 }
 
 

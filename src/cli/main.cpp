@@ -13,6 +13,9 @@
 #include <aipackaging/nesting/polygon_environment.h>
 #include <aipackaging/nesting/polygon_io.h>
 #include <aipackaging/nesting/polygon_solver.h>
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+#include <aipackaging/inference/polygon_onnx.h>
+#endif
 
 namespace
 {
@@ -25,7 +28,9 @@ void printUsage()
                "       `[--solver input-first-fit|area-left-bottom|max-side-left-bottom|random-left-bottom|beam]`\n"
                "       `[--seed N] [--random-iterations N] [--beam-width N]`\n"
                "       `[--max-expanded-states N] [--timeout-ms N]`\n"
-               "       `AIPackaging_Cli validate --problem <problem.json> --solution <solution.json>`\n";
+               "       `[--model <каталог>] [--rollouts N]`\n"
+               "       `AIPackaging_Cli validate --problem <problem.json> --solution <solution.json>`\n"
+               "       `AIPackaging_Cli validate-model --input <каталог>`\n";
 }
 
 /// Строго разбирает неотрицательное десятичное число без пробелов и суффиксов.
@@ -126,6 +131,28 @@ int validateCommand(int argc, char ** argv)
   std::cerr << "Неподдерживаемый формат задачи\n";
   return 3;
 }
+
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+/// Проверяет внешний комплект полигональной модели без запуска задачи.
+int validateModelCommand(int argc, char ** argv)
+{
+  std::string path;
+  for (int index = 2; index < argc; ++index)
+  {
+    if (std::string_view(argv[index]) != "--input" || !readValue(argc, argv, index, path))
+      return 1;
+  }
+  std::string error;
+  const auto model = aipackaging::inference::PolygonOnnxPolicy::Load(path, error);
+  if (!model)
+  {
+    std::cerr << error << '\n';
+    return 3;
+  }
+  std::cout << model->metadata().modelId << ' ' << model->metadata().modelSha256 << '\n';
+  return 0;
+}
+#endif
 } // namespace
 
 /// Разбирает команду, загружает задачу, запускает решатель и возвращает согласованный код.
@@ -136,6 +163,10 @@ int main(int argc, char ** argv)
   {
     if (argc >= 2 && std::string_view(argv[1]) == "validate")
       return validateCommand(argc, argv);
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+    if (argc >= 2 && std::string_view(argv[1]) == "validate-model")
+      return validateModelCommand(argc, argv);
+#endif
     if (argc < 2 || std::string_view(argv[1]) != "solve")
     {
       printUsage();
@@ -144,6 +175,9 @@ int main(int argc, char ** argv)
 
     std::string inputPath;
     std::string outputPath;
+    std::string solverName = "area-left-bottom";
+    std::string modelPath;
+    std::size_t neuralRollouts = 16;
     SolverConfig config;
     for (int index = 2; index < argc; ++index)
     {
@@ -161,7 +195,11 @@ int main(int argc, char ** argv)
       }
       else if (option == "--solver")
       {
-        if (!readValue(argc, argv, index, value) || !parseSolverKind(value, config.solver))
+        if (!readValue(argc, argv, index, value))
+          return printUsage(), 1;
+        solverName = value;
+        if (solverName != "neural-greedy" && solverName != "neural-best-of" && solverName != "hybrid" &&
+            !parseSolverKind(value, config.solver))
         {
           std::cerr << "Неизвестный решатель\n";
           return 1;
@@ -190,6 +228,16 @@ int main(int argc, char ** argv)
       else if (option == "--timeout-ms")
       {
         if (!readValue(argc, argv, index, value) || !parseUnsigned(value, config.timeoutMs))
+          return printUsage(), 1;
+      }
+      else if (option == "--model")
+      {
+        if (!readValue(argc, argv, index, modelPath))
+          return printUsage(), 1;
+      }
+      else if (option == "--rollouts")
+      {
+        if (!readSizeOption(argc, argv, index, neuralRollouts) || neuralRollouts == 0)
           return printUsage(), 1;
       }
       else
@@ -223,7 +271,47 @@ int main(int argc, char ** argv)
         std::cerr << loaded.error << '\n';
         return 3;
       }
-      const PolygonSolution solution = solvePolygonProblem(loaded.problem, config);
+      PolygonSolution solution;
+      if (solverName == "neural-greedy" || solverName == "neural-best-of" || solverName == "hybrid")
+      {
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+        if (modelPath.empty())
+        {
+          std::cerr << "Для нейросетевого решателя требуется путь к модели\n";
+          return 1;
+        }
+        std::string modelError;
+        const auto model = aipackaging::inference::PolygonOnnxPolicy::Load(modelPath, modelError);
+        if (!model)
+        {
+          std::cerr << modelError << '\n';
+          return 3;
+        }
+        aipackaging::inference::PolygonPolicyConfig policy;
+        policy.mode = solverName == "neural-greedy" ? aipackaging::inference::PolygonPolicyMode::Greedy
+                                                    : aipackaging::inference::PolygonPolicyMode::BestOf;
+        policy.seed = config.seed;
+        policy.rollouts = neuralRollouts;
+        policy.timeoutMs = config.timeoutMs;
+        if (solverName == "hybrid")
+        {
+          SolverConfig fallback = config;
+          fallback.solver = SolverKind::RandomLeftBottom;
+          fallback.randomIterations = 64;
+          const auto result = model->runHybrid(loaded.problem, policy, fallback);
+          if (result.fallbackUsed)
+            std::cerr << result.warning << '\n';
+          solution = result.solution;
+        }
+        else
+          solution = model->run(loaded.problem, policy).solution;
+#else
+        std::cerr << "Эта сборка не содержит внутреннюю реализацию ONNX\n";
+        return 1;
+#endif
+      }
+      else
+        solution = solvePolygonProblem(loaded.problem, config);
       std::string outputError;
       if (!savePolygonSolutionToFile(outputPath, solution, outputError))
       {
@@ -236,6 +324,11 @@ int main(int argc, char ** argv)
     {
       std::cerr << "Формат задачи отсутствует или не поддерживается\n";
       return 3;
+    }
+    if (solverName == "neural-greedy" || solverName == "neural-best-of" || solverName == "hybrid")
+    {
+      std::cerr << "Нейросетевые режимы доступны только для полигональных задач\n";
+      return 1;
     }
     const GridProblemLoadResult loaded = loadGridProblemFromText(inputText);
     if (!loaded.success)

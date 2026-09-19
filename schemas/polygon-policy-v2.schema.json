@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aipackaging.local/schemas/polygon-policy-v2.schema.json",
+  "title": "AIPackaging: комплект полигональной политики ONNX v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "modelId", "projectVersion", "architecture", "opset", "contracts", "limits", "normalization", "selection", "dynamicAxes", "datasetManifestSha256", "trainingConfigSha256", "checkpointSha256", "files", "modelSha256"],
+  "properties": {
+    "format": {"const": "aipackaging.polygon_policy"},
+    "version": {"const": 2},
+    "modelId": {"type": "string", "minLength": 1},
+    "projectVersion": {"type": "string", "minLength": 1},
+    "architecture": {"const": "hierarchical-polygon-policy-v1"},
+    "opset": {"const": 23},
+    "contracts": {"const": {"problem": 1, "solution": 2, "observation": 2, "action": 1, "reward": 2}},
+    "limits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["hiddenSize", "sheetRasterSize", "shapeRasterSize", "maxInstances", "maxCandidatesPerPair"],
+      "properties": {
+        "hiddenSize": {"type": "integer", "minimum": 16, "multipleOf": 2},
+        "sheetRasterSize": {"const": 128},
+        "shapeRasterSize": {"const": 32},
+        "maxInstances": {"type": "integer", "minimum": 1, "maximum": 100},
+        "maxCandidatesPerPair": {"type": "integer", "minimum": 1, "maximum": 250000}
+      }
+    },
+    "normalization": {"const": "polygon-observation-v2"},
+    "selection": {"const": {"hierarchy": ["instance", "rotation", "position"], "tieBreak": "lowest-current-catalog-index", "sampling": "splitmix64-categorical-v1"}},
+    "dynamicAxes": {"const": ["instances", "candidates"]},
+    "datasetManifestSha256": {"$ref": "#/$defs/sha"},
+    "trainingConfigSha256": {"$ref": "#/$defs/sha"},
+    "checkpointSha256": {"$ref": "#/$defs/sha"},
+    "files": {
+      "type": "object", "additionalProperties": false,
+      "required": ["encoder.onnx", "placement-head.onnx"],
+      "properties": {"encoder.onnx": {"$ref": "#/$defs/sha"}, "placement-head.onnx": {"$ref": "#/$defs/sha"}}
+    },
+    "modelSha256": {"$ref": "#/$defs/sha"}
+  },
+  "$defs": {"sha": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+}

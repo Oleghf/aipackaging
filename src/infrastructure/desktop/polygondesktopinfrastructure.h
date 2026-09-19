@@ -15,6 +15,13 @@ struct PolygonProblem;
 struct PolygonSolution;
 } // namespace aipackaging::solver
 
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+namespace aipackaging::inference
+{
+class PolygonOnnxPolicy;
+}
+#endif
+
 /// Потокобезопасное хранилище задач и проверенных решений текущего процесса.
 class PolygonArtifactStore
 {
@@ -41,12 +48,37 @@ public:
   void release(PolygonDocumentHandle handle) noexcept;
   /// Удаляет решение из хранилища.
   void release(PolygonSolutionHandle handle) noexcept;
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+  /// Регистрирует проверенный комплект модели и возвращает процессный идентификатор.
+  PolygonModelHandle addModel(std::shared_ptr<aipackaging::inference::PolygonOnnxPolicy> model);
+  /// Возвращает зарегистрированную модель либо пустой указатель.
+  std::shared_ptr<const aipackaging::inference::PolygonOnnxPolicy> model(PolygonModelHandle handle) const;
+  /// Удаляет модель из процессного хранилища.
+  void release(PolygonModelHandle handle) noexcept;
+#endif
 
 private:
   /// Закрытая реализация скрывает геометрию и контейнеры от корня композиции.
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };
+
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+/// Загружает внешний комплект ONNX и регистрирует только полностью проверенную модель.
+class LocalPolygonModelGateway final : public IPolygonModelGateway
+{
+public:
+  /// Связывает шлюз модели с общим процессным хранилищем.
+  explicit LocalPolygonModelGateway(std::shared_ptr<PolygonArtifactStore> store);
+  /// Проверяет каталог модели и возвращает её идентичность.
+  PolygonModelLoadResult load(const std::string & directory) override;
+  /// Освобождает зарегистрированную модель.
+  void release(PolygonModelHandle model) noexcept override;
+
+private:
+  std::shared_ptr<PolygonArtifactStore> store_;
+};
+#endif
 
 /// Загружает и сохраняет полигональные JSON-документы через локальную файловую систему.
 class LocalPolygonDocumentGateway final : public IPolygonDocumentGateway
@@ -78,6 +110,35 @@ public:
 
 private:
   std::shared_ptr<PolygonArtifactStore> store_;
+};
+
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+/// Выполняет нейросетевой и гибридный раскрой над проверенным комплектом ONNX.
+class OnnxPolygonBackend final : public IPolygonNestingBackend
+{
+public:
+  /// Связывает внутреннюю реализацию с хранилищем задач, моделей и решений.
+  explicit OnnxPolygonBackend(std::shared_ptr<PolygonArtifactStore> store);
+  /// Выполняет выбранный нейросетевой режим и проверяет итоговое решение.
+  NestingRunResult run(PolygonDocumentHandle document, const NestingRunRequest & request, const Control & control) override;
+
+private:
+  std::shared_ptr<PolygonArtifactStore> store_;
+};
+#endif
+
+/// Направляет прикладной запрос в базовую или доступную нейросетевую реализацию.
+class PolygonBackendRouter final : public IPolygonNestingBackend
+{
+public:
+  /// Сохраняет обязательную базовую и необязательную нейросетевую реализации.
+  PolygonBackendRouter(std::shared_ptr<IPolygonNestingBackend> baseline, std::shared_ptr<IPolygonNestingBackend> neural = {});
+  /// Выбирает реализацию только по явно указанному методу запроса.
+  NestingRunResult run(PolygonDocumentHandle document, const NestingRunRequest & request, const Control & control) override;
+
+private:
+  std::shared_ptr<IPolygonNestingBackend> baseline_;
+  std::shared_ptr<IPolygonNestingBackend> neural_;
 };
 
 /// Выполняет внутреннюю реализацию в одном рабочем потоке и доставляет события через диспетчер.

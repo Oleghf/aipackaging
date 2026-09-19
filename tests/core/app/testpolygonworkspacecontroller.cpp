@@ -105,15 +105,40 @@ public:
   NestingJobCallbacks callbacks;
 };
 
+/// Имитирует строгую загрузку и освобождение внешнего комплекта модели.
+class ModelGatewayStub final : public IPolygonModelGateway
+{
+public:
+  /// Возвращает проверенную модель либо диагностическую ошибку для специального пути.
+  PolygonModelLoadResult load(const std::string & directory) override
+  {
+    if (directory == "bad-model")
+      return {false, "повреждённая модель"};
+    return {true, {}, PolygonModelHandle{nextModel++}, "policy", "0123456789abcdef"};
+  }
+
+  /// Запоминает освобождённую модель.
+  void release(PolygonModelHandle model) noexcept override
+  {
+    ++releasedCount;
+    lastReleased = model;
+  }
+
+  std::uint64_t nextModel = 1;
+  std::size_t releasedCount = 0;
+  PolygonModelHandle lastReleased;
+};
+
 /// Создаёт контроллер и возвращает совместно используемые тестовые порты.
 std::shared_ptr<PolygonWorkspaceController> makeController(std::shared_ptr<OutputStub> & output,
                                                            std::shared_ptr<DocumentGatewayStub> & documents,
-                                                           std::shared_ptr<JobRunnerStub> & jobs)
+                                                           std::shared_ptr<JobRunnerStub> & jobs,
+                                                           std::shared_ptr<ModelGatewayStub> models = {})
 {
   output = std::make_shared<OutputStub>();
   documents = std::make_shared<DocumentGatewayStub>();
   jobs = std::make_shared<JobRunnerStub>();
-  return std::make_shared<PolygonWorkspaceController>(output, documents, jobs);
+  return std::make_shared<PolygonWorkspaceController>(output, documents, jobs, std::move(models));
 }
 
 /// Создаёт полный проверенный результат для тестов автомата состояния.
@@ -266,4 +291,48 @@ TEST(PolygonWorkspaceController, ReportsSaveFailureAndKeepsResult)
   controller->saveSolution("solution");
   EXPECT_TRUE(output->snapshot.canSave);
   EXPECT_NE(output->snapshot.statusText.find("Ошибка сохранения"), std::string::npos);
+}
+
+/// Проверяет передачу проверенной модели нейросетевому запуску и её замену.
+TEST(PolygonWorkspaceController, LoadsReplacesAndUsesModel)
+{
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<JobRunnerStub> jobs;
+  auto models = std::make_shared<ModelGatewayStub>();
+  const auto controller = makeController(output, documents, jobs, models);
+  controller->openProblem("problem");
+  ASSERT_TRUE(controller->openModel("first"));
+  ASSERT_TRUE(output->snapshot.modelReady);
+  EXPECT_EQ(output->snapshot.modelId, "policy");
+
+  NestingRunRequest request;
+  request.method = NestingMethod::Neural;
+  controller->start(request);
+  ASSERT_EQ(jobs->startCount, 1);
+  ASSERT_TRUE(jobs->startedRequest.model.has_value());
+  EXPECT_EQ(jobs->startedRequest.model->value, 1);
+  jobs->complete(solvedResult());
+
+  ASSERT_TRUE(controller->openModel("second"));
+  EXPECT_EQ(models->releasedCount, 1);
+  EXPECT_EQ(models->lastReleased.value, 1);
+  EXPECT_EQ(output->snapshot.modelSha256, "0123456789abcdef");
+}
+
+/// Проверяет сохранение прежней модели и сцены после ошибки следующей загрузки.
+TEST(PolygonWorkspaceController, KeepsPreviousModelAfterLoadFailure)
+{
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<JobRunnerStub> jobs;
+  auto models = std::make_shared<ModelGatewayStub>();
+  const auto controller = makeController(output, documents, jobs, models);
+  controller->openProblem("problem");
+  ASSERT_TRUE(controller->openModel("valid-model"));
+  EXPECT_FALSE(controller->openModel("bad-model"));
+  EXPECT_TRUE(output->snapshot.modelReady);
+  EXPECT_EQ(output->snapshot.modelId, "policy");
+  EXPECT_NE(output->snapshot.modelStatusText.find("Ошибка"), std::string::npos);
+  EXPECT_EQ(models->releasedCount, 0);
 }

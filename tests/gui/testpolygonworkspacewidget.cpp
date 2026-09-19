@@ -168,3 +168,39 @@ TEST(PolygonWorkspaceWidget, HighlightsPartialAndListsUnplacedInstances)
   EXPECT_EQ(unplaced->count(), 2);
   EXPECT_EQ(unplaced->item(0)->text(), QStringLiteral("bracket #1"));
 }
+
+/// Проверяет выбор комплекта модели и блокировку нейросетевого запуска без него.
+TEST(PolygonWorkspaceWidget, RequiresVerifiedModelForNeuralMode)
+{
+  ensureApplication();
+  PolygonWorkspaceWidget widget;
+  bool modelRequested = false;
+  QObject::connect(&widget, &PolygonWorkspaceWidget::requestOpenModel, [&modelRequested]() { modelRequested = true; });
+  auto * modelButton = widget.findChild<QPushButton *>("polygonModelButton");
+  auto * solver = widget.findChild<QComboBox *>("polygonSolverBox");
+  auto * start = widget.findChild<QPushButton *>("polygonStartButton");
+  ASSERT_NE(modelButton, nullptr);
+  ASSERT_NE(solver, nullptr);
+  ASSERT_NE(start, nullptr);
+  modelButton->click();
+  EXPECT_TRUE(modelRequested);
+
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.state = PolygonWorkspaceState::Ready;
+  snapshot.canOpen = true;
+  snapshot.canRun = true;
+  snapshot.canLoadModel = true;
+  widget.present(snapshot);
+  solver->setCurrentIndex(5);
+  EXPECT_EQ(widget.solverConfig().method, NestingMethod::Neural);
+  EXPECT_FALSE(start->isEnabled());
+
+  snapshot.modelReady = true;
+  snapshot.modelId = "policy";
+  snapshot.modelSha256 = "0123456789abcdef";
+  widget.present(snapshot);
+  EXPECT_TRUE(start->isEnabled());
+  const auto * label = widget.findChild<QLabel *>("polygonModelStatus");
+  ASSERT_NE(label, nullptr);
+  EXPECT_TRUE(label->text().contains(QStringLiteral("0123456789ab")));
+}

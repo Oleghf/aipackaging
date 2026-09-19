@@ -1,2 +1,7 @@
 add_executable(AIPackaging_Cli "main.cpp")
 target_link_libraries(AIPackaging_Cli PRIVATE AIPackaging_Search AIPackaging_Json)
+if (BUILD_ONNX_BACKEND)
+  target_link_libraries(AIPackaging_Cli PRIVATE AIPackaging_OnnxInference)
+  target_compile_definitions(AIPackaging_Cli PRIVATE AIPACKAGING_HAS_ONNX_BACKEND=1)
+  aipackaging_copy_onnxruntime(AIPackaging_Cli)
+endif()

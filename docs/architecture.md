@@ -170,8 +170,8 @@ seeded family recipe -> 2 uniform scale variants -> hidden shelf validation
 
 Начальная политика иерархическая: кодирует занятость листа и оставшиеся детали,
 выбирает деталь и поворот, оценивает допустимые позиции и выбирает действие.
-Обучение выполняется в Python, развёртывание планируется через версионированный ONNX
-без зависимости настольного приложения от Python.
+Обучение выполняется в Python, а развёртывание использует версионированный
+комплект ONNX без зависимости настольного приложения от Python.
 
 ```text
 occupancy + parts + objective -> encoder -> instance -> rotation
@@ -182,8 +182,10 @@ occupancy + parts + objective -> encoder -> instance -> rotation
 ```
 
 Маски каждого уровня выводятся из C++ `actionMask`, а не предсказываются сетью.
-Для развёртывание кодировщик и размещение голова экспортируются отдельными ONNX-графами.
-нейросетевое или гибридное происхождение записывается в `grid_solution` v2;
+Для развёртывания кодировщик и голова размещения экспортируются отдельными
+графами ONNX. `AIPackaging_OnnxInference` выполняет их последовательно на CPU и
+получает координаты только через текущий каталог `PolygonLearningEnvironment`.
+Нейросетевое или гибридное происхождение записывается в `polygon_solution` v2;
 базовый алгоритм и набор данных
 M2 сохраняют совместимый формат v1.
 
@@ -198,6 +200,8 @@ M5 сохраняет клеточный экран и добавляет отд
 ```text
 PolygonWorkspaceWidget -> PolygonWorkspaceController -> INestingJobRunner
                                                    -> IPolygonNestingBackend
+                                                      -> BaselinePolygonBackend
+                                                      -> OnnxPolygonBackend
                                                    -> точный валидатор
 ```
 
@@ -251,6 +255,7 @@ AIPackaging_NestingCore
 Search   <- SearchContracts + GridCore + PolygonCore
 Json     <- SearchContracts + GridCore + PolygonCore + nlohmann/json (PRIVATE)
 Learning <- GridCore + PolygonCore
+OnnxInference <- Learning + Search + ONNX Runtime (PRIVATE)
 
 SolverImpl (INTERFACE) <- Search + Json + Learning
 Solver (INTERFACE) <- SolverImpl <- legacy App / GUI

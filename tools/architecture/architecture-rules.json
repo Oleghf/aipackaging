@@ -11,6 +11,7 @@
     "search": "src/solver/search",
     "json": "src/solver/json",
     "learning": "src/solver/learning",
+    "onnx_inference": "src/inference/onnx",
     "desktop_infrastructure": "src/infrastructure/desktop",
     "gui": "src/gui",
     "cli": "src/cli",
@@ -64,6 +65,15 @@
       "polygon_core",
       "nesting_core"
     ],
+    "onnx_inference": [
+      "onnx_inference",
+      "learning",
+      "search",
+      "search_contracts",
+      "grid_core",
+      "polygon_core",
+      "nesting_core"
+    ],
     "solver_compat": [
       "solver_compat",
       "search",
@@ -80,6 +90,7 @@
       "search",
       "search_contracts",
       "json",
+      "onnx_inference",
       "polygon_core",
       "nesting_core"
     ],
@@ -93,6 +104,7 @@
       "search",
       "search_contracts",
       "json",
+      "onnx_inference",
       "grid_core",
       "polygon_core",
       "nesting_core"
@@ -119,7 +131,8 @@
     ],
     "nlohmannAllowedFiles": [
       "src/solver/json/gridio.cpp",
-      "src/solver/json/polygonio.cpp"
+      "src/solver/json/polygonio.cpp",
+      "src/inference/onnx/polygononnxinference.cpp"
     ],
     "clipperAllowedFiles": [
       "src/solver/polygon/polygoncandidates.cpp"
@@ -169,7 +182,11 @@
         "evaluation",
         "exporting",
         "polygon_evaluation",
-        "polygon_run"
+        "polygon_run",
+        "polygon_exporting",
+        "polygon_onnx",
+        "polygon_onnx_evaluation",
+        "polygon_sampling"
       ],
       "dataset_cli": [
         "commands.datasets"
@@ -252,7 +269,9 @@
       "python/aipackaging_ml/polygon_model.py",
       "python/aipackaging_ml/polygon_policy.py",
       "python/aipackaging_ml/polygon_run.py",
-      "python/aipackaging_ml/polygon_training.py"
+      "python/aipackaging_ml/polygon_training.py",
+      "python/aipackaging_ml/polygon_exporting.py",
+      "python/aipackaging_ml/polygon_onnx_evaluation.py"
     ]
   },
   "ignoredDirectories": [
@@ -275,6 +294,7 @@
     "src/solver/include/aipackaging/nesting/polygon_io.h": "json",
     "src/solver/include/aipackaging/nesting/grid_learning.h": "learning",
     "src/solver/include/aipackaging/nesting/polygon_learning.h": "learning",
+    "src/inference/onnx/include/aipackaging/inference/polygon_onnx.h": "onnx_inference",
     "src/solver/gridenvironment.h": "solver_compat",
     "src/solver/gridio.h": "solver_compat",
     "src/solver/gridlearning.h": "solver_compat",

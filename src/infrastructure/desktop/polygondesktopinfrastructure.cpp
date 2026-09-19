@@ -8,6 +8,9 @@
 #include <aipackaging/nesting/polygon_io.h>
 #include <aipackaging/nesting/polygon_solver.h>
 #include <polygondesktopinfrastructure.h>
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+#include <aipackaging/inference/polygon_onnx.h>
+#endif
 
 /// Хранит авторитетную задачу и подготовленную геометрию только внутри инфраструктуры.
 struct PolygonArtifactStore::DocumentRecord
@@ -22,8 +25,14 @@ struct PolygonArtifactStore::Impl
   std::mutex mutex;
   std::uint64_t nextDocument = 1;
   std::uint64_t nextSolution = 1;
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+  std::uint64_t nextModel = 1;
+#endif
   std::unordered_map<std::uint64_t, std::shared_ptr<const DocumentRecord>> documents;
   std::unordered_map<std::uint64_t, std::shared_ptr<const aipackaging::solver::PolygonSolution>> solutions;
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+  std::unordered_map<std::uint64_t, std::shared_ptr<const aipackaging::inference::PolygonOnnxPolicy>> models;
+#endif
 };
 
 namespace
@@ -140,6 +149,38 @@ void buildPresentation(const PolygonArtifactStore::DocumentRecord & record, cons
       unplaced.push_back(id + " #" + std::to_string(instance.instanceIndex));
   }
 }
+
+/// Преобразует проверяемое решение ядра в прикладной результат и регистрирует его для сохранения.
+NestingRunResult makeRunResult(const std::shared_ptr<PolygonArtifactStore> & store,
+                               const std::shared_ptr<const PolygonArtifactStore::DocumentRecord> & record,
+                               PolygonDocumentHandle document, PolygonSolution solution, bool cancelled,
+                               NestingProvenance provenance, std::string diagnostic = {})
+{
+  NestingRunResult result;
+  result.completion = toCompletion(solution.status, cancelled);
+  result.provenance = provenance;
+  result.implementationName = solution.solver.name;
+  result.diagnostic = std::move(diagnostic);
+  result.solutionStatus = toString(solution.status);
+  result.partial = !solution.complete();
+  result.objective = {static_cast<std::uint64_t>(solution.objective.usedLength),
+                      static_cast<std::uint64_t>(solution.objective.primaryRemnantWidth),
+                      solution.objective.largestExtraRectangleArea,
+                      solution.objective.fragmentationPenalty,
+                      solution.objective.placedParts,
+                      solution.objective.totalParts,
+                      solution.objective.materialUtilization};
+  result.metrics = {solution.metrics.candidatesGenerated, solution.metrics.expandedStates, solution.metrics.totalTimeUs};
+  buildPresentation(*record, &solution, result.scene, result.unplacedInstances);
+  if (!cancelled)
+  {
+    std::string error;
+    result.solution = store->addValidatedSolution(document, std::move(solution), error);
+    if (!result.solution)
+      throw std::runtime_error("Внутренняя реализация вернула некорректный результат: " + error);
+  }
+  return result;
+}
 } // namespace
 
 /// Создаёт закрытую реализацию пустого хранилища.
@@ -212,6 +253,60 @@ void PolygonArtifactStore::release(PolygonSolutionHandle handle) noexcept
   std::lock_guard lock(impl_->mutex);
   impl_->solutions.erase(handle.value);
 }
+
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+/// Добавляет неизменяемый исполнитель модели под новым монотонным идентификатором.
+PolygonModelHandle PolygonArtifactStore::addModel(std::shared_ptr<aipackaging::inference::PolygonOnnxPolicy> model)
+{
+  std::lock_guard lock(impl_->mutex);
+  const PolygonModelHandle handle{impl_->nextModel++};
+  impl_->models.emplace(handle.value, std::move(model));
+  return handle;
+}
+
+/// Ищет модель под блокировкой и возвращает разделяемое неизменяемое владение.
+std::shared_ptr<const aipackaging::inference::PolygonOnnxPolicy> PolygonArtifactStore::model(PolygonModelHandle handle) const
+{
+  std::lock_guard lock(impl_->mutex);
+  const auto found = impl_->models.find(handle.value);
+  return found == impl_->models.end() ? nullptr : found->second;
+}
+
+/// Удаляет процессную ссылку на комплект модели.
+void PolygonArtifactStore::release(PolygonModelHandle handle) noexcept
+{
+  std::lock_guard lock(impl_->mutex);
+  impl_->models.erase(handle.value);
+}
+
+/// Сохраняет хранилище, в котором регистрируются проверенные комплекты модели.
+LocalPolygonModelGateway::LocalPolygonModelGateway(std::shared_ptr<PolygonArtifactStore> store)
+  : store_(std::move(store))
+{
+}
+
+/// Проверяет комплект через ONNX-адаптер и публикует его только после полного успеха.
+PolygonModelLoadResult LocalPolygonModelGateway::load(const std::string & directory)
+{
+  std::string error;
+  std::shared_ptr<aipackaging::inference::PolygonOnnxPolicy> model =
+    aipackaging::inference::PolygonOnnxPolicy::Load(directory, error);
+  if (!model)
+    return {false, error};
+  PolygonModelLoadResult result;
+  result.success = true;
+  result.modelId = model->metadata().modelId;
+  result.modelSha256 = model->metadata().modelSha256;
+  result.model = store_->addModel(std::move(model));
+  return result;
+}
+
+/// Передаёт освобождение модели общему процессному хранилищу.
+void LocalPolygonModelGateway::release(PolygonModelHandle model) noexcept
+{
+  store_->release(model);
+}
+#endif
 
 /// Сохраняет общее хранилище, используемое шлюзом и внутренними реализациями.
 LocalPolygonDocumentGateway::LocalPolygonDocumentGateway(std::shared_ptr<PolygonArtifactStore> store)
@@ -294,30 +389,82 @@ NestingRunResult BaselinePolygonBackend::run(PolygonDocumentHandle documentHandl
   };
   PolygonSolverExecutionResult solved = runPolygonProblem(record->problem, config, execution);
 
-  NestingRunResult result;
-  result.completion = toCompletion(solved.solution.status, solved.cancelled);
-  result.provenance = NestingProvenance::Baseline;
-  result.implementationName = solved.solution.solver.name;
-  result.solutionStatus = toString(solved.solution.status);
-  result.partial = !solved.solution.complete();
-  result.objective = {static_cast<std::uint64_t>(solved.solution.objective.usedLength),
-                      static_cast<std::uint64_t>(solved.solution.objective.primaryRemnantWidth),
-                      solved.solution.objective.largestExtraRectangleArea,
-                      solved.solution.objective.fragmentationPenalty,
-                      solved.solution.objective.placedParts,
-                      solved.solution.objective.totalParts,
-                      solved.solution.objective.materialUtilization};
-  result.metrics = {solved.solution.metrics.candidatesGenerated, solved.solution.metrics.expandedStates,
-                    solved.solution.metrics.totalTimeUs};
-  buildPresentation(*record, &solved.solution, result.scene, result.unplacedInstances);
-  if (!solved.cancelled)
+  return makeRunResult(store_, record, documentHandle, std::move(solved.solution), solved.cancelled, NestingProvenance::Baseline);
+}
+
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+/// Сохраняет хранилище задач, моделей и независимо проверенных решений.
+OnnxPolygonBackend::OnnxPolygonBackend(std::shared_ptr<PolygonArtifactStore> store)
+  : store_(std::move(store))
+{
+}
+
+/// Преобразует прикладной запрос в контракт ONNX и регистрирует только проверенный итог.
+NestingRunResult OnnxPolygonBackend::run(PolygonDocumentHandle documentHandle, const NestingRunRequest & request,
+                                         const Control & control)
+{
+  if (request.method == NestingMethod::Baseline)
+    throw std::invalid_argument("Базовый запрос передан нейросетевой внутренней реализации");
+  if (!request.model)
+    throw std::invalid_argument("В запросе отсутствует проверенная полигональная модель");
+  const auto record = store_->document(documentHandle);
+  const auto model = store_->model(*request.model);
+  if (!record)
+    throw std::invalid_argument("Загруженная задача больше недоступна");
+  if (!model)
+    throw std::invalid_argument("Проверенная полигональная модель больше недоступна");
+  aipackaging::inference::PolygonPolicyConfig config;
+  config.mode = request.neuralSelection == NeuralSelectionMode::Greedy ? aipackaging::inference::PolygonPolicyMode::Greedy
+                                                                       : aipackaging::inference::PolygonPolicyMode::BestOf;
+  config.seed = request.seed;
+  config.rollouts = request.neuralRollouts;
+  config.timeoutMs = request.timeoutMs;
+  aipackaging::inference::PolygonPolicyControl policyControl;
+  policyControl.cancellationRequested = control.cancellationRequested;
+  policyControl.progress = [&control](std::size_t completed, std::size_t total)
   {
-    std::string error;
-    result.solution = store_->addValidatedSolution(documentHandle, std::move(solved.solution), error);
-    if (!result.solution)
-      throw std::runtime_error("Решатель вернул некорректный результат: " + error);
+    if (control.progress)
+      control.progress({NestingProgressStage::NeuralRollouts, completed, total, 0});
+  };
+  aipackaging::inference::PolygonPolicyExecutionResult executed;
+  if (request.method == NestingMethod::Hybrid)
+  {
+    SolverConfig fallback;
+    fallback.solver = SolverKind::RandomLeftBottom;
+    fallback.seed = request.seed;
+    fallback.randomIterations = request.fallbackRandomIterations;
+    fallback.beamWidth = request.beamWidth;
+    fallback.maxExpandedStates = request.maxExpandedStates;
+    fallback.timeoutMs = request.timeoutMs;
+    executed = model->runHybrid(record->problem, config, fallback, policyControl);
   }
-  return result;
+  else
+    executed = model->run(record->problem, config, policyControl);
+  const NestingProvenance provenance = executed.fallbackUsed                   ? NestingProvenance::HybridFallback
+                                     : request.method == NestingMethod::Hybrid ? NestingProvenance::Hybrid
+                                                                               : NestingProvenance::Neural;
+  return makeRunResult(store_, record, documentHandle, std::move(executed.solution), executed.cancelled, provenance,
+                       std::move(executed.warning));
+}
+#endif
+
+/// Сохраняет внутренние реализации, не раскрывая их прикладному контроллеру.
+PolygonBackendRouter::PolygonBackendRouter(std::shared_ptr<IPolygonNestingBackend> baseline,
+                                           std::shared_ptr<IPolygonNestingBackend> neural)
+  : baseline_(std::move(baseline))
+  , neural_(std::move(neural))
+{
+}
+
+/// Направляет базовый запрос базовой реализации, а остальные — явно зарегистрированной нейросетевой.
+NestingRunResult PolygonBackendRouter::run(PolygonDocumentHandle document, const NestingRunRequest & request,
+                                           const Control & control)
+{
+  if (request.method == NestingMethod::Baseline)
+    return baseline_->run(document, request, control);
+  if (!neural_)
+    throw std::invalid_argument("Эта сборка не содержит внутреннюю реализацию ONNX");
+  return neural_->run(document, request, control);
 }
 
 /// Сохраняет зависимости; поток создаётся только при первом запуске.
@@ -387,11 +534,11 @@ std::optional<NestingJobHandle> StdThreadNestingJobRunner::start(PolygonDocument
       {
         if (callbacks.failed)
         {
-        const std::string message = exception.what();
-        // Функция прикладного контроллера не бросает исключений; это контракт границы доставки.
-        // NOLINTNEXTLINE(bugprone-exception-escape)
-        dispatcher->post([callback = callbacks.failed, job, message]()
-                         { callback(job, message); }); // NOLINT(bugprone-exception-escape)
+          const std::string message = exception.what();
+          // Функция прикладного контроллера не бросает исключений; это контракт границы доставки.
+          // NOLINTNEXTLINE(bugprone-exception-escape)
+          dispatcher->post([callback = callbacks.failed, job, message]()
+                           { callback(job, message); }); // NOLINT(bugprone-exception-escape)
         }
       }
       std::lock_guard finishLock(mutex_);

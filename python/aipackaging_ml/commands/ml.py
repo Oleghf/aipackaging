@@ -103,3 +103,47 @@ def verify_polygon_run(arguments: Namespace) -> dict[str, Any]:
     from ..polygon_evaluation import verify_polygon_run as verify
 
     return verify(arguments.run_dir)
+
+
+def export_polygon_onnx(arguments: Namespace) -> dict[str, Any]:
+    """Экспортирует выбранную полигональную контрольную точку в ONNX."""
+
+    from ..polygon_exporting import export_polygon_policy_bundle
+
+    return export_polygon_policy_bundle(
+        arguments.checkpoint, arguments.config, arguments.output, model_id=arguments.model_id
+    )
+
+
+def verify_polygon_model(arguments: Namespace) -> dict[str, Any]:
+    """Проверяет хеши, оценки и жадные действия полигонального комплекта."""
+
+    from ..polygon_exporting import load_polygon_model_metadata
+
+    metadata = load_polygon_model_metadata(arguments.model)
+    comparison = (arguments.checkpoint, arguments.config, arguments.dataset)
+    if not any(comparison):
+        return {
+            "modelId": metadata["modelId"],
+            "modelSha256": metadata["modelSha256"],
+            "verified": True,
+        }
+    if not all(comparison):
+        raise ValueError("численная проверка требует одновременно контрольную точку, конфигурацию и набор данных")
+
+    from ..polygon_onnx_evaluation import verify_polygon_model_bundle
+
+    return verify_polygon_model_bundle(
+        arguments.model, arguments.checkpoint, arguments.config, arguments.dataset, smoke=arguments.smoke
+    )
+
+
+def evaluate_polygon_onnx(arguments: Namespace) -> dict[str, Any]:
+    """Оценивает полигональный комплект ONNX по замороженным решениям."""
+
+    from ..polygon_onnx_evaluation import evaluate_polygon_onnx as evaluate
+
+    return evaluate(
+        arguments.model, arguments.config, arguments.dataset, arguments.output,
+        split=arguments.split, smoke=arguments.smoke,
+    )

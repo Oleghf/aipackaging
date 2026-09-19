@@ -211,3 +211,61 @@ TEST(PolygonDesktopInfrastructure, CancellationReturnsUnsavablePartial)
   EXPECT_FALSE(completed.solution.has_value());
   std::filesystem::remove(input);
 }
+
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+/// Проверяет загрузку комплекта и нейросетевой запуск через прикладные идентификаторы.
+TEST(PolygonDesktopInfrastructure, LoadsModelAndRunsNeuralBackend)
+{
+  const auto input = writeProblem();
+  const auto store = std::make_shared<PolygonArtifactStore>();
+  LocalPolygonDocumentGateway documents(store);
+  LocalPolygonModelGateway models(store);
+  const PolygonDocumentLoadResult loaded = documents.load(input.string());
+  ASSERT_TRUE(loaded.success) << loaded.error;
+  const PolygonModelLoadResult model = models.load(AIPACKAGING_ONNX_TEST_MODEL);
+  ASSERT_TRUE(model.success) << model.error;
+
+  OnnxPolygonBackend backend(store);
+  NestingRunRequest request;
+  request.method = NestingMethod::Neural;
+  request.neuralSelection = NeuralSelectionMode::Greedy;
+  request.model = model.model;
+  request.timeoutMs = 0;
+  const NestingRunResult result = backend.run(loaded.document, request, {});
+  EXPECT_EQ(result.provenance, NestingProvenance::Neural);
+  EXPECT_TRUE(result.solution.has_value());
+  EXPECT_FALSE(result.partial);
+
+  models.release(model.model);
+  documents.release(loaded.document);
+  std::filesystem::remove(input);
+}
+
+/// Проверяет явное происхождение исправного гибридного результата.
+TEST(PolygonDesktopInfrastructure, PublishesHybridProvenance)
+{
+  const auto input = writeProblem();
+  const auto store = std::make_shared<PolygonArtifactStore>();
+  LocalPolygonDocumentGateway documents(store);
+  LocalPolygonModelGateway models(store);
+  const PolygonDocumentLoadResult loaded = documents.load(input.string());
+  const PolygonModelLoadResult model = models.load(AIPACKAGING_ONNX_TEST_MODEL);
+  ASSERT_TRUE(loaded.success) << loaded.error;
+  ASSERT_TRUE(model.success) << model.error;
+
+  OnnxPolygonBackend backend(store);
+  NestingRunRequest request;
+  request.method = NestingMethod::Hybrid;
+  request.model = model.model;
+  request.neuralRollouts = 2;
+  request.fallbackRandomIterations = 2;
+  request.timeoutMs = 0;
+  const NestingRunResult result = backend.run(loaded.document, request, {});
+  EXPECT_EQ(result.provenance, NestingProvenance::Hybrid);
+  EXPECT_TRUE(result.solution.has_value());
+
+  models.release(model.model);
+  documents.release(loaded.document);
+  std::filesystem::remove(input);
+}
+#endif

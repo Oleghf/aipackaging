@@ -64,6 +64,21 @@ aipackaging_add_test_executable(AIPackaging_SolverCompatibilityTests
 target_link_libraries(AIPackaging_SolverCompatibilityTests PRIVATE AIPackaging_SolverImpl AIPackaging_Solver)
 set_tests_properties(AIPackaging_SolverCompatibilityTests PROPERTIES LABELS "solver;contract;compatibility")
 
+if (BUILD_ONNX_BACKEND)
+  aipackaging_add_test_executable(AIPackaging_OnnxInferenceTests
+    "inference/testpolygononnxinference.cpp"
+  )
+  target_link_libraries(AIPackaging_OnnxInferenceTests PRIVATE
+    AIPackaging_OnnxInference AIPackaging_Json AIPackaging_PolygonCore
+  )
+  target_compile_definitions(AIPackaging_OnnxInferenceTests PRIVATE
+    AIPACKAGING_ONNX_TEST_MODEL="${CMAKE_SOURCE_DIR}/tests/fixtures/models/polygon-policy-smoke"
+    AIPACKAGING_ONNX_TEST_PROBLEM="${CMAKE_SOURCE_DIR}/python/tests/fixtures/polygon-smoke-problem.json"
+  )
+  set_tests_properties(AIPackaging_OnnxInferenceTests PROPERTIES LABELS "solver;inference;onnx;polygon")
+  aipackaging_copy_onnxruntime(AIPackaging_OnnxInferenceTests)
+endif()
+
 if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
   aipackaging_add_test_executable(AIPackaging_AppTests
     "core/app/testpackingcontroller.cpp"
@@ -95,6 +110,12 @@ if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
   target_link_libraries(AIPackaging_DesktopInfrastructureTests PRIVATE
     AIPackaging_DesktopInfrastructure AIPackaging_Search AIPackaging_Json AIPackaging_PolygonCore
   )
+  if (BUILD_ONNX_BACKEND)
+    target_compile_definitions(AIPackaging_DesktopInfrastructureTests PRIVATE
+      AIPACKAGING_ONNX_TEST_MODEL="${CMAKE_SOURCE_DIR}/tests/fixtures/models/polygon-policy-smoke"
+    )
+    aipackaging_copy_onnxruntime(AIPackaging_DesktopInfrastructureTests)
+  endif()
   set_tests_properties(AIPackaging_DesktopInfrastructureTests PROPERTIES LABELS "app;infrastructure;polygon")
 
   aipackaging_add_test_executable(AIPackaging_LegacyGeometryTests
@@ -193,6 +214,47 @@ if (BUILD_SOLVER_CLI)
       set_tests_properties("${validate_test}" PROPERTIES DEPENDS "${solve_test}" LABELS "cli;polygon")
     endforeach()
   endforeach()
+
+  if (BUILD_ONNX_BACKEND)
+    add_test(
+      NAME GridCli_RejectsNeuralSolver
+      COMMAND ${CMAKE_COMMAND}
+        "-DCLI=$<TARGET_FILE:AIPackaging_Cli>"
+        "-DINPUT=${CMAKE_SOURCE_DIR}/examples/grid/problem-small.json"
+        "-DOUTPUT=$<TARGET_FILE_DIR:AIPackaging_Cli>/grid-neural-rejected.json"
+        "-DSOLVER=neural-greedy"
+        "-DEXPECTED_EXIT=1"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/assert_cli_exit.cmake"
+    )
+    set_tests_properties(GridCli_RejectsNeuralSolver PROPERTIES LABELS "cli;onnx;grid")
+    add_test(
+      NAME PolygonCli_ValidateModel
+      COMMAND $<TARGET_FILE:AIPackaging_Cli> validate-model
+        --input "${CMAKE_SOURCE_DIR}/tests/fixtures/models/polygon-policy-smoke"
+    )
+    set_tests_properties(PolygonCli_ValidateModel PROPERTIES LABELS "cli;onnx;polygon")
+    set(neural_solution "$<TARGET_FILE_DIR:AIPackaging_Cli>/polygon-neural-smoke.json")
+    add_test(
+      NAME PolygonCli_SolveNeural
+      COMMAND $<TARGET_FILE:AIPackaging_Cli> solve
+        --input "${CMAKE_SOURCE_DIR}/python/tests/fixtures/polygon-smoke-problem.json"
+        --output "${neural_solution}"
+        --solver neural-greedy
+        --model "${CMAKE_SOURCE_DIR}/tests/fixtures/models/polygon-policy-smoke"
+        --timeout-ms 0
+    )
+    set_tests_properties(PolygonCli_SolveNeural PROPERTIES LABELS "cli;onnx;polygon")
+    add_test(
+      NAME PolygonCli_ValidateNeural
+      COMMAND $<TARGET_FILE:AIPackaging_Cli> validate
+        --problem "${CMAKE_SOURCE_DIR}/python/tests/fixtures/polygon-smoke-problem.json"
+        --solution "${neural_solution}"
+    )
+    set_tests_properties(PolygonCli_ValidateNeural PROPERTIES
+      DEPENDS PolygonCli_SolveNeural
+      LABELS "cli;onnx;polygon"
+    )
+  endif()
 endif()
 
 if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
@@ -248,6 +310,12 @@ if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_LegacyGeometryTests
     ALLOWED_DIRECT AIPackaging_Math AIPackaging_Domain AIPackaging_Contract
+  )
+endif()
+if (BUILD_ONNX_BACKEND)
+  aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_OnnxInferenceTests
+    ALLOWED_DIRECT AIPackaging_OnnxInference AIPackaging_Json AIPackaging_PolygonCore
   )
 endif()
 if (BUILD_DESKTOP)

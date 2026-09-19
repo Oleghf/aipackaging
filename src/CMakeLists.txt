@@ -2,6 +2,10 @@
 add_subdirectory("nesting/")
 add_subdirectory("solver/")
 
+if (BUILD_ONNX_BACKEND)
+  add_subdirectory("inference/onnx/")
+endif()
+
 if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
   add_subdirectory("core/domain/")
   add_subdirectory("core/contract/")
@@ -32,4 +36,8 @@ if (BUILD_DESKTOP)
 
   copy_target_dll(${PROJECT_NAME} AIPackaging_Math)
   copy_target_qt_dll(${PROJECT_NAME})
+  if (BUILD_ONNX_BACKEND)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE AIPACKAGING_HAS_ONNX_BACKEND=1)
+    aipackaging_copy_onnxruntime(${PROJECT_NAME})
+  endif()
 endif()

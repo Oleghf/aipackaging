@@ -34,6 +34,8 @@ signals:
   void requestOpenProblem();
   /// Запрашивает выбор пути и сохранение решения `polygon_solution`.
   void requestSaveSolution();
+  /// Запрашивает выбор каталога внешнего комплекта модели.
+  void requestOpenModel();
   /// Запрашивает запуск с текущими настройками.
   void requestStart();
   /// Запрашивает согласованную отмену текущего запуска.
@@ -46,6 +48,7 @@ private:
   QPushButton * startButton_;
   QPushButton * cancelButton_;
   QPushButton * fitButton_;
+  QPushButton * modelButton_;
   QComboBox * solverBox_;
   QToolButton * advancedToggle_;
   QGroupBox * advancedGroup_;
@@ -54,7 +57,9 @@ private:
   QSpinBox * beamWidthSpin_;
   QSpinBox * maxExpandedSpin_;
   QSpinBox * timeoutSpin_;
+  QSpinBox * neuralRolloutsSpin_;
   QLabel * problemLabel_;
+  QLabel * modelLabel_;
   QLabel * statusLabel_;
   QProgressBar * progressBar_;
   QTextEdit * metricsText_;

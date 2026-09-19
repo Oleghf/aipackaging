@@ -115,6 +115,27 @@ def _parser() -> argparse.ArgumentParser:
 
     polygon_run = commands.add_parser("verify-polygon-run", help="проверить файлы полигонального обучения")
     polygon_run.add_argument("--run-dir", type=Path, required=True)
+
+    polygon_export = commands.add_parser("export-polygon-onnx", help="экспортировать комплект полигональной модели ONNX")
+    polygon_export.add_argument("--checkpoint", type=Path, required=True)
+    polygon_export.add_argument("--config", type=Path, required=True)
+    polygon_export.add_argument("--output", type=Path, required=True)
+    polygon_export.add_argument("--model-id", default="hierarchical-polygon-policy-v1")
+
+    polygon_model = commands.add_parser("verify-polygon-model", help="проверить комплект полигональной модели ONNX")
+    polygon_model.add_argument("--model", type=Path, required=True)
+    polygon_model.add_argument("--checkpoint", type=Path)
+    polygon_model.add_argument("--config", type=Path)
+    polygon_model.add_argument("--dataset", type=Path)
+    polygon_model.add_argument("--smoke", action="store_true")
+
+    polygon_onnx_evaluate = commands.add_parser("evaluate-polygon-onnx", help="оценить полигональную модель ONNX")
+    polygon_onnx_evaluate.add_argument("--model", type=Path, required=True)
+    polygon_onnx_evaluate.add_argument("--config", type=Path, required=True)
+    polygon_onnx_evaluate.add_argument("--dataset", type=Path, required=True)
+    polygon_onnx_evaluate.add_argument("--output", type=Path, required=True)
+    polygon_onnx_evaluate.add_argument("--split", choices=("validation", "test"), default="validation")
+    polygon_onnx_evaluate.add_argument("--smoke", action="store_true")
     return parser
 
 
@@ -136,6 +157,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "evaluate-polygon": ml_commands.evaluate_polygon,
         "finalize-polygon-run": ml_commands.finalize_polygon_run,
         "verify-polygon-run": ml_commands.verify_polygon_run,
+        "export-polygon-onnx": ml_commands.export_polygon_onnx,
+        "verify-polygon-model": ml_commands.verify_polygon_model,
+        "evaluate-polygon-onnx": ml_commands.evaluate_polygon_onnx,
     }
     result = handlers[arguments.command](arguments)
     print(json.dumps(result, sort_keys=True))

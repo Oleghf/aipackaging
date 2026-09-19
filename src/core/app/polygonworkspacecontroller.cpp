@@ -15,10 +15,12 @@ bool validRequest(const NestingRunRequest & request)
 /// Сохраняет прикладные порты и публикует исходное пустое состояние.
 PolygonWorkspaceController::PolygonWorkspaceController(std::shared_ptr<IPolygonWorkspaceOutput> output,
                                                        std::shared_ptr<IPolygonDocumentGateway> documents,
-                                                       std::shared_ptr<INestingJobRunner> jobs)
+                                                       std::shared_ptr<INestingJobRunner> jobs,
+                                                       std::shared_ptr<IPolygonModelGateway> models)
   : output_(std::move(output))
   , documents_(std::move(documents))
   , jobs_(std::move(jobs))
+  , models_(std::move(models))
 {
   snapshot_.statusText = "Откройте задачу `polygon_problem` v1";
   publish();
@@ -30,6 +32,7 @@ PolygonWorkspaceController::~PolygonWorkspaceController()
   if (activeJob_)
     jobs_->cancel(*activeJob_);
   releaseSolution();
+  releaseModel();
   if (document_)
     documents_->release(*document_);
 }
@@ -49,6 +52,12 @@ PolygonWorkspaceActions PolygonWorkspaceController::actions()
     if (const auto self = weak.lock())
       self->saveSolution(path);
   };
+  result.openModel = [weak](const std::string & path)
+  {
+    if (const auto self = weak.lock())
+      return self->openModel(path);
+    return false;
+  };
   result.start = [weak](const NestingRunRequest & request)
   {
     if (const auto self = weak.lock())
@@ -60,6 +69,28 @@ PolygonWorkspaceActions PolygonWorkspaceController::actions()
       self->cancel();
   };
   return result;
+}
+
+/// Загружает комплект через порт и заменяет текущую модель только после полной проверки.
+bool PolygonWorkspaceController::openModel(const std::string & directory)
+{
+  if (directory.empty() || snapshot_.state == PolygonWorkspaceState::Running || !models_)
+    return false;
+  PolygonModelLoadResult loaded = models_->load(directory);
+  if (!loaded.success)
+  {
+    snapshot_.modelStatusText = "Ошибка загрузки модели: " + loaded.error;
+    publish();
+    return false;
+  }
+  releaseModel();
+  model_ = loaded.model;
+  snapshot_.modelReady = true;
+  snapshot_.modelId = std::move(loaded.modelId);
+  snapshot_.modelSha256 = std::move(loaded.modelSha256);
+  snapshot_.modelStatusText = "Модель проверена";
+  publish();
+  return true;
 }
 
 /// Загружает документ через порт и заменяет текущий только после полного успеха.
@@ -81,7 +112,14 @@ void PolygonWorkspaceController::openProblem(const std::string & filePath)
   if (document_)
     documents_->release(*document_);
   document_ = loaded.document;
+  const std::string modelId = snapshot_.modelId;
+  const std::string modelSha256 = snapshot_.modelSha256;
+  const std::string modelStatus = snapshot_.modelStatusText;
   snapshot_ = {};
+  snapshot_.modelReady = model_.has_value();
+  snapshot_.modelId = modelId;
+  snapshot_.modelSha256 = modelSha256;
+  snapshot_.modelStatusText = modelStatus;
   snapshot_.state = PolygonWorkspaceState::Ready;
   snapshot_.problemId = std::move(loaded.problemId);
   snapshot_.statusText = "Задача загружена";
@@ -111,9 +149,9 @@ void PolygonWorkspaceController::start(const NestingRunRequest & request)
     publish();
     return;
   }
-  if (request.method != NestingMethod::Baseline)
+  if (request.method != NestingMethod::Baseline && !model_)
   {
-    snapshot_.statusText = "Выбранный способ раскроя пока недоступен";
+    snapshot_.statusText = "Выбранный способ недоступен: требуется проверенная модель";
     publish();
     return;
   }
@@ -137,7 +175,9 @@ void PolygonWorkspaceController::start(const NestingRunRequest & request)
   };
 
   std::string error;
-  const std::optional<NestingJobHandle> job = jobs_->start(*document_, request, std::move(callbacks), error);
+  NestingRunRequest effectiveRequest = request;
+  effectiveRequest.model = request.method == NestingMethod::Baseline ? std::nullopt : model_;
+  const std::optional<NestingJobHandle> job = jobs_->start(*document_, effectiveRequest, std::move(callbacks), error);
   if (!job)
   {
     snapshot_.statusText = "Не удалось запустить поиск: " + error;
@@ -175,6 +215,8 @@ void PolygonWorkspaceController::publish()
   snapshot_.canRun = document_.has_value() && !running;
   snapshot_.canCancel = running;
   snapshot_.canSave = solution_.has_value() && !running;
+  snapshot_.canLoadModel = !running && static_cast<bool>(models_);
+  snapshot_.modelReady = model_.has_value();
   if (output_)
     output_->presentPolygonWorkspace(snapshot_);
 }
@@ -207,6 +249,8 @@ void PolygonWorkspaceController::acceptResult(NestingJobHandle job, NestingRunRe
   snapshot_.metrics = result.metrics;
   snapshot_.scene = std::move(result.scene);
   snapshot_.unplacedInstances = std::move(result.unplacedInstances);
+  if (!result.diagnostic.empty())
+    snapshot_.modelStatusText = std::move(result.diagnostic);
 
   if (result.completion == NestingCompletion::Cancelled)
   {
@@ -258,4 +302,16 @@ void PolygonWorkspaceController::releaseSolution() noexcept
   if (solution_)
     documents_->release(*solution_);
   solution_.reset();
+}
+
+/// Передаёт освобождение модели её шлюзу и очищает опубликованную идентичность.
+void PolygonWorkspaceController::releaseModel() noexcept
+{
+  if (model_ && models_)
+    models_->release(*model_);
+  model_.reset();
+  snapshot_.modelReady = false;
+  snapshot_.modelId.clear();
+  snapshot_.modelSha256.clear();
+  snapshot_.modelStatusText.clear();
 }

@@ -28,6 +28,16 @@ struct PolygonSolutionHandle
   friend bool operator==(const PolygonSolutionHandle &, const PolygonSolutionHandle &) = default;
 };
 
+/// Непостоянный идентификатор проверенного комплекта модели в текущем процессе.
+struct PolygonModelHandle
+{
+  std::uint64_t value = 0;
+  /// Сообщает, ссылается ли идентификатор на зарегистрированную модель.
+  explicit operator bool() const noexcept { return value != 0; }
+  /// Сравнивает два идентификатора одной процессной области.
+  friend bool operator==(const PolygonModelHandle &, const PolygonModelHandle &) = default;
+};
+
 /// Непостоянный идентификатор фонового запуска в текущем процессе.
 struct NestingJobHandle
 {
@@ -56,11 +66,20 @@ enum class BaselineAlgorithm : std::uint8_t
   Beam
 };
 
+/// Выбирает жадный или многократный способ применения нейросетевой политики.
+enum class NeuralSelectionMode : std::uint8_t
+{
+  Greedy,
+  BestOf
+};
+
 /// Задаёт параметры одного запуска без раскрытия типов поискового модуля.
 struct NestingRunRequest
 {
   NestingMethod method = NestingMethod::Baseline;
   BaselineAlgorithm algorithm = BaselineAlgorithm::AreaLeftBottom;
+  NeuralSelectionMode neuralSelection = NeuralSelectionMode::BestOf;
+  std::optional<PolygonModelHandle> model;
   std::uint64_t seed = 42;
   std::size_t randomIterations = 64;
   std::size_t beamWidth = 32;
@@ -75,7 +94,8 @@ enum class NestingProgressStage : std::uint8_t
 {
   Instances,
   RandomIterations,
-  ExpandedStates
+  ExpandedStates,
+  NeuralRollouts
 };
 
 /// Описывает ход выполнения одного фонового запуска.
@@ -161,6 +181,7 @@ struct NestingRunResult
   NestingCompletion completion = NestingCompletion::NoSolutionFound;
   NestingProvenance provenance = NestingProvenance::Baseline;
   std::string implementationName;
+  std::string diagnostic;
   std::string solutionStatus;
   bool partial = true;
   NestingObjectiveSummary objective;
@@ -194,6 +215,11 @@ struct PolygonWorkspaceSnapshot
   bool canRun = false;
   bool canCancel = false;
   bool canSave = false;
+  bool canLoadModel = true;
+  bool modelReady = false;
+  std::string modelId;
+  std::string modelSha256;
+  std::string modelStatusText;
   NestingProgress progress;
   NestingObjectiveSummary objective;
   NestingMetricsSummary metrics;
@@ -219,6 +245,16 @@ struct PolygonDocumentOperationResult
   std::string error;
 };
 
+/// Результат строгой загрузки внешнего комплекта полигональной модели.
+struct PolygonModelLoadResult
+{
+  bool success = false;
+  std::string error;
+  PolygonModelHandle model;
+  std::string modelId;
+  std::string modelSha256;
+};
+
 /// Набор функций для сообщений о ходе и результате работы.
 struct NestingJobCallbacks
 {
@@ -232,8 +268,21 @@ struct PolygonWorkspaceActions
 {
   std::function<void(const std::string &)> openProblem;
   std::function<void(const std::string &)> saveSolution;
+  std::function<bool(const std::string &)> openModel;
   std::function<void(const NestingRunRequest &)> start;
   std::function<void()> cancel;
+};
+
+/// Загружает и освобождает внешние комплекты модели без раскрытия ONNX Runtime.
+class IPolygonModelGateway
+{
+public:
+  /// Обеспечивает корректное уничтожение реализации через интерфейс.
+  virtual ~IPolygonModelGateway() = default;
+  /// Проверяет комплект модели и возвращает процессный идентификатор.
+  virtual PolygonModelLoadResult load(const std::string & directory) = 0;
+  /// Освобождает больше не используемую модель текущего процесса.
+  virtual void release(PolygonModelHandle model) noexcept = 0;
 };
 
 /// Загружает и сохраняет документы, скрывая JSON и файловую систему.
