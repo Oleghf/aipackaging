@@ -1,21 +1,31 @@
 #include <QApplication>
 
+#ifdef AIPACKAGING_LEGACY_DESKTOP
 #include <maincontroller.h>
+#include <qtview.h>
+#else
+#include <polygonmainwindow.h>
+#endif
 #include <polygondesktopinfrastructure.h>
 #include <polygonworkspacecontroller.h>
 #include <qtapplicationdispatcher.h>
-#include <qtview.h>
 
 int main(int argc, char * argv[])
 {
   QApplication app(argc, argv);
 
+#ifdef AIPACKAGING_LEGACY_DESKTOP
   QtView mainWindow;
+#else
+  PolygonMainWindow mainWindow;
+#endif
   mainWindow.show();
 
+#ifdef AIPACKAGING_LEGACY_DESKTOP
   std::shared_ptr<IView> view(&mainWindow, [](IView *) {});
   std::shared_ptr<MainController> mainController = std::make_shared<MainController>(view);
   view->addEventListener(mainController);
+#endif
 
   // Полигональный контур собирается отдельно от унаследованного клеточного контроллера.
   auto polygonOutput = std::shared_ptr<IPolygonWorkspaceOutput>(&mainWindow, [](IPolygonWorkspaceOutput *) {});

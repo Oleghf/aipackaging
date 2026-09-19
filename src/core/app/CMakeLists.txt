@@ -6,6 +6,7 @@ target_include_directories(AIPackaging_Application PUBLIC "${CMAKE_SOURCE_DIR}/s
 target_compile_features(AIPackaging_Application PUBLIC cxx_std_20)
 
 # Статическая библиотека унаследованных контроллеров.
+if ((BUILD_DESKTOP AND BUILD_LEGACY_DESKTOP) OR BUILD_LEGACY_TESTS)
 set(app_static_lib_name "AIPackaging_App")
 
 # Цель сборки - статическая библиотека
@@ -53,3 +54,4 @@ target_link_libraries(${app_static_lib_name} PUBLIC
 AIPackaging_Domain
 AIPackaging_Contract
 )
+endif()

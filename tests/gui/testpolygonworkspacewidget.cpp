@@ -6,7 +6,6 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QPushButton>
-#include <QTabWidget>
 #include <QThread>
 #include <QToolButton>
 #include <utility>
@@ -15,7 +14,11 @@
 #include <polygoncanvaswidget.h>
 #include <polygonworkspacewidget.h>
 #include <qtapplicationdispatcher.h>
+#ifdef AIPACKAGING_LEGACY_DESKTOP
+#include <QTabWidget>
+
 #include <qtview.h>
+#endif
 
 namespace
 {
@@ -52,6 +55,7 @@ TEST(PolygonWorkspaceWidget, DispatcherQueuesCallbackToQtThread)
 }
 
 /// Проверяет сохранение клеточного экрана и добавление отдельной полигональной вкладки.
+#ifdef AIPACKAGING_LEGACY_DESKTOP
 TEST(PolygonWorkspaceWidget, MainWindowContainsTwoWorkspaces)
 {
   ensureApplication();
@@ -62,6 +66,7 @@ TEST(PolygonWorkspaceWidget, MainWindowContainsTwoWorkspaces)
   EXPECT_EQ(tabs->tabText(0), QStringLiteral("Клеточный прототип"));
   EXPECT_EQ(tabs->tabText(1), QStringLiteral("Полигональный раскрой"));
 }
+#endif
 
 /// Проверяет базовый алгоритм по умолчанию, сигналы и блокировку элементов управления.
 TEST(PolygonWorkspaceWidget, ExposesConfiguredActionsAndRunningState)

@@ -79,7 +79,7 @@ if (BUILD_ONNX_BACKEND)
   aipackaging_copy_onnxruntime(AIPackaging_OnnxInferenceTests)
 endif()
 
-if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
+if ((BUILD_DESKTOP AND BUILD_LEGACY_DESKTOP) OR BUILD_LEGACY_TESTS)
   aipackaging_add_test_executable(AIPackaging_AppTests
     "core/app/testpackingcontroller.cpp"
     "core/app/testfigurepoolio.cpp"
@@ -98,6 +98,25 @@ if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
   )
   set_tests_properties(AIPackaging_AppTests PROPERTIES LABELS "app")
 
+  aipackaging_add_test_executable(AIPackaging_LegacyGeometryTests
+    "aipackaging_math/geometry/testpoint2d.cpp"
+    "aipackaging_math/geometry/testvector2d.cpp"
+    "aipackaging_math/geometry/testline2d.cpp"
+    "aipackaging_math/geometry/testcircle2d.cpp"
+    "aipackaging_math/geometry/testrect2d.cpp"
+    "aipackaging_math/geometry/testboundedcurve2d.cpp"
+    "aipackaging_math/algorithms/testalgs.cpp"
+    "aipackaging_math/algorithms/testCountour2D.cpp"
+    "aipackaging_math/algorithms/testmathutils.cpp"
+    "aipackaging_math/algorithms/testdataformat.cpp"
+  )
+  target_link_libraries(AIPackaging_LegacyGeometryTests PRIVATE
+    AIPackaging_Math AIPackaging_Domain AIPackaging_Contract
+  )
+  set_tests_properties(AIPackaging_LegacyGeometryTests PROPERTIES LABELS "legacy")
+endif()
+
+if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
   aipackaging_add_test_executable(AIPackaging_ApplicationTests
     "core/app/testpolygonworkspacecontroller.cpp"
   )
@@ -118,33 +137,21 @@ if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
   endif()
   set_tests_properties(AIPackaging_DesktopInfrastructureTests PROPERTIES LABELS "app;infrastructure;polygon")
 
-  aipackaging_add_test_executable(AIPackaging_LegacyGeometryTests
-    "aipackaging_math/geometry/testpoint2d.cpp"
-    "aipackaging_math/geometry/testvector2d.cpp"
-    "aipackaging_math/geometry/testline2d.cpp"
-    "aipackaging_math/geometry/testcircle2d.cpp"
-    "aipackaging_math/geometry/testrect2d.cpp"
-    "aipackaging_math/geometry/testboundedcurve2d.cpp"
-    "aipackaging_math/algorithms/testalgs.cpp"
-    "aipackaging_math/algorithms/testCountour2D.cpp"
-    "aipackaging_math/algorithms/testmathutils.cpp"
-    "aipackaging_math/algorithms/testdataformat.cpp"
-  )
-  target_link_libraries(AIPackaging_LegacyGeometryTests PRIVATE
-    AIPackaging_Math AIPackaging_Domain AIPackaging_Contract
-  )
-  set_tests_properties(AIPackaging_LegacyGeometryTests PROPERTIES LABELS "legacy")
 endif()
 
 if (BUILD_DESKTOP)
   aipackaging_add_test_executable(AIPackaging_GuiTests
-    "gui/testqtadapters.cpp"
-    "gui/testpolygonworkspacewidget.cpp"
+    "gui/testpolygonworkspacewidget.cpp" "gui/testpolygonmainwindow.cpp"
   )
+  if (BUILD_LEGACY_DESKTOP)
+    target_sources(AIPackaging_GuiTests PRIVATE "gui/testqtadapters.cpp")
+    target_compile_definitions(AIPackaging_GuiTests PRIVATE AIPACKAGING_LEGACY_DESKTOP=1)
+  endif()
   target_include_directories(AIPackaging_GuiTests PRIVATE "${CMAKE_SOURCE_DIR}/src/gui")
-  target_link_libraries(AIPackaging_GuiTests PRIVATE
-    AIPackaging_GUI AIPackaging_App AIPackaging_Application AIPackaging_Math AIPackaging_Contract
-  )
+  target_link_libraries(AIPackaging_GuiTests PRIVATE AIPackaging_GUI AIPackaging_Application)
+  if (BUILD_LEGACY_DESKTOP)
+    target_link_libraries(AIPackaging_GuiTests PRIVATE AIPackaging_App AIPackaging_Math AIPackaging_Contract)
+  endif()
   set_tests_properties(AIPackaging_GuiTests PROPERTIES LABELS "gui")
 endif()
 
@@ -257,12 +264,14 @@ if (BUILD_SOLVER_CLI)
   endif()
 endif()
 
-if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
+if ((BUILD_DESKTOP AND BUILD_LEGACY_DESKTOP) OR BUILD_LEGACY_TESTS)
   copy_target_dll(AIPackaging_AppTests AIPackaging_Math)
   copy_target_dll(AIPackaging_LegacyGeometryTests AIPackaging_Math)
 endif()
 if (BUILD_DESKTOP)
-  copy_target_dll(AIPackaging_GuiTests AIPackaging_Math)
+  if (BUILD_LEGACY_DESKTOP)
+    copy_target_dll(AIPackaging_GuiTests AIPackaging_Math)
+  endif()
   copy_target_qt_dll(AIPackaging_GuiTests)
 endif()
 
@@ -294,11 +303,17 @@ aipackaging_assert_target_dependencies(
   TARGET AIPackaging_SolverCompatibilityTests
   ALLOWED_DIRECT AIPackaging_SolverImpl AIPackaging_Solver
 )
-if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
+if ((BUILD_DESKTOP AND BUILD_LEGACY_DESKTOP) OR BUILD_LEGACY_TESTS)
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_AppTests
     ALLOWED_DIRECT AIPackaging_App AIPackaging_Math AIPackaging_Domain AIPackaging_Contract
   )
+  aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_LegacyGeometryTests
+    ALLOWED_DIRECT AIPackaging_Math AIPackaging_Domain AIPackaging_Contract
+  )
+endif()
+if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_ApplicationTests
     ALLOWED_DIRECT AIPackaging_Application
@@ -306,10 +321,6 @@ if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_DesktopInfrastructureTests
     ALLOWED_DIRECT AIPackaging_DesktopInfrastructure AIPackaging_Search AIPackaging_Json AIPackaging_PolygonCore
-  )
-  aipackaging_assert_target_dependencies(
-    TARGET AIPackaging_LegacyGeometryTests
-    ALLOWED_DIRECT AIPackaging_Math AIPackaging_Domain AIPackaging_Contract
   )
 endif()
 if (BUILD_ONNX_BACKEND)
@@ -319,9 +330,17 @@ if (BUILD_ONNX_BACKEND)
   )
 endif()
 if (BUILD_DESKTOP)
-  aipackaging_assert_target_dependencies(
-    TARGET AIPackaging_GuiTests
-    ALLOW_QT
-    ALLOWED_DIRECT AIPackaging_GUI AIPackaging_App AIPackaging_Application AIPackaging_Math AIPackaging_Contract
-  )
+  if (BUILD_LEGACY_DESKTOP)
+    aipackaging_assert_target_dependencies(
+      TARGET AIPackaging_GuiTests
+      ALLOW_QT
+      ALLOWED_DIRECT AIPackaging_GUI AIPackaging_App AIPackaging_Application AIPackaging_Math AIPackaging_Contract
+    )
+  else()
+    aipackaging_assert_target_dependencies(
+      TARGET AIPackaging_GuiTests
+      ALLOW_QT
+      ALLOWED_DIRECT AIPackaging_GUI AIPackaging_Application
+    )
+  endif()
 endif()

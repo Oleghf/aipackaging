@@ -26,13 +26,14 @@ include("${CMAKE_SOURCE_DIR}/cmake/architecture_checks.cmake")
 include(FetchContent)
 
 option(BUILD_DESKTOP "Build the Qt desktop application" ON)
+option(BUILD_LEGACY_DESKTOP "Build the transitional cell-grid desktop screen" ON)
 option(BUILD_SOLVER_CLI "Build the headless grid solver CLI" ON)
 option(BUILD_PYTHON_BINDINGS "Build the optional Python ML bindings" OFF)
 option(BUILD_ONNX_BACKEND "Build the optional polygon ONNX inference backend" OFF)
 option(BUILD_TESTS "Build tests" OFF)
 option(BUILD_LEGACY_TESTS "Build legacy domain, application and geometry tests" OFF)
 
-if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
+if ((BUILD_DESKTOP AND BUILD_LEGACY_DESKTOP) OR BUILD_LEGACY_TESTS)
   FetchContent_Declare(
     AIPackaging_Math
     GIT_REPOSITORY https://gitverse.ru/polytech_kolomna/aipackaging_math.git
