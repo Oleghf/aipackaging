@@ -10,21 +10,24 @@
 PolygonMainWindow::PolygonMainWindow(QWidget * parent)
   : QMainWindow(parent)
   , workspace_(new PolygonWorkspaceWidget(this))
+  , openProblemAction_(nullptr)
+  , saveSolutionAction_(nullptr)
+  , openModelAction_(nullptr)
 {
   setObjectName(QStringLiteral("polygonMainWindow"));
   setWindowTitle(tr("AIPackaging — полигональный раскрой"));
   setCentralWidget(workspace_);
 
   QMenu * fileMenu = menuBar()->addMenu(tr("Файл"));
-  QAction * openProblem = fileMenu->addAction(tr("Открыть задачу"));
-  QAction * saveSolution = fileMenu->addAction(tr("Сохранить решение"));
-  QAction * openModel = fileMenu->addAction(tr("Загрузить модель"));
-  openProblem->setShortcut(QKeySequence::Open);
-  saveSolution->setShortcut(QKeySequence::Save);
+  openProblemAction_ = fileMenu->addAction(tr("Открыть задачу"));
+  saveSolutionAction_ = fileMenu->addAction(tr("Сохранить решение"));
+  openModelAction_ = fileMenu->addAction(tr("Загрузить модель"));
+  openProblemAction_->setShortcut(QKeySequence::Open);
+  saveSolutionAction_->setShortcut(QKeySequence::Save);
 
-  connect(openProblem, &QAction::triggered, workspace_, &PolygonWorkspaceWidget::requestOpenProblem);
-  connect(saveSolution, &QAction::triggered, workspace_, &PolygonWorkspaceWidget::requestSaveSolution);
-  connect(openModel, &QAction::triggered, workspace_, &PolygonWorkspaceWidget::requestOpenModel);
+  connect(openProblemAction_, &QAction::triggered, workspace_, &PolygonWorkspaceWidget::requestOpenProblem);
+  connect(saveSolutionAction_, &QAction::triggered, workspace_, &PolygonWorkspaceWidget::requestSaveSolution);
+  connect(openModelAction_, &QAction::triggered, workspace_, &PolygonWorkspaceWidget::requestOpenModel);
 
   connect(workspace_, &PolygonWorkspaceWidget::requestOpenProblem, this,
           [this]()
@@ -68,6 +71,9 @@ PolygonMainWindow::PolygonMainWindow(QWidget * parent)
             if (actions_.cancel)
               actions_.cancel();
           });
+
+  // До первого снимка контроллера файловое меню должно совпадать с пустым состоянием виджета.
+  presentPolygonWorkspace({});
 }
 
 /// Сохраняет функции действий и повторно проверяет ранее выбранный комплект модели.
@@ -83,4 +89,7 @@ void PolygonMainWindow::setPolygonWorkspaceActions(PolygonWorkspaceActions actio
 void PolygonMainWindow::presentPolygonWorkspace(const PolygonWorkspaceSnapshot & snapshot)
 {
   workspace_->present(snapshot);
+  openProblemAction_->setEnabled(snapshot.canOpen);
+  saveSolutionAction_->setEnabled(snapshot.canSave);
+  openModelAction_->setEnabled(snapshot.canLoadModel);
 }

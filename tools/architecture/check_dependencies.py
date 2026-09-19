@@ -279,7 +279,20 @@ def check_repository(root: Path, rules_path: Path) -> list[Violation]:
     """Возвращает полный список нарушений архитектурных границ."""
 
     rules = load_rules(rules_path)
-    return sorted(scan_cpp(root, rules) + scan_python(root, rules), key=lambda item: (str(item.path), item.line))
+    violations = scan_cpp(root, rules) + scan_python(root, rules)
+    for relative in rules.get("retiredDirectories", []):
+        directory = root / relative
+        if directory.exists():
+            violations.extend(
+                Violation(path, 1, "унаследованный настольный контур запрещён после A8")
+                for path in directory.rglob("*")
+                if path.is_file()
+            )
+    for relative in rules.get("retiredFiles", []):
+        path = root / relative
+        if path.is_file():
+            violations.append(Violation(path, 1, "унаследованный настольный файл запрещён после A8"))
+    return sorted(violations, key=lambda item: (str(item.path), item.line))
 
 
 def main() -> int:

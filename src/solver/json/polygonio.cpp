@@ -308,6 +308,9 @@ PolygonProblemLoadResult loadPolygonProblemFromText(const std::string & text)
   {
     return problemFailure(std::string("invalid JSON: ") + error.what());
   }
+  // Унаследованная клеточная сцена не является полигональной задачей и не преобразуется без масштаба клетки.
+  if (root.is_object() && root.value("format", Json()) == "aipackaging.packing_scene")
+    return problemFailure("Формат `aipackaging.packing_scene` больше не поддерживается; откройте `polygon_problem` v1");
   if (!onlyKeys(root, {"format", "version", "problemId", "sheet", "manufacturing", "parts", "objective"}))
     return problemFailure("polygon problem contains unknown fields or is not an object");
   PolygonProblem problem;

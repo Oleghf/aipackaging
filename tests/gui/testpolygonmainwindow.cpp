@@ -1,4 +1,5 @@
 #include <memory>
+#include <QAction>
 #include <QApplication>
 #include <QMenuBar>
 #include <QPushButton>
@@ -44,10 +45,17 @@ TEST(PolygonMainWindow, PresentsRunningAndCompletedState)
   running.state = PolygonWorkspaceState::Running;
   running.canOpen = false;
   running.canCancel = true;
+  running.canLoadModel = false;
   window.presentPolygonWorkspace(running);
   EXPECT_FALSE(window.findChild<QPushButton *>("polygonOpenButton")->isEnabled());
   EXPECT_FALSE(window.findChild<QPushButton *>("polygonStartButton")->isEnabled());
   EXPECT_TRUE(window.findChild<QPushButton *>("polygonCancelButton")->isEnabled());
+  ASSERT_EQ(window.menuBar()->actions().size(), 1);
+  const QList<QAction *> fileActions = window.menuBar()->actions().front()->menu()->actions();
+  ASSERT_EQ(fileActions.size(), 3);
+  EXPECT_FALSE(fileActions[0]->isEnabled());
+  EXPECT_FALSE(fileActions[1]->isEnabled());
+  EXPECT_FALSE(fileActions[2]->isEnabled());
 
   PolygonWorkspaceSnapshot complete;
   complete.state = PolygonWorkspaceState::Completed;
@@ -60,4 +68,7 @@ TEST(PolygonMainWindow, PresentsRunningAndCompletedState)
   EXPECT_TRUE(window.findChild<QPushButton *>("polygonOpenButton")->isEnabled());
   EXPECT_TRUE(window.findChild<QPushButton *>("polygonSaveButton")->isEnabled());
   EXPECT_FALSE(window.findChild<QPushButton *>("polygonCancelButton")->isEnabled());
+  EXPECT_TRUE(fileActions[0]->isEnabled());
+  EXPECT_TRUE(fileActions[1]->isEnabled());
+  EXPECT_TRUE(fileActions[2]->isEnabled());
 }

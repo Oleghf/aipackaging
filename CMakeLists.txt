@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.27)
-project("AIPackaging" VERSION 0.8.0 LANGUAGES CXX)
+project("AIPackaging" VERSION 0.9.0 LANGUAGES CXX)
 
 set(AIPACKAGING_BUILD_REVISION "unknown")
 find_package(Git QUIET)
@@ -26,21 +26,11 @@ include("${CMAKE_SOURCE_DIR}/cmake/architecture_checks.cmake")
 include(FetchContent)
 
 option(BUILD_DESKTOP "Build the Qt desktop application" ON)
-option(BUILD_LEGACY_DESKTOP "Build the transitional cell-grid desktop screen" ON)
 option(BUILD_SOLVER_CLI "Build the headless grid solver CLI" ON)
 option(BUILD_PYTHON_BINDINGS "Build the optional Python ML bindings" OFF)
 option(BUILD_ONNX_BACKEND "Build the optional polygon ONNX inference backend" OFF)
 option(BUILD_TESTS "Build tests" OFF)
-option(BUILD_LEGACY_TESTS "Build legacy domain, application and geometry tests" OFF)
-
-if ((BUILD_DESKTOP AND BUILD_LEGACY_DESKTOP) OR BUILD_LEGACY_TESTS)
-  FetchContent_Declare(
-    AIPackaging_Math
-    GIT_REPOSITORY https://gitverse.ru/polytech_kolomna/aipackaging_math.git
-    GIT_TAG        9d0a95b8f8fa7dccfddfcc6eabcda1f664705d22
-  )
-  FetchContent_MakeAvailable(AIPackaging_Math)
-endif()
+option(BUILD_APPLICATION_TESTS "Build polygon application and infrastructure tests without Qt" OFF)
 
 set(JSON_BuildTests OFF CACHE INTERNAL "Disable nlohmann/json tests")
 set(CLIPPER2_TESTS OFF CACHE BOOL "Disable Clipper2 tests" FORCE)

@@ -6,6 +6,7 @@
 #include <polygonworkspaceview.h>
 
 class PolygonWorkspaceWidget;
+class QAction;
 
 /// Показывает только полигональный раскрой и передаёт действия прикладному контроллеру.
 class PolygonMainWindow final : public QMainWindow,
@@ -24,6 +25,9 @@ public:
 
 private:
   PolygonWorkspaceWidget * workspace_;
+  QAction * openProblemAction_;
+  QAction * saveSolutionAction_;
+  QAction * openModelAction_;
   PolygonWorkspaceActions actions_;
 };
 

@@ -26,6 +26,16 @@ TEST(PolygonIo, RoundTripsProblemAndRejectsUnknownField)
   EXPECT_FALSE(loadPolygonProblemFromText(invalid).success);
 }
 
+/// Проверяет явную диагностику неподдерживаемой унаследованной клеточной сцены.
+TEST(PolygonIo, RejectsRetiredPackingScene)
+{
+  const PolygonProblemLoadResult loaded = loadPolygonProblemFromText(
+    R"({"format":"aipackaging.packing_scene","version":1,"board":{"columns":1,"rows":1,"unit":"cell"},"objects":[],"actions":[]})");
+  EXPECT_FALSE(loaded.success);
+  EXPECT_NE(loaded.error.find("aipackaging.packing_scene"), std::string::npos);
+  EXPECT_NE(loaded.error.find("больше не поддерживается"), std::string::npos);
+}
+
 /// Проверяет, что независимый валидатор обнаруживает подмену целевой функции.
 TEST(PolygonIo, RejectsMismatchedSolutionObjective)
 {

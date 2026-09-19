@@ -1,8 +1,20 @@
 {
   "version": 1,
+  "retiredDirectories": [
+    "src/core/domain",
+    "src/core/contract",
+    "src/core/app/services",
+    "tests/aipackaging_math"
+  ],
+  "retiredFiles": [
+    "src/core/app/maincontroller.cpp",
+    "src/core/app/maincontroller.h",
+    "src/gui/qtview.cpp",
+    "src/gui/qtview.h",
+    "src/gui/packagingwidget.cpp",
+    "src/gui/packagingwidget.h"
+  ],
   "layers": {
-    "contract": "src/core/contract",
-    "domain": "src/core/domain",
     "app": "src/core/app",
     "nesting_core": "src/nesting/core",
     "grid_core": "src/solver/grid",
@@ -18,17 +30,8 @@
     "python_binding": "src/python"
   },
   "allowedInternalDependencies": {
-    "contract": [
-      "contract"
-    ],
-    "domain": [
-      "domain",
-      "contract"
-    ],
     "app": [
-      "app",
-      "domain",
-      "contract"
+      "app"
     ],
     "nesting_core": [
       "nesting_core"
@@ -96,8 +99,7 @@
     ],
     "gui": [
       "gui",
-      "app",
-      "contract"
+      "app"
     ],
     "cli": [
       "cli",

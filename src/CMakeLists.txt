@@ -6,12 +6,7 @@ if (BUILD_ONNX_BACKEND)
   add_subdirectory("inference/onnx/")
 endif()
 
-if ((BUILD_DESKTOP AND BUILD_LEGACY_DESKTOP) OR BUILD_LEGACY_TESTS)
-  add_subdirectory("core/domain/")
-  add_subdirectory("core/contract/")
-endif()
-
-if (BUILD_DESKTOP OR BUILD_LEGACY_TESTS)
+if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
   add_subdirectory("core/app/")
   add_subdirectory("infrastructure/")
 endif()
@@ -36,12 +31,6 @@ if (BUILD_DESKTOP)
   target_include_directories(${PROJECT_NAME} PUBLIC "${CMAKE_SOURCE_DIR}/src")
   target_link_libraries(${PROJECT_NAME} PRIVATE
     AIPackaging_Application AIPackaging_DesktopInfrastructure AIPackaging_GUI)
-
-  if (BUILD_LEGACY_DESKTOP)
-    target_link_libraries(${PROJECT_NAME} PRIVATE AIPackaging_App AIPackaging_Math)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE AIPACKAGING_LEGACY_DESKTOP=1)
-    copy_target_dll(${PROJECT_NAME} AIPackaging_Math)
-  endif()
 
   copy_target_qt_dll(${PROJECT_NAME})
   if (BUILD_ONNX_BACKEND)

@@ -61,6 +61,11 @@ endfunction()
 
 # Фиксирует разрешённый граф рабочих целей сборки после их создания.
 function(aipackaging_check_production_target_graph)
+  foreach(retired_target IN ITEMS AIPackaging_Math AIPackaging_Domain AIPackaging_Contract AIPackaging_App)
+    if (TARGET "${retired_target}")
+      message(FATAL_ERROR "Architecture check: retired desktop target ${retired_target} must not be created")
+    endif()
+  endforeach()
   aipackaging_assert_target_dependencies(TARGET AIPackaging_NestingCore)
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_SearchContracts
@@ -117,22 +122,7 @@ function(aipackaging_check_production_target_graph)
     ALLOWED_PUBLIC AIPackaging_SolverImpl ${aipackaging_nesting_modules}
   )
 
-  if (TARGET AIPackaging_Contract)
-    aipackaging_assert_target_dependencies(
-      TARGET AIPackaging_Contract
-      ALLOWED_DIRECT AIPackaging_Math
-      ALLOWED_PUBLIC AIPackaging_Math
-    )
-    aipackaging_assert_target_dependencies(
-      TARGET AIPackaging_Domain
-      ALLOWED_DIRECT AIPackaging_Math AIPackaging_Contract
-      ALLOWED_PUBLIC AIPackaging_Math AIPackaging_Contract
-    )
-    aipackaging_assert_target_dependencies(
-      TARGET AIPackaging_App
-      ALLOWED_DIRECT AIPackaging_Domain AIPackaging_Contract
-      ALLOWED_PUBLIC AIPackaging_Domain AIPackaging_Contract AIPackaging_Math
-    )
+  if (TARGET AIPackaging_Application)
     aipackaging_assert_target_dependencies(
       TARGET AIPackaging_Application
     )
@@ -161,15 +151,15 @@ function(aipackaging_check_production_target_graph)
     aipackaging_assert_target_dependencies(
       TARGET AIPackaging_GUI
       ALLOW_QT
-      ALLOWED_DIRECT AIPackaging_Contract AIPackaging_Math AIPackaging_App AIPackaging_Application
-      ALLOWED_PUBLIC AIPackaging_Contract AIPackaging_Math AIPackaging_App AIPackaging_Application AIPackaging_Domain
+      ALLOWED_DIRECT AIPackaging_Application
+      ALLOWED_PUBLIC AIPackaging_Application
     )
   endif()
   if (TARGET AIPackaging)
     aipackaging_assert_target_dependencies(
       TARGET AIPackaging
       ALLOW_QT
-      ALLOWED_DIRECT AIPackaging_App AIPackaging_Application AIPackaging_DesktopInfrastructure AIPackaging_GUI AIPackaging_Math
+      ALLOWED_DIRECT AIPackaging_Application AIPackaging_DesktopInfrastructure AIPackaging_GUI
     )
   endif()
 endfunction()

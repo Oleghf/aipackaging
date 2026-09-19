@@ -82,6 +82,26 @@ private:
   std::deque<std::function<void()>> queue_;
 };
 
+/// Удерживает рабочий поток до запроса отмены при разрушении средства запуска.
+class BlockingBackend final : public IPolygonNestingBackend
+{
+public:
+  std::atomic<bool> entered = false;
+  std::atomic<bool> finished = false;
+
+  /// Ожидает отмены, не создавая сохраняемого результата.
+  NestingRunResult run(PolygonDocumentHandle, const NestingRunRequest &, const Control & control) override
+  {
+    entered = true;
+    while (!control.cancellationRequested())
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    finished = true;
+    NestingRunResult result;
+    result.completion = NestingCompletion::Cancelled;
+    return result;
+  }
+};
+
 /// Ожидает выполнения условия с коротким предельным сроком.
 bool waitUntil(const std::function<bool()> & predicate)
 {
@@ -210,6 +230,21 @@ TEST(PolygonDesktopInfrastructure, CancellationReturnsUnsavablePartial)
   EXPECT_EQ(completed.completion, NestingCompletion::Cancelled);
   EXPECT_FALSE(completed.solution.has_value());
   std::filesystem::remove(input);
+}
+
+/// Проверяет, что закрытие рабочего контура запрашивает отмену и присоединяет поток.
+TEST(PolygonDesktopInfrastructure, DestructionStopsAndJoinsWorker)
+{
+  auto backend = std::make_shared<BlockingBackend>();
+  auto dispatcher = std::make_shared<QueueDispatcher>();
+  {
+    StdThreadNestingJobRunner runner(backend, dispatcher);
+    NestingJobCallbacks callbacks;
+    std::string error;
+    ASSERT_TRUE(runner.start({1}, {}, std::move(callbacks), error).has_value()) << error;
+    ASSERT_TRUE(waitUntil([&]() { return backend->entered.load(); }));
+  }
+  EXPECT_TRUE(backend->finished.load());
 }
 
 #ifdef AIPACKAGING_HAS_ONNX_BACKEND

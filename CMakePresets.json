@@ -44,7 +44,7 @@
             "displayName": "Windows Tests",
             "inherits": "windows-base",
             "cacheVariables": {
-                "BUILD_LEGACY_TESTS": "ON",
+                "BUILD_APPLICATION_TESTS": "ON",
                 "BUILD_ONNX_BACKEND": "ON",
                 "BUILD_TESTS": "ON"
             }
@@ -57,7 +57,7 @@
             "cacheVariables": {
                 "BUILD_DESKTOP": "OFF",
                 "BUILD_ONNX_BACKEND": "OFF",
-                "BUILD_LEGACY_TESTS": "ON",
+                "BUILD_APPLICATION_TESTS": "ON",
                 "BUILD_SOLVER_CLI": "ON",
                 "BUILD_TESTS": "ON",
                 "CMAKE_BUILD_TYPE": "Debug"
@@ -71,7 +71,7 @@
             "cacheVariables": {
                 "BUILD_DESKTOP": "OFF",
                 "BUILD_ONNX_BACKEND": "OFF",
-                "BUILD_LEGACY_TESTS": "OFF",
+                "BUILD_APPLICATION_TESTS": "OFF",
                 "BUILD_SOLVER_CLI": "ON",
                 "BUILD_TESTS": "ON",
                 "CMAKE_BUILD_TYPE": "Debug"
@@ -114,7 +114,7 @@
             "displayName": "MacOS Tests",
             "inherits": "macos-base",
             "cacheVariables": {
-                "BUILD_LEGACY_TESTS": "ON",
+                "BUILD_APPLICATION_TESTS": "ON",
                 "BUILD_TESTS": "ON"
             }
         },
@@ -146,7 +146,7 @@
             "displayName": "Linux Tests",
             "inherits": "linux-base",
             "cacheVariables": {
-                "BUILD_LEGACY_TESTS": "ON",
+                "BUILD_APPLICATION_TESTS": "ON",
                 "BUILD_TESTS": "ON"
             }
         },
@@ -158,7 +158,7 @@
             "cacheVariables": {
                 "BUILD_DESKTOP": "OFF",
                 "BUILD_ONNX_BACKEND": "OFF",
-                "BUILD_LEGACY_TESTS": "ON",
+                "BUILD_APPLICATION_TESTS": "ON",
                 "BUILD_SOLVER_CLI": "ON",
                 "BUILD_TESTS": "ON",
                 "CMAKE_BUILD_TYPE": "Debug"
@@ -172,7 +172,7 @@
             "cacheVariables": {
                 "BUILD_DESKTOP": "OFF",
                 "BUILD_ONNX_BACKEND": "OFF",
-                "BUILD_LEGACY_TESTS": "OFF",
+                "BUILD_APPLICATION_TESTS": "OFF",
                 "BUILD_SOLVER_CLI": "ON",
                 "BUILD_TESTS": "ON",
                 "CMAKE_BUILD_TYPE": "Debug"

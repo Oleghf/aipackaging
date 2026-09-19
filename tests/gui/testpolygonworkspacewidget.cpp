@@ -14,11 +14,6 @@
 #include <polygoncanvaswidget.h>
 #include <polygonworkspacewidget.h>
 #include <qtapplicationdispatcher.h>
-#ifdef AIPACKAGING_LEGACY_DESKTOP
-#include <QTabWidget>
-
-#include <qtview.h>
-#endif
 
 namespace
 {
@@ -53,20 +48,6 @@ TEST(PolygonWorkspaceWidget, DispatcherQueuesCallbackToQtThread)
   EXPECT_TRUE(called);
   EXPECT_EQ(deliveredThread, application->thread());
 }
-
-/// Проверяет сохранение клеточного экрана и добавление отдельной полигональной вкладки.
-#ifdef AIPACKAGING_LEGACY_DESKTOP
-TEST(PolygonWorkspaceWidget, MainWindowContainsTwoWorkspaces)
-{
-  ensureApplication();
-  QtView view;
-  const auto * tabs = view.findChild<QTabWidget *>("workspaceTabs");
-  ASSERT_NE(tabs, nullptr);
-  EXPECT_EQ(tabs->count(), 2);
-  EXPECT_EQ(tabs->tabText(0), QStringLiteral("Клеточный прототип"));
-  EXPECT_EQ(tabs->tabText(1), QStringLiteral("Полигональный раскрой"));
-}
-#endif
 
 /// Проверяет базовый алгоритм по умолчанию, сигналы и блокировку элементов управления.
 TEST(PolygonWorkspaceWidget, ExposesConfiguredActionsAndRunningState)

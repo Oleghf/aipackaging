@@ -1,33 +1,19 @@
 #include <QApplication>
 
-#ifdef AIPACKAGING_LEGACY_DESKTOP
-#include <maincontroller.h>
-#include <qtview.h>
-#else
-#include <polygonmainwindow.h>
-#endif
 #include <polygondesktopinfrastructure.h>
+#include <polygonmainwindow.h>
 #include <polygonworkspacecontroller.h>
 #include <qtapplicationdispatcher.h>
 
+/// Создаёт полигональное окно и его адаптеры в порядке безопасного завершения фоновой работы.
 int main(int argc, char * argv[])
 {
   QApplication app(argc, argv);
 
-#ifdef AIPACKAGING_LEGACY_DESKTOP
-  QtView mainWindow;
-#else
   PolygonMainWindow mainWindow;
-#endif
   mainWindow.show();
 
-#ifdef AIPACKAGING_LEGACY_DESKTOP
-  std::shared_ptr<IView> view(&mainWindow, [](IView *) {});
-  std::shared_ptr<MainController> mainController = std::make_shared<MainController>(view);
-  view->addEventListener(mainController);
-#endif
-
-  // Полигональный контур собирается отдельно от унаследованного клеточного контроллера.
+  // Порядок объявления удерживает окно дольше контроллера и фонового средства запуска.
   auto polygonOutput = std::shared_ptr<IPolygonWorkspaceOutput>(&mainWindow, [](IPolygonWorkspaceOutput *) {});
   auto polygonStore = std::make_shared<PolygonArtifactStore>();
   auto polygonDocuments = std::make_shared<LocalPolygonDocumentGateway>(polygonStore);

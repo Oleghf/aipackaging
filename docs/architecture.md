@@ -2,19 +2,12 @@
 
 ## Текущая система
 
-```text
-Qt GUI
-  -> контроллеры, команды и стратегии приложения
-    -> клеточная доменная модель и валидация
-      -> геометрические примитивы AIPackaging_Math
-```
+После A8 настольный интерфейс содержит только полигональную рабочую область.
+Унаследованные `Board/Figure`, универсальные события и зависимость от
+`AIPackaging_Math` удалены. Клеточный исследовательский контур остаётся
+самостоятельным и не зависит от Qt.
 
-`FirstFitAutomaticPlacementStrategy` перебирает позиции в порядке строк.
-`AutomaticPackPlanner` строит раскладку на временной доске и применяет только
-полный план. Граница стратегии пригодна для повторного использования, но
-клеточная `Figure` не является целевой полигональной моделью.
-
-Параллельно реализован независимый от Qt модульный контур раскроя:
+Модульный контур раскроя:
 
 ```text
 JSON -> GridCore / PolygonCore -> Search -> independently validated solution
@@ -27,9 +20,9 @@ JSON -> GridCore / PolygonCore -> Search -> independently validated solution
 допустимостью, кандидатами и целевой функцией; `Search` — базовыми алгоритмами, `Json` —
 адаптерами форматов обмена, а `Learning` — пошаговыми средами. `SearchContracts`
 отделяет конфигурацию, ход выполнения и управление алгоритмом от его реализации.
-`AIPackaging_SolverImpl` и старое имя
-`AIPackaging_Solver` остаются только `INTERFACE` совместимость цели сборки до миграции
-прикладной слой/GUI в A6. Контур не использует `Board/Figure`. CLI сохраняет полный либо
+`AIPackaging_SolverImpl` и старое имя `AIPackaging_Solver` остаются
+совместимыми агрегирующими целями сборки для исследовательского C++ API;
+прикладной слой и GUI от них не зависят. CLI сохраняет полный либо
 лучший частичный результат вместе с конфигурацией и метриками.
 
 M4 добавляет второй, также независимый от Qt контур:
@@ -191,14 +184,12 @@ M2 сохраняют совместимый формат v1.
 
 ### Настольное приложение
 
-Qt отвечает за редактирование, визуализацию и проверку пользователем. GUI зависит
-от прикладного интерфейса решателя и не содержит столкновение или ML-логику.
-
-M5 сохраняет клеточный экран и добавляет отдельный доступный только для чтения полигональный
-рабочая область:
+Qt отвечает за визуализацию, действия пользователя и выбор файлов. GUI зависит
+только от прикладных структур и не содержит геометрической или нейросетевой
+логики. После A8 клеточная вкладка и ручное редактирование отсутствуют:
 
 ```text
-PolygonWorkspaceWidget -> PolygonWorkspaceController -> INestingJobRunner
+PolygonMainWindow -> PolygonWorkspaceWidget -> PolygonWorkspaceController -> INestingJobRunner
                                                    -> IPolygonNestingBackend
                                                       -> BaselinePolygonBackend
                                                       -> OnnxPolygonBackend
@@ -240,9 +231,9 @@ Solution: placements[], feasibility, objectiveComponents, solverMetadata
 - Нейросеть и базовый алгоритм используют один валидатор и одну целевую функцию.
 - Допуски аппроксимации входят во входные данные или метаданные запуска.
 
-Направление зависимостей: `gui -> app -> domain`; адаптеры решателей зависят от
-контракта решателя и домена, но домен не зависит от Qt Widgets, PyTorch, ONNX
-механизм выполнения или конкретного алгоритма.
+Направление зависимостей: `GUI -> Application <- DesktopInfrastructure`.
+Инфраструктура зависит от полигонального ядра, поиска и JSON; прикладной слой
+не зависит от Qt, JSON, ONNX Runtime или конкретного решателя.
 
 Фактический модульный сборка граф после A3:
 
@@ -258,14 +249,18 @@ Learning <- GridCore + PolygonCore
 OnnxInference <- Learning + Search + ONNX Runtime (PRIVATE)
 
 SolverImpl (INTERFACE) <- Search + Json + Learning
-Solver (INTERFACE) <- SolverImpl <- legacy App / GUI
+Solver (INTERFACE) <- SolverImpl (совместимость исследовательского API)
+
+GUI -> Application <- DesktopInfrastructure -> Search + Json + PolygonCore
+                                      \-> OnnxInference (при включённом ONNX)
 ```
 
-`NestingCore`, `GridCore`, `SearchContracts` и `Learning` не линкуют Qt, `Math`,
+`NestingCore`, `GridCore`, `SearchContracts` и `Learning` не линкуют Qt,
 JSON или Python. Clipper2 доступен только реализации полигональный кандидат генерация,
 а `nlohmann`/json — только `Json`. CLI напрямую использует `Search` и `Json`,
 pybind11-модуль — `Search`, `Json` и `Learning`. При `BUILD_DESKTOP=OFF` и
-`BUILD_LEGACY_TESTS=OFF` CMake не создаёт `Math`, домен, контракты и прикладной слой цели сборки.
+`BUILD_APPLICATION_TESTS=OFF` CMake не создаёт прикладной слой и GUI. Ни одна
+конфигурация A8 не создаёт `AIPackaging_Math`, `Domain` или `Contract`.
 
 Внутри `Search` после A4 общий механизм выполнения управляет `steady_clock`, совместный
 отмена, ход выполнения, счётчиками, метаданные и жизненный цикл упорядоченный/случайный/лучевой поиск.

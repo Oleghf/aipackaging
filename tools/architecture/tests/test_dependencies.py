@@ -17,6 +17,20 @@ from check_dependencies import check_repository  # noqa: E402
 class DependencyCheckerTests(unittest.TestCase):
     """Проверяет, что анализатор действительно отклоняет запрещённые включения."""
 
+    def test_rejects_return_of_retired_desktop_files(self) -> None:
+        """Удалённый клеточный контур не должен незаметно вернуться в исходники."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            retired = root / "src/core/domain/board.h"
+            retired.parent.mkdir(parents=True)
+            retired.write_text("#pragma once\n", encoding="utf-8")
+            rules = self._rules({}, {}, {})
+            rules["retiredDirectories"] = ["src/core/domain"]
+            violations = self._check(root, rules)
+            self.assertEqual(1, len(violations))
+            self.assertIn("после A8", violations[0].message)
+
     def test_rejects_core_to_qt_include(self) -> None:
         """Запрещённое включение Qt из ядра раскроя должно давать ошибку с номером строки."""
 
