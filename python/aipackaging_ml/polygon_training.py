@@ -328,21 +328,22 @@ def _collect_transitions(model: HierarchicalPolygonPolicyV1, episodes: Sequence[
             while collected < count and time.monotonic() < deadline:
                 # CUDA выбирает пары в главном процессе, после чего рабочие процессы
                 # параллельно строят дорогие динамические каталоги размещений.
-                pairs = [
-                    select_polygon_pair(model, fixed_values[lane], dynamic_values[lane], device, generators[lane])
-                    for lane in range(lanes)
-                ]
-                placements = pool.polygon_placements(
-                    [(pair.instance_position, pair.rotation_slot) for pair in pairs]
-                )
-                decisions = [
-                    select_polygon_position(model, pairs[lane], placements[lane], device, generators[lane])
-                    for lane in range(lanes)
-                ]
-                actions = [placements[lane]["actions"][decisions[lane].position_index] for lane in range(lanes)]
-                step_results = pool.polygon_step_actions(actions)
+                active_lanes = range(min(lanes, count - collected))
+                pairs = {
+                    lane: select_polygon_pair(model, fixed_values[lane], dynamic_values[lane], device, generators[lane])
+                    for lane in active_lanes
+                }
+                placements = pool.polygon_placements_lanes({
+                    lane: (pair.instance_position, pair.rotation_slot) for lane, pair in pairs.items()
+                })
+                decisions = {
+                    lane: select_polygon_position(model, pairs[lane], placements[lane], device, generators[lane])
+                    for lane in active_lanes
+                }
+                actions = {lane: placements[lane]["actions"][decisions[lane].position_index] for lane in active_lanes}
+                step_results = pool.polygon_step_actions_lanes(actions)
                 reset_tasks: dict[int, tuple[Mapping[str, Any], int]] = {}
-                for lane, (_, result) in enumerate(step_results):
+                for lane, (_, result) in step_results.items():
                     next_dynamic, reward, terminated, _, _ = result
                     next_value = 0.0 if terminated else float(
                         encode_polygon_observation(model, fixed_values[lane], next_dynamic, device).value
@@ -431,39 +432,87 @@ def train_polygon_ppo(model: HierarchicalPolygonPolicyV1, train_episodes: Sequen
     interval = 1 if smoke else max(1, updates // 10)
     for update in range(start, updates):
         if time.monotonic() >= deadline:
+            save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="ppo", step=update, config=config,
+                                    training_state=_budget_state(
+                                        budget, {"bestScore": list(best_score) if best_score is not None else None}
+                                    ))
             status = "budget_exhausted"; break
         transitions = _collect_transitions(model, train_episodes, count, device, config["seed"] + update,
                                            settings["workers"], deadline)
         if len(transitions) != count:
+            save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="ppo", step=update, config=config,
+                                    training_state=_budget_state(
+                                        budget, {"bestScore": list(best_score) if best_score is not None else None}
+                                    ))
+            status = "budget_exhausted"; break
+        # Файл содержит только согласованное состояние до текущего обновления.
+        # При истечении времени частично применённые градиенты будут отброшены.
+        save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="ppo", step=update, config=config,
+                                training_state=_budget_state(
+                                    budget, {"bestScore": list(best_score) if best_score is not None else None}
+                                ))
+        if time.monotonic() >= deadline:
+            save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="ppo", step=update, config=config,
+                                    training_state=_budget_state(
+                                        budget, {"bestScore": list(best_score) if best_score is not None else None}
+                                    ))
             status = "budget_exhausted"; break
         advantages, returns = _advantages(transitions, settings["gamma"], settings["gaeLambda"])
         advantages = (advantages - advantages.mean()) / max(float(advantages.std()), 1e-8)
         entropy = settings["entropyStart"] + (settings["entropyEnd"] - settings["entropyStart"]) * update / max(updates - 1, 1)
         model.train(); total_loss = 0.0
+        exhausted = False
         for epoch in range(epochs):
             indices = list(range(len(transitions)))
             random.Random(config["seed"] + update * 1009 + epoch).shuffle(indices)
             optimizer.zero_grad(set_to_none=True)
             for local, index in enumerate(indices, 1):
+                if time.monotonic() >= deadline:
+                    exhausted = True
+                    break
                 item = transitions[index]
                 decision = evaluate_polygon_components(model, item.fixed, item.dynamic, item.placement,
                                                        item.instance, item.rotation, item.position, device)
+                if time.monotonic() >= deadline:
+                    exhausted = True
+                    break
                 ratio = torch.exp(decision.log_probability - torch.tensor(item.old_log_probability, device=device))
                 advantage = torch.tensor(float(advantages[index]), device=device)
                 actor = -torch.minimum(ratio * advantage,
                                        torch.clamp(ratio, 1 - settings["clipRatio"], 1 + settings["clipRatio"]) * advantage)
                 value = torch.square(decision.value - torch.tensor(float(returns[index]), device=device))
                 loss = actor + settings["valueCoefficient"] * value - entropy * decision.entropy
+                if time.monotonic() >= deadline:
+                    exhausted = True
+                    break
                 (loss / 64).backward(); total_loss += float(loss.detach())
                 if local % 64 == 0 or local == len(indices):
+                    if time.monotonic() >= deadline:
+                        exhausted = True
+                        break
                     torch.nn.utils.clip_grad_norm_(model.parameters(), settings["maxGradientNorm"])
                     optimizer.step(); optimizer.zero_grad(set_to_none=True)
+            if exhausted:
+                break
+        if exhausted or time.monotonic() >= deadline:
+            load_polygon_checkpoint(resume_path, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True)
+            save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="ppo", step=update, config=config,
+                                    training_state=_budget_state(
+                                        budget, {"bestScore": list(best_score) if best_score is not None else None}
+                                    ))
+            status = "budget_exhausted"
+            break
         scheduler.step()
         record: dict[str, Any] = {"stage": "ppo", "update": update + 1, "transitions": count,
                                   "loss": total_loss / max(count * epochs, 1), "entropyCoefficient": entropy}
         if (update + 1) % interval == 0 or update + 1 == updates:
             validation = _validation_score(model, validation_episodes, validation_baselines, device, config["seed"], deadline)
             if validation is None:
+                load_polygon_checkpoint(resume_path, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True)
+                save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="ppo", step=update, config=config,
+                                        training_state=_budget_state(
+                                            budget, {"bestScore": list(best_score) if best_score is not None else None}
+                                        ))
                 status = "budget_exhausted"; break
             score, details = validation; record["validation"] = details
             if best_score is None or score > best_score:

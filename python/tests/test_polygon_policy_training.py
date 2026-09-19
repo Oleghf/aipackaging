@@ -255,8 +255,9 @@ def test_polygon_observation_cache_round_trip(tmp_path: Path) -> None:
     assert not loaded["train"][0].dynamic["pair_mask"].flags.writeable
 
 
-def test_polygon_ppo_collection_uses_reproducible_worker_processes() -> None:
-    """Повторный параллельный сбор с тем же начальным значением даёт те же переходы."""
+@pytest.mark.parametrize("count, workers", [(3, 2), (5, 4), (4, 4)])
+def test_polygon_ppo_collection_uses_reproducible_worker_processes(count: int, workers: int) -> None:
+    """Неполный последний такт даёт точное число и воспроизводимый порядок переходов."""
 
     torch = pytest.importorskip("torch")
     from aipackaging_ml.polygon_model import HierarchicalPolygonPolicyV1
@@ -266,10 +267,52 @@ def test_polygon_ppo_collection_uses_reproducible_worker_processes() -> None:
     configure_determinism(42)
     model = HierarchicalPolygonPolicyV1(32)
     episodes = [_expert_episode()]
-    first = _collect_transitions(model, episodes, 4, torch.device("cpu"), 91, 2, time.monotonic() + 30)
-    second = _collect_transitions(model, episodes, 4, torch.device("cpu"), 91, 2, time.monotonic() + 30)
+    first = _collect_transitions(model, episodes, count, torch.device("cpu"), 91, workers, time.monotonic() + 60)
+    second = _collect_transitions(model, episodes, count, torch.device("cpu"), 91, workers, time.monotonic() + 60)
     key = lambda item: (item.instance, item.rotation, item.position, item.reward, item.terminated, item.trace_end)
+    assert len(first) == len(second) == count
     assert [key(item) for item in first] == [key(item) for item in second]
+
+
+def test_polygon_ppo_deadline_rolls_back_partial_update(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Истечение срока после шага оптимизатора оставляет только согласованную контрольную точку."""
+
+    from types import SimpleNamespace
+
+    import torch
+    from aipackaging_ml import polygon_training
+    from aipackaging_ml.polygon_model import HierarchicalPolygonPolicyV1
+
+    model = HierarchicalPolygonPolicyV1(32)
+    original = {name: value.clone() for name, value in model.state_dict().items()}
+    transition = polygon_training.PolygonPpoTransition({}, {}, {}, 0, 0, 0, 0.0, 0.0, 0.1, 0.0, True)
+    monkeypatch.setattr(polygon_training, "_collect_transitions", lambda *_: [transition] * 65)
+    calls = 0
+
+    def fake_decision(current_model: HierarchicalPolygonPolicyV1, *_: object) -> SimpleNamespace:
+        """Создаёт дешёвый дифференцируемый выбор и переводит часы за предел после 65-го шага."""
+
+        nonlocal calls
+        calls += 1
+        weight = next(current_model.parameters()).reshape(-1)[0]
+        return SimpleNamespace(log_probability=weight, value=weight, entropy=weight * 0)
+
+    monkeypatch.setattr(polygon_training, "evaluate_polygon_components", fake_decision)
+    monkeypatch.setattr(polygon_training.time, "monotonic", lambda: 10.0 if calls >= 65 else 0.0)
+    config = {"seed": 42, "ppo": {"learningRate": 1e-3, "updates": 1, "transitionsPerUpdate": 65,
+                                   "epochsPerUpdate": 1, "workers": 1, "gamma": 1.0, "gaeLambda": 0.95,
+                                   "entropyStart": 0.01, "entropyEnd": 0.001, "clipRatio": 0.2,
+                                   "valueCoefficient": 0.5, "maxGradientNorm": 0.5}}
+    budget = polygon_training.PolygonTrainingBudget(5.0, 0.0, 0.0)
+    _, history, status = polygon_training.train_polygon_ppo(
+        model, [], [], {}, config, tmp_path, torch.device("cpu"), smoke=False, deadline=5.0, budget=budget,
+    )
+    assert status == "budget_exhausted"
+    assert history == []
+    assert all(torch.equal(value, original[name]) for name, value in model.state_dict().items())
+    payload = polygon_training.load_polygon_checkpoint(tmp_path / "polygon-resume.pt", model, torch.device("cpu"))
+    assert payload["step"] == 0
+    assert payload["trainingState"]["elapsedTrainingSeconds"] == 5.0
 
 
 def test_polygon_bc_overfits_one_expert_action() -> None:

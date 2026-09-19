@@ -216,6 +216,18 @@ def test_manifest_v2_schema_metadata_and_replay_are_strict(tmp_path: Path) -> No
         verify_polygon_dataset(root)
 
 
+@pytest.mark.parametrize("version", [0, 3, 99, None, "2"])
+def test_unknown_polygon_dataset_version_is_rejected(tmp_path: Path, version: object) -> None:
+    """Неподдерживаемая версия манифеста не возвращает пустой результат проверки."""
+
+    manifest = {"format": "aipackaging.polygon_dataset"}
+    if version is not None:
+        manifest["version"] = version
+    write_canonical_json(tmp_path / "manifest.json", manifest)
+    with pytest.raises(ValueError, match="неподдерживаемая версия"):
+        verify_polygon_dataset(tmp_path)
+
+
 def test_corrupted_action_and_expert_are_rejected_with_updated_hash(tmp_path: Path) -> None:
     """Модуль проверки обнаруживает подмену действия и эксперта после обновления хеша."""
 

@@ -286,7 +286,7 @@ def verify_polygon_dataset(path: str | Path) -> dict[str, int]:
         return _verify_v1(root, manifest)
     if manifest.get("version") == 2:
         return _verify_v2(root, manifest)
-        raise ValueError("неподдерживаемая версия `polygon_dataset`")
+    raise ValueError("неподдерживаемая версия `polygon_dataset`")
 
 
 def load_polygon_dataset_records(
