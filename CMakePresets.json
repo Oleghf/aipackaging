@@ -78,6 +78,15 @@
             }
         },
         {
+            "name": "windows-desktop-ci-tests",
+            "displayName": "Windows Desktop CI Tests",
+            "inherits": "windows-headless-tests",
+            "cacheVariables": {
+                "BUILD_DESKTOP": "ON",
+                "BUILD_ONNX_BACKEND": "ON"
+            }
+        },
+        {
             "name": "unix-base",
             "hidden": true,
             "generator": "Unix Makefiles",
@@ -177,6 +186,15 @@
                 "BUILD_TESTS": "ON",
                 "CMAKE_BUILD_TYPE": "Debug"
             }
+        },
+        {
+            "name": "linux-nesting-sanitized",
+            "displayName": "Linux Sanitized Nesting Tests",
+            "inherits": "linux-nesting-tests",
+            "cacheVariables": {
+                "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer",
+                "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+            }
         }
     ],
     "buildPresets": [
@@ -228,6 +246,16 @@
             "name": "build-windows-nesting-tests",
             "configurePreset": "windows-nesting-tests",
             "displayName": "Build Windows Clean Nesting Tests",
+            "configuration": "Debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "build-windows-desktop-ci-tests",
+            "configurePreset": "windows-desktop-ci-tests",
             "configuration": "Debug",
             "condition": {
                 "type": "equals",
@@ -316,6 +344,16 @@
             "name": "build-linux-nesting-tests",
             "configurePreset": "linux-nesting-tests",
             "displayName": "Build Linux Clean Nesting Tests",
+            "configuration": "Debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "build-linux-nesting-sanitized",
+            "configurePreset": "linux-nesting-sanitized",
             "configuration": "Debug",
             "condition": {
                 "type": "equals",

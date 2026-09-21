@@ -38,6 +38,47 @@ jobs:
       - name: Настройка, сборка и тестирование
         run: py -3 tools/run_checks.py headless
 
+  windows-desktop:
+    name: Настольное приложение Windows, ONNX ${{ matrix.onnx }}
+    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        onnx: ["OFF", "ON"]
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.9.3"
+          arch: win64_msvc2022_64
+          cache: true
+      - name: Настройка настольной сборки
+        shell: pwsh
+        run: cmake --preset windows-desktop-ci-tests -DBUILD_ONNX_BACKEND=${{ matrix.onnx }} -DQt6_DIR="$env:QT_ROOT_DIR/lib/cmake/Qt6"
+      - name: Сборка и тестирование
+        shell: pwsh
+        run: |
+          cmake --build --preset build-windows-desktop-ci-tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir build/windows-desktop-ci-tests -C Debug --output-on-failure
+
+  linux-sanitized:
+    name: Ядро Linux с проверкой памяти и неопределённого поведения
+    runs-on: ubuntu-24.04
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+    steps:
+      - uses: actions/checkout@v6
+      - name: Настройка, сборка и тестирование
+        run: |
+          cmake --preset linux-nesting-sanitized
+          cmake --build --preset build-linux-nesting-sanitized --parallel 2
+          ctest --test-dir build/linux-nesting-sanitized -C Debug --output-on-failure
+
   python:
     name: Python 3.13
     runs-on: ubuntu-24.04
