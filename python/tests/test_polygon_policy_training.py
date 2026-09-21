@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import random
 import time
 from pathlib import Path
 
@@ -313,6 +314,115 @@ def test_polygon_ppo_deadline_rolls_back_partial_update(tmp_path: Path, monkeypa
     payload = polygon_training.load_polygon_checkpoint(tmp_path / "polygon-resume.pt", model, torch.device("cpu"))
     assert payload["step"] == 0
     assert payload["trainingState"]["elapsedTrainingSeconds"] == 5.0
+
+
+def test_polygon_bc_deadline_rolls_back_epoch_and_resumes_exactly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """После прерывания BC повторяет целую эпоху и получает состояние непрерывного запуска."""
+
+    from types import SimpleNamespace
+
+    import torch
+    from aipackaging_ml import polygon_training
+
+    samples = [SimpleNamespace(fixed={}, dynamic={}, placement={}, instance=0, rotation=0,
+                               position=0, value_target=0.0) for _ in range(4)]
+    config = {"seed": 42, "behavioralCloning": {"learningRate": 1e-3, "weightDecay": 0.0,
+                                                  "maxEpochs": 1, "gradientAccumulation": 2,
+                                                  "earlyStoppingPatience": 10}}
+    calls = 0
+
+    def decision(model: torch.nn.Module, *_: object) -> SimpleNamespace:
+        """Возвращает простую дифференцируемую оценку и считает обработанные примеры."""
+
+        nonlocal calls
+        calls += 1
+        weight = next(model.parameters()).reshape(-1)[0]
+        return SimpleNamespace(log_probability=weight, value=weight)
+
+    monkeypatch.setattr(polygon_training, "evaluate_polygon_components", decision)
+    monkeypatch.setattr(polygon_training, "_validation_nll", lambda *_: 1.0)
+    monkeypatch.setattr(polygon_training.time, "monotonic", lambda: 0.0)
+    continuous = tmp_path / "continuous"
+    interrupted = tmp_path / "interrupted"
+    continuous.mkdir(); interrupted.mkdir()
+    random.seed(42)
+    np.random.seed(42)
+    torch.manual_seed(42)
+    full_model = torch.nn.Linear(1, 1)
+    _, full_history, full_status = polygon_training.train_polygon_bc(
+        full_model, samples, samples, config, continuous, torch.device("cpu"), smoke=False, deadline=5.0,
+    )
+    assert full_status == "complete"
+    full_checkpoint = polygon_training.load_polygon_checkpoint(
+        continuous / "polygon-resume.pt", full_model, torch.device("cpu"),
+    )
+
+    random.seed(42)
+    np.random.seed(42)
+    torch.manual_seed(42)
+    resumed_model = torch.nn.Linear(1, 1)
+    calls = 0
+    monkeypatch.setattr(polygon_training.time, "monotonic", lambda: 10.0 if calls >= 3 else 0.0)
+    _, _, interrupted_status = polygon_training.train_polygon_bc(
+        resumed_model, samples, samples, config, interrupted, torch.device("cpu"), smoke=False, deadline=5.0,
+    )
+    assert interrupted_status == "budget_exhausted"
+    stopped = polygon_training.load_polygon_checkpoint(
+        interrupted / "polygon-resume.pt", resumed_model, torch.device("cpu"),
+    )
+    assert stopped["step"] == stopped["trainingState"]["bcCommittedEpoch"] == 0
+    monkeypatch.setattr(polygon_training.time, "monotonic", lambda: 0.0)
+    _, resumed_history, resumed_status = polygon_training.train_polygon_bc(
+        resumed_model, samples, samples, config, interrupted, torch.device("cpu"), smoke=False, deadline=5.0,
+        resume=interrupted / "polygon-resume.pt",
+    )
+    assert resumed_status == "complete"
+    assert resumed_history == full_history
+    resumed_checkpoint = polygon_training.load_polygon_checkpoint(
+        interrupted / "polygon-resume.pt", resumed_model, torch.device("cpu"),
+    )
+    for name, value in full_checkpoint["modelState"].items():
+        assert torch.equal(value, resumed_checkpoint["modelState"][name])
+    assert full_checkpoint["optimizerState"]["state"].keys() == resumed_checkpoint["optimizerState"]["state"].keys()
+    for index, state in full_checkpoint["optimizerState"]["state"].items():
+        for key, value in state.items():
+            other = resumed_checkpoint["optimizerState"]["state"][index][key]
+            assert torch.equal(value, other) if torch.is_tensor(value) else value == other
+    assert full_checkpoint["schedulerState"] == resumed_checkpoint["schedulerState"]
+    assert torch.equal(full_checkpoint["torchRandomState"], resumed_checkpoint["torchRandomState"])
+    assert full_checkpoint["pythonRandomState"] == resumed_checkpoint["pythonRandomState"]
+    assert full_checkpoint["numpyRandomState"][0] == resumed_checkpoint["numpyRandomState"][0]
+    assert np.array_equal(full_checkpoint["numpyRandomState"][1], resumed_checkpoint["numpyRandomState"][1])
+    assert full_checkpoint["numpyRandomState"][2:] == resumed_checkpoint["numpyRandomState"][2:]
+
+
+def test_polygon_bc_rejects_legacy_ambiguous_resume(tmp_path: Path) -> None:
+    """Старая контрольная точка BC читается, но не допускается к автоматическому продолжению."""
+
+    import torch
+    from aipackaging_ml import polygon_training
+
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.AdamW(model.parameters())
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.0)
+    checkpoint = tmp_path / "legacy.pt"
+    polygon_training.save_polygon_checkpoint(
+        checkpoint, model, optimizer, scheduler, stage="bc", step=0,
+        config={"seed": 42, "behavioralCloning": {"learningRate": 1e-3, "weightDecay": 0.0,
+                                                   "maxEpochs": 1, "gradientAccumulation": 2,
+                                                   "earlyStoppingPatience": 10}},
+        training_state={"bestNll": float("inf"), "stale": 0},
+    )
+    assert polygon_training.load_polygon_checkpoint(checkpoint, model, torch.device("cpu"))["stage"] == "bc"
+    with pytest.raises(ValueError, match="не подтверждает завершённую эпоху"):
+        polygon_training.train_polygon_bc(
+            model, [], [], {"seed": 42, "behavioralCloning": {"learningRate": 1e-3, "weightDecay": 0.0,
+                                                               "maxEpochs": 1, "gradientAccumulation": 2,
+                                                               "earlyStoppingPatience": 10}},
+            tmp_path, torch.device("cpu"), smoke=False, deadline=float("inf"), resume=checkpoint,
+        )
 
 
 def test_polygon_bc_overfits_one_expert_action() -> None:

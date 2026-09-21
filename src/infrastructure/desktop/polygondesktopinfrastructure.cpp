@@ -523,27 +523,32 @@ std::optional<NestingJobHandle> StdThreadNestingJobRunner::start(PolygonDocument
         if (callbacks.progress)
           dispatcher->post([callback = callbacks.progress, job, progress]() { callback(job, progress); });
       };
+      std::optional<NestingRunResult> result;
+      std::string failure;
       try
       {
-        NestingRunResult result = backend->run(document, request, control);
-        if (callbacks.completed)
-          dispatcher->post([callback = callbacks.completed, job, result = std::move(result)]() mutable
-                           { callback(job, std::move(result)); });
+        result = backend->run(document, request, control);
       }
       catch (const std::exception & exception)
       {
-        if (callbacks.failed)
-        {
-          const std::string message = exception.what();
-          // Функция прикладного контроллера не бросает исключений; это контракт границы доставки.
-          // NOLINTNEXTLINE(bugprone-exception-escape)
-          dispatcher->post([callback = callbacks.failed, job, message]()
-                           { callback(job, message); }); // NOLINT(bugprone-exception-escape)
-        }
+        failure = exception.what();
       }
-      std::lock_guard finishLock(mutex_);
-      if (activeJob_ == job)
-        activeJob_.reset();
+      catch (...)
+      {
+        failure = "Внутренняя реализация завершилась неизвестной ошибкой";
+      }
+      {
+        std::lock_guard finishLock(mutex_);
+        if (activeJob_ == job)
+          activeJob_.reset();
+      }
+      // Событие может быть доставлено сразу после постановки в очередь. К этому моменту
+      // новый запуск уже должен быть разрешён, иначе интерфейс получит ложный отказ.
+      if (result && callbacks.completed)
+        dispatcher->post([callback = callbacks.completed, job, value = std::move(*result)]() mutable
+                         { callback(job, std::move(value)); });
+      else if (!result && callbacks.failed)
+        dispatcher->post([callback = callbacks.failed, job, failure]() { callback(job, failure); });
     });
   return job;
 }

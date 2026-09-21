@@ -85,10 +85,14 @@ public:
 private:
   /// Принимает владеющую точную среду и строит исходный каталог.
   explicit PolygonLearningEnvironment(std::unique_ptr<PolygonEnvironment> environment, PolygonLearningConfig config);
-  /// Перестраивает каталог после изменения состояния.
-  void rebuildActions();
-  /// Применяет действие и вычисляет общую диагностику перехода.
-  PolygonLearningCompactStepResult applyStep(std::size_t actionIndex);
+  /// Строит каталог для предложенного состояния, не меняя опубликованный эпизод.
+  std::vector<PolygonAction> buildActions(const PolygonState & state) const;
+  /// Строит изменяемое наблюдение для предложенного состояния и каталога.
+  PolygonDynamicObservation buildDynamicObservation(const PolygonState & state, const std::vector<PolygonAction> & actions) const;
+  /// Соединяет изменяемое и неизменное наблюдения до публикации перехода.
+  PolygonObservation buildObservation(const PolygonDynamicObservation & dynamic) const;
+  /// Подготавливает переход и публикует его лишь после всех проверок и построения наблюдений.
+  PolygonLearningCompactStepResult applyStep(std::size_t actionIndex, PolygonObservation * fullObservation);
 
   std::unique_ptr<PolygonEnvironment> environment_;
   PolygonState state_;

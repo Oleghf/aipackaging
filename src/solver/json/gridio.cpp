@@ -12,6 +12,8 @@
 #include <aipackaging/nesting/search_contracts.h>
 #include <nlohmann/json.hpp>
 
+#include "atomicfile.h"
+
 namespace aipackaging::solver
 {
 namespace
@@ -504,19 +506,6 @@ std::string saveGridSolutionToText(const GridSolution & solution)
 /// Открывает файл, полностью записывает JSON и сообщает ошибки открытия или потока.
 bool saveGridSolutionToFile(const std::string & filePath, const GridSolution & solution, std::string & error)
 {
-  std::ofstream output(filePath);
-  if (!output.is_open())
-  {
-    error = "unable to open grid solution output file";
-    return false;
-  }
-  output << saveGridSolutionToText(solution);
-  if (!output.good())
-  {
-    error = "unable to write grid solution output file";
-    return false;
-  }
-  error.clear();
-  return true;
+  return internal::writeFileAtomically(filePath, saveGridSolutionToText(solution), error);
 }
 } // namespace aipackaging::solver

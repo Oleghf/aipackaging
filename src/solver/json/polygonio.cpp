@@ -11,6 +11,8 @@
 #include <aipackaging/nesting/polygon_io.h>
 #include <nlohmann/json.hpp>
 
+#include "atomicfile.h"
+
 namespace aipackaging::solver
 {
 namespace
@@ -582,19 +584,7 @@ std::string savePolygonSolutionToText(const PolygonSolution & solution)
 /// Открывает выходной файл в двоичном режиме с очисткой и проверяет завершение записи.
 bool savePolygonSolutionToFile(const std::string & filePath, const PolygonSolution & solution, std::string & error)
 {
-  std::ofstream output(filePath, std::ios::binary | std::ios::trunc);
-  if (!output)
-  {
-    error = "unable to open polygon solution output file";
-    return false;
-  }
-  output << savePolygonSolutionToText(solution);
-  if (!output)
-  {
-    error = "unable to write polygon solution output file";
-    return false;
-  }
-  return true;
+  return internal::writeFileAtomically(filePath, savePolygonSolutionToText(solution), error);
 }
 
 /// Разбирает только корневой объект JSON и возвращает строковое поле формата.

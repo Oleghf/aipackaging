@@ -6,6 +6,8 @@
 
 #include <aipackaging/nesting/polygon_learning.h>
 
+#include "polygonlearning_testhook.h"
+
 namespace aipackaging::solver
 {
 namespace
@@ -13,6 +15,14 @@ namespace
 constexpr int RASTER_SIZE = 128;
 constexpr int SHAPE_RASTER_SIZE = 32;
 constexpr double REWARD_RADIX = 1024.0;
+thread_local std::function<void(internal::PolygonLearningStage)> failureHook;
+
+/// Вызывает закрытую тестовую функцию только на выбранной границе подготовки.
+void checkLearningStage(internal::PolygonLearningStage stage)
+{
+  if (failureHook)
+    failureHook(stage);
+}
 
 /// Проверяет попадание точки внутрь либо на границу кольца лучевым методом.
 bool containsPoint(const PolygonRing64 & ring, const PolygonPoint64 & point)
@@ -125,6 +135,12 @@ double rewardPotential(const PolygonEnvironment & environment, const PolygonStat
 }
 } // namespace
 
+/// Устанавливает управляемый отказ текущего потока без изменения публичного API среды.
+void internal::setPolygonLearningFailureHook(std::function<void(PolygonLearningStage)> hook)
+{
+  failureHook = std::move(hook);
+}
+
 /// Создаёт точную среду и преобразует ошибки геометрии в публичную диагностику.
 std::unique_ptr<PolygonLearningEnvironment> PolygonLearningEnvironment::Create(const PolygonProblem & problem,
                                                                                std::string & error)
@@ -162,36 +178,47 @@ PolygonLearningEnvironment::PolygonLearningEnvironment(std::unique_ptr<PolygonEn
   , state_(environment_->initialState())
   , config_(config)
 {
-  rebuildActions();
+  actions_ = buildActions(state_);
 }
 
 /// Перечисляет допустимые кандидаты всех ещё не размещённых экземпляров.
-void PolygonLearningEnvironment::rebuildActions()
+std::vector<PolygonAction> PolygonLearningEnvironment::buildActions(const PolygonState & state) const
 {
-  actions_.clear();
+  checkLearningStage(internal::PolygonLearningStage::Catalog);
+  std::vector<PolygonAction> actions;
   for (std::size_t instance = 0; instance < environment_->instances().size(); ++instance)
   {
-    if (state_.placedInstances[instance])
+    if (state.placedInstances[instance])
       continue;
-    std::vector<PolygonAction> candidates = environment_->enumerateCandidates(state_, instance);
-    actions_.insert(actions_.end(), candidates.begin(), candidates.end());
-    if (actions_.size() > 250000)
+    std::vector<PolygonAction> candidates = environment_->enumerateCandidates(state, instance);
+    if (candidates.size() > 250000 - actions.size())
       throw std::length_error("каталог полигональных действий превышает 250000 записей");
+    actions.insert(actions.end(), candidates.begin(), candidates.end());
   }
+  return actions;
 }
 
 /// Восстанавливает пустое изменяемое состояние и пересчитывает каталог.
 PolygonObservation PolygonLearningEnvironment::reset()
 {
-  state_ = environment_->initialState();
-  rebuildActions();
-  return observation();
+  PolygonState nextState = environment_->initialState();
+  std::vector<PolygonAction> nextActions = buildActions(nextState);
+  PolygonObservation result = buildObservation(buildDynamicObservation(nextState, nextActions));
+  std::swap(state_, nextState);
+  actions_.swap(nextActions);
+  return result;
 }
 
 /// Растеризует состояние и формирует признаки экземпляров и целевой функции.
 PolygonObservation PolygonLearningEnvironment::observation() const
 {
-  const PolygonDynamicObservation dynamic = dynamicObservation();
+  return buildObservation(dynamicObservation());
+}
+
+/// Дополняет готовую изменяемую часть статическими признаками деталей.
+PolygonObservation PolygonLearningEnvironment::buildObservation(const PolygonDynamicObservation & dynamic) const
+{
+  checkLearningStage(internal::PolygonLearningStage::FullObservation);
   const PolygonStaticObservation fixed = staticObservation();
   PolygonObservation result;
   result.occupied = dynamic.occupied;
@@ -256,19 +283,27 @@ PolygonStaticObservation PolygonLearningEnvironment::staticObservation() const
 /// Растеризует текущее состояние и выводит допустимые пары из динамического каталога.
 PolygonDynamicObservation PolygonLearningEnvironment::dynamicObservation() const
 {
+  return buildDynamicObservation(state_, actions_);
+}
+
+/// Вычисляет растры и маски по предложенному состоянию без обращения к опубликованному каталогу.
+PolygonDynamicObservation PolygonLearningEnvironment::buildDynamicObservation(const PolygonState & state,
+                                                                              const std::vector<PolygonAction> & actions) const
+{
+  checkLearningStage(internal::PolygonLearningStage::Observation);
   PolygonDynamicObservation result;
-  rasterState(*environment_, state_, result.occupied, result.clearance);
+  rasterState(*environment_, state, result.occupied, result.clearance);
   result.remaining.reserve(environment_->instances().size());
   result.pairMask.assign(environment_->instances().size() * 4, 0);
   for (std::size_t index = 0; index < environment_->instances().size(); ++index)
-    result.remaining.push_back(state_.placedInstances[index] ? 0 : 1);
-  for (const PolygonAction & action : actions_)
+    result.remaining.push_back(state.placedInstances[index] ? 0 : 1);
+  for (const PolygonAction & action : actions)
   {
     const std::size_t instance = environment_->findInstance(action.partId, action.instanceIndex);
     if (instance < environment_->instances().size())
       result.pairMask[instance * 4 + static_cast<std::size_t>(action.rotationDegrees / 90)] = 1;
   }
-  const PolygonObjectiveComponents objective = environment_->evaluate(state_);
+  const PolygonObjectiveComponents objective = environment_->evaluate(state);
   const double usableWidth = environment_->sheetWidth() - 2.0 * environment_->sheetMargin();
   const double sheetArea = static_cast<double>(environment_->sheetWidth()) * environment_->sheetHeight();
   result.objective = {static_cast<float>(progress(objective)),
@@ -284,9 +319,12 @@ PolygonDynamicObservation PolygonLearningEnvironment::dynamicObservation() const
 /// Восстанавливает исходное состояние и не пересоздаёт статические растры деталей.
 PolygonDynamicObservation PolygonLearningEnvironment::resetCompact()
 {
-  state_ = environment_->initialState();
-  rebuildActions();
-  return dynamicObservation();
+  PolygonState nextState = environment_->initialState();
+  std::vector<PolygonAction> nextActions = buildActions(nextState);
+  PolygonDynamicObservation result = buildDynamicObservation(nextState, nextActions);
+  std::swap(state_, nextState);
+  actions_.swap(nextActions);
+  return result;
 }
 
 /// Собирает условное растровое представление и только кандидаты выбранной иерархической пары.
@@ -346,25 +384,27 @@ PolygonPlacementObservation PolygonLearningEnvironment::placementObservation(std
 }
 
 /// Применяет индекс каталога, используя изменение целевой функции как вознаграждение.
-PolygonLearningCompactStepResult PolygonLearningEnvironment::applyStep(std::size_t actionIndex)
+PolygonLearningCompactStepResult PolygonLearningEnvironment::applyStep(std::size_t actionIndex,
+                                                                       PolygonObservation * fullObservation)
 {
   if (isTerminal())
     throw std::logic_error("полигональный эпизод уже завершён");
   if (actionIndex >= actions_.size())
     throw std::out_of_range("индекс полигонального действия находится вне текущего каталога");
+  PolygonState nextState = state_;
   std::array<double, 5> beforeComponents{};
-  const double before = rewardPotential(*environment_, state_, config_.rewardVersion, beforeComponents);
+  const double before = rewardPotential(*environment_, nextState, config_.rewardVersion, beforeComponents);
   const PolygonAction action = actions_[actionIndex];
-  if (!environment_->apply(state_, action))
+  if (!environment_->apply(nextState, action))
     throw std::invalid_argument("полигональное действие больше не является допустимым");
-  rebuildActions();
+  std::vector<PolygonAction> nextActions = buildActions(nextState);
   std::array<double, 5> afterComponents{};
-  const double after = rewardPotential(*environment_, state_, config_.rewardVersion, afterComponents);
+  const double after = rewardPotential(*environment_, nextState, config_.rewardVersion, afterComponents);
   PolygonLearningCompactStepResult result;
-  result.observation = dynamicObservation();
+  result.observation = buildDynamicObservation(nextState, nextActions);
   result.reward = after - before;
-  result.complete = isComplete();
-  result.deadEnd = !result.complete && actions_.empty();
+  result.complete = nextState.placements.size() == environment_->instances().size();
+  result.deadEnd = !result.complete && nextActions.empty();
   result.terminated = result.complete || result.deadEnd;
   result.rewardVersion = config_.rewardVersion;
   result.potentialBefore = before;
@@ -372,15 +412,20 @@ PolygonLearningCompactStepResult PolygonLearningEnvironment::applyStep(std::size
   result.componentDeltas.reserve(beforeComponents.size());
   for (std::size_t index = 0; index < beforeComponents.size(); ++index)
     result.componentDeltas.push_back(afterComponents[index] - beforeComponents[index]);
+  if (fullObservation)
+    *fullObservation = buildObservation(result.observation);
+  std::swap(state_, nextState);
+  actions_.swap(nextActions);
   return result;
 }
 
 /// Применяет общий компактный переход и добавляет совместимое полное наблюдение.
 PolygonLearningStepResult PolygonLearningEnvironment::step(std::size_t actionIndex)
 {
-  PolygonLearningCompactStepResult compact = applyStep(actionIndex);
+  PolygonObservation full;
+  PolygonLearningCompactStepResult compact = applyStep(actionIndex, &full);
   PolygonLearningStepResult result;
-  result.observation = observation();
+  result.observation = std::move(full);
   result.reward = compact.reward;
   result.terminated = compact.terminated;
   result.complete = compact.complete;
@@ -395,7 +440,7 @@ PolygonLearningStepResult PolygonLearningEnvironment::step(std::size_t actionInd
 /// Возвращает результат общего перехода без построения полного совместимого наблюдения.
 PolygonLearningCompactStepResult PolygonLearningEnvironment::stepCompact(std::size_t actionIndex)
 {
-  return applyStep(actionIndex);
+  return applyStep(actionIndex, nullptr);
 }
 
 /// Получает размещения и пересчитывает целевую функцию точной средой.

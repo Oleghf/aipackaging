@@ -103,6 +103,16 @@ def _budget_state(budget: PolygonTrainingBudget | None, values: Mapping[str, Any
     return budget.checkpoint_state(values) if budget is not None else dict(values)
 
 
+def _bc_training_state(budget: PolygonTrainingBudget | None, epoch: int, best_nll: float, stale: int,
+                       history: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Отмечает подтверждённую границу эпохи и сохраняет историю выбора модели."""
+
+    return _budget_state(budget, {
+        "bcCommittedEpoch": epoch, "bestNll": best_nll, "stale": stale,
+        "history": [dict(item) for item in history],
+    })
+
+
 def _checkpoint_payload(model: HierarchicalPolygonPolicyV1, optimizer: torch.optim.Optimizer,
                         scheduler: torch.optim.lr_scheduler.LRScheduler, *, stage: str, step: int,
                         config: Mapping[str, Any], training_state: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -225,13 +235,20 @@ def train_polygon_bc(model: HierarchicalPolygonPolicyV1, train_samples: Sequence
         if payload["stage"] != "bc":
             raise ValueError("для продолжения BC требуется контрольная точка этапа BC")
         start_epoch = int(payload["step"])
-        best_nll = float(payload.get("trainingState", {}).get("bestNll", math.inf))
-        stale = int(payload.get("trainingState", {}).get("stale", 0))
+        saved_state = payload["trainingState"]
+        if saved_state.get("bcCommittedEpoch") != start_epoch or not isinstance(saved_state.get("history"), list):
+            raise ValueError("контрольная точка BC не подтверждает завершённую эпоху; продолжение небезопасно")
+        best_nll = float(saved_state["bestNll"])
+        stale = int(saved_state["stale"])
+        history = list(saved_state["history"])
     status = "complete"
     for epoch in range(start_epoch, epochs):
         if time.monotonic() >= deadline:
             status = "budget_exhausted"
             break
+        # Эта точка является единственным согласованным состоянием эпохи.
+        save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="bc", step=epoch, config=config,
+                                training_state=_bc_training_state(budget, epoch, best_nll, stale, history))
         model.train()
         optimizer.zero_grad(set_to_none=True)
         samples = 0
@@ -257,20 +274,25 @@ def train_polygon_bc(model: HierarchicalPolygonPolicyV1, train_samples: Sequence
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 optimizer.zero_grad(set_to_none=True)
-        if samples % accumulation:
+        if not exhausted and time.monotonic() >= deadline:
+            exhausted = True
+        if not exhausted and samples % accumulation:
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
         if exhausted:
+            # Частично обновлённые веса и накопленные градиенты нельзя повторить с начала эпохи.
+            load_polygon_checkpoint(resume_path, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True)
             save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="bc", step=epoch, config=config,
-                                    training_state=_budget_state(budget, {"bestNll": best_nll, "stale": stale}))
+                                    training_state=_bc_training_state(budget, epoch, best_nll, stale, history))
             status = "budget_exhausted"
             break
         scheduler.step()
         nll = _validation_nll(model, validation_samples, device, deadline)
-        if nll is None:
-            save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="bc", step=epoch + 1, config=config,
-                                    training_state=_budget_state(budget, {"bestNll": best_nll, "stale": stale}))
+        if nll is None or time.monotonic() >= deadline:
+            load_polygon_checkpoint(resume_path, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True)
+            save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="bc", step=epoch, config=config,
+                                    training_state=_bc_training_state(budget, epoch, best_nll, stale, history))
             status = "budget_exhausted"
             break
         history.append({"stage": "bc", "epoch": epoch + 1, "samples": samples,
@@ -279,16 +301,17 @@ def train_polygon_bc(model: HierarchicalPolygonPolicyV1, train_samples: Sequence
             best_nll = nll
             stale = 0
             save_polygon_checkpoint(best_path, model, optimizer, scheduler, stage="bc", step=epoch + 1, config=config,
-                                    training_state=_budget_state(budget, {"bestNll": best_nll, "stale": stale}))
+                                    training_state=_bc_training_state(budget, epoch + 1, best_nll, stale, history))
         else:
             stale += 1
-            if stale >= settings["earlyStoppingPatience"]:
-                break
         save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="bc", step=epoch + 1, config=config,
-                                training_state=_budget_state(budget, {"bestNll": best_nll, "stale": stale}))
+                                training_state=_bc_training_state(budget, epoch + 1, best_nll, stale, history))
+        if stale >= settings["earlyStoppingPatience"]:
+            break
     if not best_path.exists():
-        save_polygon_checkpoint(best_path, model, optimizer, scheduler, stage="bc", step=len(history), config=config,
-                                training_state=_budget_state(budget, {"bestNll": best_nll, "stale": stale}))
+        completed = len(history)
+        save_polygon_checkpoint(best_path, model, optimizer, scheduler, stage="bc", step=completed, config=config,
+                                training_state=_bc_training_state(budget, completed, best_nll, stale, history))
     load_polygon_checkpoint(best_path, model, device)
     return best_path, history, status
 

@@ -41,11 +41,13 @@ target_link_libraries(AIPackaging_SearchTests PRIVATE AIPackaging_Search AIPacka
 set_tests_properties(AIPackaging_SearchTests PROPERTIES LABELS "solver;search")
 
 aipackaging_add_test_executable(AIPackaging_JsonTests
+  "solver/testatomicfile.cpp"
   "solver/testgridio.cpp"
   "solver/testpolygonio.cpp"
   "solver/testcontractcorpus.cpp"
 )
 target_link_libraries(AIPackaging_JsonTests PRIVATE AIPackaging_Json AIPackaging_Search nlohmann_json::nlohmann_json)
+target_include_directories(AIPackaging_JsonTests PRIVATE "${CMAKE_SOURCE_DIR}/src/solver/json")
 target_compile_definitions(AIPackaging_JsonTests PRIVATE
   AIPACKAGING_CONTRACT_CORPUS_DIR="${CMAKE_SOURCE_DIR}/tests/contracts"
 )
@@ -56,6 +58,7 @@ aipackaging_add_test_executable(AIPackaging_LearningTests
   "solver/testpolygonlearning.cpp"
 )
 target_link_libraries(AIPackaging_LearningTests PRIVATE AIPackaging_Learning AIPackaging_Json AIPackaging_Search)
+target_include_directories(AIPackaging_LearningTests PRIVATE "${CMAKE_SOURCE_DIR}/src/solver/learning")
 set_tests_properties(AIPackaging_LearningTests PROPERTIES LABELS "solver;learning")
 
 aipackaging_add_test_executable(AIPackaging_SolverCompatibilityTests
@@ -222,6 +225,14 @@ endif()
 
 if (BUILD_DESKTOP)
   copy_target_qt_dll(AIPackaging_GuiTests)
+  find_package(Qt6QOffscreenIntegrationPlugin CONFIG REQUIRED
+    PATHS "${Qt6_DIR}/../Qt6Gui" NO_DEFAULT_PATH)
+  add_custom_command(TARGET AIPackaging_GuiTests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:AIPackaging_GuiTests>/platforms"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "$<TARGET_FILE:Qt6::QOffscreenIntegrationPlugin>"
+      "$<TARGET_FILE_DIR:AIPackaging_GuiTests>/platforms"
+    VERBATIM)
 endif()
 
 aipackaging_assert_target_dependencies(

@@ -8,11 +8,20 @@
 #include <gtest/gtest.h>
 
 #include "polygonfixture.h"
+#include "polygonlearning_testhook.h"
 
 namespace
 {
 using namespace aipackaging::solver;
 using namespace aipackaging::tests;
+
+/// Сбрасывает закрытую точку отказа даже после досрочного выхода из теста.
+class LearningHookGuard
+{
+public:
+  /// Удаляет установленную для текущего потока функцию отказа.
+  ~LearningHookGuard() { internal::setPolygonLearningFailureHook({}); }
+};
 } // namespace
 
 /// Проверяет динамический каталог, переход и неизменность после ошибочного индекса.
@@ -115,4 +124,57 @@ TEST(PolygonLearning, RejectsUnknownRewardVersion)
   std::string error;
   EXPECT_EQ(PolygonLearningEnvironment::Create(problem(), config, error), nullptr);
   EXPECT_FALSE(error.empty());
+}
+
+/// Проверяет, что ошибка каталога не публикует частично применённое действие или сброс.
+TEST(PolygonLearning, RollsBackCatalogFailure)
+{
+  LearningHookGuard guard;
+  std::string error;
+  auto environment = PolygonLearningEnvironment::Create(problem(), error);
+  ASSERT_NE(environment, nullptr) << error;
+  const auto initialActions = environment->actions();
+  const auto initialObservation = environment->dynamicObservation();
+  const auto initialPlacements = environment->solution().placements;
+  internal::setPolygonLearningFailureHook(
+    [](internal::PolygonLearningStage stage)
+    {
+      if (stage == internal::PolygonLearningStage::Catalog)
+        throw std::length_error("искусственное превышение каталога");
+    });
+  EXPECT_THROW(environment->stepCompact(0), std::length_error);
+  EXPECT_THROW(environment->reset(), std::length_error);
+  EXPECT_EQ(environment->actions(), initialActions);
+  EXPECT_EQ(environment->solution().placements, initialPlacements);
+  internal::setPolygonLearningFailureHook({});
+  EXPECT_EQ(environment->dynamicObservation().remaining, initialObservation.remaining);
+}
+
+/// Проверяет неизменность эпизода при отказе динамического или полного наблюдения.
+TEST(PolygonLearning, RollsBackObservationFailure)
+{
+  LearningHookGuard guard;
+  std::string error;
+  auto environment = PolygonLearningEnvironment::Create(problem(), error);
+  ASSERT_NE(environment, nullptr) << error;
+  const auto initialActions = environment->actions();
+  const auto initialPlacements = environment->solution().placements;
+  for (const auto failedStage : {internal::PolygonLearningStage::Observation, internal::PolygonLearningStage::FullObservation})
+  {
+    internal::setPolygonLearningFailureHook(
+      [failedStage](internal::PolygonLearningStage stage)
+      {
+        if (stage == failedStage)
+          throw std::runtime_error("искусственный отказ наблюдения");
+      });
+    EXPECT_THROW(environment->step(0), std::runtime_error);
+    EXPECT_THROW(environment->reset(), std::runtime_error);
+    if (failedStage == internal::PolygonLearningStage::Observation)
+    {
+      EXPECT_THROW(environment->stepCompact(0), std::runtime_error);
+      EXPECT_THROW(environment->resetCompact(), std::runtime_error);
+    }
+    EXPECT_EQ(environment->actions(), initialActions);
+    EXPECT_EQ(environment->solution().placements, initialPlacements);
+  }
 }

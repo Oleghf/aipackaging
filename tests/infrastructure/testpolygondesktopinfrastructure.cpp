@@ -1,7 +1,9 @@
 #include <atomic>
+#include <condition_variable>
 #include <deque>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -80,6 +82,73 @@ public:
 private:
   std::mutex mutex_;
   std::deque<std::function<void()>> queue_;
+};
+
+/// Удерживает первый вызов постановки после помещения события в очередь.
+class PausingDispatcher final : public IApplicationDispatcher
+{
+public:
+  /// Ставит событие без его исполнения и даёт тесту задержать возврат рабочего потока.
+  void post(std::function<void()> callback) override
+  {
+    std::unique_lock lock(mutex_);
+    queue_.push_back(std::move(callback));
+    if (!firstPosted_)
+    {
+      firstPosted_ = true;
+      changed_.notify_all();
+      changed_.wait(lock, [this]() { return released_; });
+    }
+  }
+
+  /// Ожидает, пока первое итоговое событие будет доступно владельцу контроллера.
+  bool waitForFirstPost()
+  {
+    std::unique_lock lock(mutex_);
+    return changed_.wait_for(lock, std::chrono::seconds(3), [this]() { return firstPosted_; });
+  }
+
+  /// Выполняет накопленное событие до выхода старого рабочего потока.
+  void drain()
+  {
+    std::deque<std::function<void()>> pending;
+    {
+      std::lock_guard lock(mutex_);
+      pending.swap(queue_);
+    }
+    for (auto & callback : pending)
+      callback();
+  }
+
+  /// Разрешает рабочему потоку завершить постановку события.
+  void release()
+  {
+    std::lock_guard lock(mutex_);
+    released_ = true;
+    changed_.notify_all();
+  }
+
+private:
+  std::mutex mutex_;
+  std::condition_variable changed_;
+  std::deque<std::function<void()>> queue_;
+  bool firstPosted_ = false;
+  bool released_ = false;
+};
+
+/// Немедленно возвращает результат или заданную ошибку для проверки жизненного цикла потока.
+class ImmediateBackend final : public IPolygonNestingBackend
+{
+public:
+  bool fail = false;
+
+  /// Возвращает пустой результат либо имитирует исключение внутренней реализации.
+  NestingRunResult run(PolygonDocumentHandle, const NestingRunRequest &, const Control &) override
+  {
+    if (fail)
+      throw std::runtime_error("искусственная ошибка решателя");
+    return {};
+  }
 };
 
 /// Удерживает рабочий поток до запроса отмены при разрушении средства запуска.
@@ -195,6 +264,54 @@ TEST(PolygonDesktopInfrastructure, DeliversCompletionThroughDispatcherQueue)
   ASSERT_TRUE(waitUntil([&]() { return dispatcher->drain() > 0; }));
   EXPECT_TRUE(delivered.load());
   std::filesystem::remove(input);
+}
+
+/// Разрешает повторный запуск из итогового события, пока предыдущий поток ещё выходит.
+TEST(PolygonDesktopInfrastructure, AllowsRestartFromEarlyCompletion)
+{
+  auto backend = std::make_shared<ImmediateBackend>();
+  auto dispatcher = std::make_shared<PausingDispatcher>();
+  StdThreadNestingJobRunner runner(backend, dispatcher);
+  std::future<std::optional<NestingJobHandle>> restarted;
+  NestingJobCallbacks callbacks;
+  callbacks.completed = [&](NestingJobHandle, NestingRunResult)
+  {
+    restarted = std::async(std::launch::async,
+                           [&runner]()
+                           {
+                             std::string error;
+                             return runner.start({1}, {}, {}, error);
+                           });
+  };
+  std::string error;
+  ASSERT_TRUE(runner.start({1}, {}, std::move(callbacks), error).has_value()) << error;
+  ASSERT_TRUE(dispatcher->waitForFirstPost());
+  dispatcher->drain();
+  dispatcher->release();
+  ASSERT_TRUE(restarted.valid());
+  ASSERT_EQ(restarted.wait_for(std::chrono::seconds(3)), std::future_status::ready);
+  EXPECT_TRUE(restarted.get().has_value());
+}
+
+/// Превращает исключение решателя в событие ошибки и освобождает запуск.
+TEST(PolygonDesktopInfrastructure, ReleasesJobOnBackendException)
+{
+  auto backend = std::make_shared<ImmediateBackend>();
+  backend->fail = true;
+  auto dispatcher = std::make_shared<QueueDispatcher>();
+  StdThreadNestingJobRunner runner(backend, dispatcher);
+  std::string failure;
+  NestingJobCallbacks callbacks;
+  callbacks.failed = [&](NestingJobHandle, const std::string & message)
+  {
+    failure = message;
+  };
+  std::string error;
+  ASSERT_TRUE(runner.start({1}, {}, std::move(callbacks), error).has_value()) << error;
+  ASSERT_TRUE(waitUntil([&]() { return dispatcher->drain() > 0; }));
+  EXPECT_EQ(failure, "искусственная ошибка решателя");
+  backend->fail = false;
+  EXPECT_TRUE(runner.start({1}, {}, {}, error).has_value()) << error;
 }
 
 /// Проверяет согласованную отмену и отсутствие сохраняемого решения.

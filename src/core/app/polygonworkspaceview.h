@@ -330,7 +330,7 @@ class IApplicationDispatcher
 public:
   /// Обеспечивает корректное уничтожение реализации через интерфейс.
   virtual ~IApplicationDispatcher() = default;
-  /// Планирует выполнение функции и не вызывает её синхронно.
+  /// Ставит функцию в очередь без синхронного вызова и ожидания её выполнения.
   virtual void post(std::function<void()> callback) = 0;
 };
 
