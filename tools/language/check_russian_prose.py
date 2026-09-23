@@ -132,6 +132,8 @@ def _clean_prose(text: str) -> str:
     text = MARKDOWN_LINK_TARGET.sub("]", text)
     text = re.sub(r"\\(?:brief|details|param|return|throws?)\b", " ", text)
     text = re.sub(r"\bnoqa\s*:\s*[A-Za-z0-9, -]+", " ", text)
+    # Идентификаторы форматов и полей с подчёркиванием являются машинными литералами.
+    text = re.sub(r"\b[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+\b", " ", text)
     return URL.sub(" ", text)
 
 
@@ -216,9 +218,14 @@ def python_fragments(path: Path) -> list[ProseFragment]:
 def _cpp_quoted_fragments(line: str, path: Path, number: int) -> list[ProseFragment]:
     """Извлекает человекочитаемые строковые литералы из диагностической строки C++."""
 
-    if not any(marker in line for marker in HUMAN_CPP_MARKERS):
-        return []
-    values = re.findall(r'"((?:\\.|[^"\\])*)"', line)
+    exact_values = re.findall(r'(?<![A-Za-z0-9_])tr\(\s*"((?:\\.|[^"\\])*)"', line)
+    exact_values.extend(
+        re.findall(
+            r'(?<![A-Za-z0-9_])translate\(\s*"(?:\\.|[^"\\])*"\s*,\s*"((?:\\.|[^"\\])*)"',
+            line,
+        )
+    )
+    values = re.findall(r'"((?:\\.|[^"\\])*)"', line) if any(marker in line for marker in HUMAN_CPP_MARKERS) else exact_values
     return [ProseFragment(path, number, _clean_prose(value)) for value in values if re.search(r"[A-Za-zА-Яа-яЁё]", value)]
 
 

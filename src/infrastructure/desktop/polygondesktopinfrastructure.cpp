@@ -421,6 +421,11 @@ NestingRunResult OnnxPolygonBackend::run(PolygonDocumentHandle documentHandle, c
   config.timeoutMs = request.timeoutMs;
   aipackaging::inference::PolygonPolicyControl policyControl;
   policyControl.cancellationRequested = control.cancellationRequested;
+  policyControl.baselineProgress = [&control](const SearchProgress & progress)
+  {
+    if (control.progress)
+      control.progress({toProgressStage(progress.stage), progress.completed, progress.total, progress.expandedStates});
+  };
   policyControl.progress = [&control](std::size_t completed, std::size_t total)
   {
     if (control.progress)

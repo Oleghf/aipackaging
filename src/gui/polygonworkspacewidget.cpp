@@ -1,5 +1,7 @@
 #include <algorithm>
+#include <limits>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -15,6 +17,7 @@
 #include <QTextEdit>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <stdexcept>
 
 #include <polygoncanvaswidget.h>
 #include <polygonworkspacewidget.h>
@@ -27,15 +30,15 @@ QString solverTitle(BaselineAlgorithm kind)
   switch (kind)
   {
     case BaselineAlgorithm::InputFirstFit:
-      return QStringLiteral("Input first-fit");
+      return QCoreApplication::translate("PolygonWorkspaceWidget", "Первый допустимый вариант");
     case BaselineAlgorithm::AreaLeftBottom:
-      return QStringLiteral("Area left-bottom");
+      return QCoreApplication::translate("PolygonWorkspaceWidget", "По площади, слева направо");
     case BaselineAlgorithm::MaxSideLeftBottom:
-      return QStringLiteral("Max-side left-bottom");
+      return QCoreApplication::translate("PolygonWorkspaceWidget", "По габариту, слева направо");
     case BaselineAlgorithm::RandomLeftBottom:
-      return QStringLiteral("Random left-bottom");
+      return QCoreApplication::translate("PolygonWorkspaceWidget", "Случайный поиск");
     case BaselineAlgorithm::Beam:
-      return QStringLiteral("Beam search");
+      return QCoreApplication::translate("PolygonWorkspaceWidget", "Лучевой поиск");
   }
   return {};
 }
@@ -73,6 +76,7 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   , advancedToggle_(new QToolButton(this))
   , advancedGroup_(new QGroupBox(this))
   , seedEdit_(new QLineEdit(QStringLiteral("42"), advancedGroup_))
+  , seedValidationLabel_(new QLabel(advancedGroup_))
   , randomIterationsSpin_(new QSpinBox(advancedGroup_))
   , beamWidthSpin_(new QSpinBox(advancedGroup_))
   , maxExpandedSpin_(new QSpinBox(advancedGroup_))
@@ -96,6 +100,8 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   modelLabel_->setObjectName("polygonModelStatus");
   advancedToggle_->setObjectName("polygonAdvancedToggle");
   advancedGroup_->setObjectName("polygonAdvancedGroup");
+  seedEdit_->setObjectName("polygonSeedEdit");
+  seedValidationLabel_->setObjectName("polygonSeedValidation");
   progressBar_->setObjectName("polygonProgress");
   statusLabel_->setObjectName("polygonStatus");
 
@@ -121,11 +127,12 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   neuralRolloutsSpin_->setValue(16);
 
   QFormLayout * advancedLayout = new QFormLayout(advancedGroup_);
-  advancedLayout->addRow(tr("Seed"), seedEdit_);
-  advancedLayout->addRow(tr("Random iterations"), randomIterationsSpin_);
-  advancedLayout->addRow(tr("Beam width"), beamWidthSpin_);
-  advancedLayout->addRow(tr("Expanded states"), maxExpandedSpin_);
-  advancedLayout->addRow(tr("Timeout, мс"), timeoutSpin_);
+  advancedLayout->addRow(tr("Начальное значение"), seedEdit_);
+  advancedLayout->addRow(QString(), seedValidationLabel_);
+  advancedLayout->addRow(tr("Случайные итерации"), randomIterationsSpin_);
+  advancedLayout->addRow(tr("Ширина луча"), beamWidthSpin_);
+  advancedLayout->addRow(tr("Раскрываемые состояния"), maxExpandedSpin_);
+  advancedLayout->addRow(tr("Ограничение времени, мс"), timeoutSpin_);
   advancedLayout->addRow(tr("Нейросетевые прогоны"), neuralRolloutsSpin_);
   advancedToggle_->setText(tr("Расширенные настройки"));
   advancedToggle_->setCheckable(true);
@@ -133,6 +140,8 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   advancedToggle_->setArrowType(Qt::RightArrow);
   advancedToggle_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
   advancedGroup_->setVisible(false);
+  seedValidationLabel_->setStyleSheet(QStringLiteral("color:#B91C1C"));
+  seedValidationLabel_->setWordWrap(true);
 
   metricsText_->setReadOnly(true);
   metricsText_->setMinimumHeight(165);
@@ -193,10 +202,9 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
           {
             const auto method = static_cast<NestingMethod>(solverBox_->currentData(Qt::UserRole + 1).toInt());
             timeoutSpin_->setValue(method == NestingMethod::Baseline ? 30'000 : 300'000);
-            const bool canRun = solverBox_->property("workspaceCanRun").toBool();
-            const bool modelReady = solverBox_->property("modelReady").toBool();
-            startButton_->setEnabled(canRun && (method == NestingMethod::Baseline || modelReady));
+            updateStartAvailability();
           });
+  connect(seedEdit_, &QLineEdit::textChanged, this, [this]() { updateStartAvailability(); });
 
   present({});
 }
@@ -204,20 +212,40 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
 /// Разбирает имя решателя формата обмена и значения конфигурации из виджетов.
 NestingRunRequest PolygonWorkspaceWidget::solverConfig() const
 {
+  if (!settingsValid())
+    throw std::invalid_argument("Начальное значение выходит за диапазон 64-разрядного беззнакового целого");
   NestingRunRequest result;
   result.method = static_cast<NestingMethod>(solverBox_->currentData(Qt::UserRole + 1).toInt());
   result.algorithm = static_cast<BaselineAlgorithm>(solverBox_->currentData(Qt::UserRole + 2).toInt());
   result.neuralSelection = static_cast<NeuralSelectionMode>(solverBox_->currentData(Qt::UserRole + 3).toInt());
   bool seedValid = false;
   result.seed = seedEdit_->text().toULongLong(&seedValid);
-  if (!seedValid)
-    result.seed = 42;
   result.randomIterations = static_cast<std::size_t>(randomIterationsSpin_->value());
   result.beamWidth = static_cast<std::size_t>(beamWidthSpin_->value());
   result.maxExpandedStates = static_cast<std::size_t>(maxExpandedSpin_->value());
   result.timeoutMs = static_cast<std::uint64_t>(timeoutSpin_->value());
   result.neuralRollouts = static_cast<std::size_t>(neuralRolloutsSpin_->value());
   return result;
+}
+
+/// Проверяет непустой десятичный ввод штатным преобразованием Qt во весь диапазон `uint64_t`.
+bool PolygonWorkspaceWidget::settingsValid() const
+{
+  bool valid = false;
+  seedEdit_->text().toULongLong(&valid);
+  return valid && !seedEdit_->text().isEmpty();
+}
+
+/// Согласует кнопку запуска и диагностику начального значения с последним снимком.
+void PolygonWorkspaceWidget::updateStartAvailability()
+{
+  const bool valid = settingsValid();
+  seedValidationLabel_->setText(valid ? QString() : tr("Введите целое число от 0 до 18446744073709551615"));
+  seedValidationLabel_->setVisible(!valid);
+  seedEdit_->setStyleSheet(valid ? QString() : QStringLiteral("border:1px solid #B91C1C"));
+  const auto method = static_cast<NestingMethod>(solverBox_->currentData(Qt::UserRole + 1).toInt());
+  const bool methodAvailable = method == NestingMethod::Baseline || solverBox_->property("modelReady").toBool();
+  startButton_->setEnabled(solverBox_->property("workspaceCanRun").toBool() && methodAvailable && valid);
 }
 
 /// Обновляет все поля из одного снимка, исключая противоречивые состояния кнопок.
@@ -235,11 +263,9 @@ void PolygonWorkspaceWidget::present(const PolygonWorkspaceSnapshot & snapshot)
   statusLabel_->setStyleSheet(snapshot.partial ? QStringLiteral("color:#B45309;font-weight:600") : QString());
   openButton_->setEnabled(snapshot.canOpen);
   saveButton_->setEnabled(snapshot.canSave);
-  startButton_->setEnabled(snapshot.canRun);
-  const NestingMethod selectedMethod = static_cast<NestingMethod>(solverBox_->currentData(Qt::UserRole + 1).toInt());
   solverBox_->setProperty("workspaceCanRun", snapshot.canRun);
   solverBox_->setProperty("modelReady", snapshot.modelReady);
-  startButton_->setEnabled(snapshot.canRun && (selectedMethod == NestingMethod::Baseline || snapshot.modelReady));
+  updateStartAvailability();
   cancelButton_->setEnabled(snapshot.canCancel);
   solverBox_->setEnabled(snapshot.canRun);
   advancedToggle_->setEnabled(snapshot.canRun);
@@ -254,10 +280,11 @@ void PolygonWorkspaceWidget::present(const PolygonWorkspaceSnapshot & snapshot)
   {
     progressBar_->setRange(0, 1000);
     const std::uint64_t total = snapshot.progress.total;
+    const bool solved =
+      snapshot.state == PolygonWorkspaceState::Completed && !snapshot.partial && snapshot.solutionStatus == "solved";
     const int value =
-      snapshot.state == PolygonWorkspaceState::Completed
-        ? 1000
-        : (total == 0 ? 0 : static_cast<int>(std::min<std::uint64_t>(1000, snapshot.progress.completed * 1000 / total)));
+      solved ? 1000
+             : (total == 0 ? 0 : static_cast<int>(std::min<std::uint64_t>(1000, snapshot.progress.completed * 1000 / total)));
     progressBar_->setValue(value);
   }
 

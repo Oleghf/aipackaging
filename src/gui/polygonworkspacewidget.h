@@ -26,6 +26,8 @@ public:
   explicit PolygonWorkspaceWidget(QWidget * parent = nullptr);
   /// Возвращает проверяемые числовые настройки, выбранные пользователем.
   NestingRunRequest solverConfig() const;
+  /// Сообщает, можно ли безопасно сформировать запрос из текущих полей.
+  bool settingsValid() const;
   /// Применяет снимок модели представления и согласованно переключает доступность элементов управления.
   void present(const PolygonWorkspaceSnapshot & snapshot);
 
@@ -42,6 +44,9 @@ signals:
   void requestCancel();
 
 private:
+  /// Пересчитывает доступность запуска по снимку, модели и корректности настроек.
+  void updateStartAvailability();
+
   PolygonCanvasWidget * canvas_;
   QPushButton * openButton_;
   QPushButton * saveButton_;
@@ -53,6 +58,7 @@ private:
   QToolButton * advancedToggle_;
   QGroupBox * advancedGroup_;
   QLineEdit * seedEdit_;
+  QLabel * seedValidationLabel_;
   QSpinBox * randomIterationsSpin_;
   QSpinBox * beamWidthSpin_;
   QSpinBox * maxExpandedSpin_;

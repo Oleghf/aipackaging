@@ -1,13 +1,19 @@
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <QApplication>
 #include <QColor>
 #include <QComboBox>
 #include <QImage>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
+#include <QProgressBar>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QThread>
 #include <QToolButton>
+#include <stdexcept>
 #include <utility>
 
 #include <gtest/gtest.h>
@@ -153,6 +159,67 @@ TEST(PolygonWorkspaceWidget, HighlightsPartialAndListsUnplacedInstances)
   EXPECT_TRUE(status->styleSheet().contains(QStringLiteral("font-weight")));
   EXPECT_EQ(unplaced->count(), 2);
   EXPECT_EQ(unplaced->item(0)->text(), QStringLiteral("bracket #1"));
+}
+
+/// Проверяет фактическую долю частичного результата без принудительных 100 процентов.
+TEST(PolygonWorkspaceWidget, PreservesPartialProgressOnCompletion)
+{
+  ensureApplication();
+  PolygonWorkspaceWidget widget;
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.state = PolygonWorkspaceState::Completed;
+  snapshot.partial = true;
+  snapshot.solutionStatus = "budget_exhausted";
+  snapshot.progress.completed = 1;
+  snapshot.progress.total = 4;
+  widget.present(snapshot);
+  auto * progress = widget.findChild<QProgressBar *>("polygonProgress");
+  ASSERT_NE(progress, nullptr);
+  EXPECT_EQ(progress->value(), 250);
+}
+
+/// Проверяет полный диапазон начального значения и явный отказ от переполнения.
+TEST(PolygonWorkspaceWidget, ValidatesSeedWithoutSilentFallback)
+{
+  ensureApplication();
+  PolygonWorkspaceWidget widget;
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.state = PolygonWorkspaceState::Ready;
+  snapshot.canRun = true;
+  widget.present(snapshot);
+  auto * seed = widget.findChild<QLineEdit *>("polygonSeedEdit");
+  auto * start = widget.findChild<QPushButton *>("polygonStartButton");
+  auto * diagnostic = widget.findChild<QLabel *>("polygonSeedValidation");
+  ASSERT_NE(seed, nullptr);
+  ASSERT_NE(start, nullptr);
+  ASSERT_NE(diagnostic, nullptr);
+
+  seed->setText(QStringLiteral("0"));
+  EXPECT_TRUE(widget.settingsValid());
+  EXPECT_EQ(widget.solverConfig().seed, 0U);
+  EXPECT_TRUE(start->isEnabled());
+  seed->setText(QStringLiteral("18446744073709551615"));
+  EXPECT_TRUE(widget.settingsValid());
+  EXPECT_EQ(widget.solverConfig().seed, std::numeric_limits<std::uint64_t>::max());
+  seed->setText(QStringLiteral("18446744073709551616"));
+  EXPECT_FALSE(widget.settingsValid());
+  EXPECT_FALSE(start->isEnabled());
+  EXPECT_FALSE(diagnostic->isHidden());
+  EXPECT_THROW(widget.solverConfig(), std::invalid_argument);
+  seed->clear();
+  EXPECT_FALSE(widget.settingsValid());
+  EXPECT_FALSE(start->isEnabled());
+}
+
+/// Проверяет русские подписи базовых алгоритмов и экспертных параметров.
+TEST(PolygonWorkspaceWidget, UsesRussianUserFacingLabels)
+{
+  ensureApplication();
+  PolygonWorkspaceWidget widget;
+  auto * solvers = widget.findChild<QComboBox *>("polygonSolverBox");
+  ASSERT_NE(solvers, nullptr);
+  for (int index = 0; index < 5; ++index)
+    EXPECT_TRUE(solvers->itemText(index).contains(QRegularExpression(QStringLiteral("[А-Яа-яЁё]"))));
 }
 
 /// Проверяет выбор комплекта модели и блокировку нейросетевого запуска без него.

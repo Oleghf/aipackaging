@@ -44,6 +44,7 @@ struct PolygonPolicyConfig
 struct PolygonPolicyControl
 {
   std::function<bool()> cancellationRequested;
+  std::function<void(const aipackaging::solver::SearchProgress &)> baselineProgress;
   std::function<void(std::size_t completed, std::size_t total)> progress;
 };
 

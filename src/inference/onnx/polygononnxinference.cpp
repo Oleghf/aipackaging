@@ -633,6 +633,7 @@ PolygonPolicyExecutionResult PolygonOnnxPolicy::runHybrid(const PolygonProblem &
     boundedFallback.timeoutMs = policyConfig.timeoutMs;
   PolygonExecutionControl baselineControl;
   baselineControl.cancellationRequested = control.cancellationRequested;
+  baselineControl.progress = control.baselineProgress;
   PolygonSolverExecutionResult baseline =
     runPolygonProblem(problem, boundedFallback, baselineControl, PolygonActionCatalogVersion::Legacy);
   const ValidationResult baselineValidation = validatePolygonSolution(problem, baseline.solution);

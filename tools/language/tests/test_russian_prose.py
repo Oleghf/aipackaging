@@ -80,6 +80,17 @@ class RussianProseCheckerTests(unittest.TestCase):
         )
         self.assertIn("dataset", self._terms())
 
+    def test_rejects_user_facing_qt_strings(self) -> None:
+        """Строки Qt для интерфейса проверяются, а машинные литералы не затрагиваются."""
+
+        self._write(
+            "src/example.cpp",
+            'label->setText(tr("Open dataset"));\n'
+            'auto title = QCoreApplication::translate("Widget", "Dataset settings");\n'
+            'auto objectName = QStringLiteral("datasetWidget");\n',
+        )
+        self.assertEqual(self._terms().count("dataset"), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

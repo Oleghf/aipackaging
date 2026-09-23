@@ -94,6 +94,38 @@ TEST(PolygonOnnxInference, HonorsCancellationBetweenActions)
   EXPECT_TRUE(validatePolygonSolution(loadProblem(), result.solution).success);
 }
 
+/// Проверяет последовательную публикацию базового и нейросетевого этапов гибридного запуска.
+TEST(PolygonOnnxInference, ReportsBothHybridProgressStages)
+{
+  std::string error;
+  const auto policy = PolygonOnnxPolicy::Load(modelPath().string(), error);
+  ASSERT_NE(policy, nullptr) << error;
+  PolygonPolicyConfig policyConfig;
+  policyConfig.mode = PolygonPolicyMode::BestOf;
+  policyConfig.rollouts = 1;
+  policyConfig.timeoutMs = 0;
+  SolverConfig fallback;
+  fallback.solver = SolverKind::RandomLeftBottom;
+  fallback.randomIterations = 2;
+  fallback.timeoutMs = 0;
+  std::vector<SearchProgressStage> baselineStages;
+  std::size_t neuralUpdates = 0;
+  PolygonPolicyControl control;
+  control.baselineProgress = [&baselineStages](const SearchProgress & progress)
+  {
+    baselineStages.push_back(progress.stage);
+  };
+  control.progress = [&neuralUpdates](std::size_t, std::size_t)
+  {
+    ++neuralUpdates;
+  };
+  const PolygonPolicyExecutionResult result = policy->runHybrid(loadProblem(), policyConfig, fallback, control);
+  EXPECT_FALSE(result.cancelled);
+  EXPECT_FALSE(baselineStages.empty());
+  EXPECT_EQ(baselineStages.front(), SearchProgressStage::RandomIterations);
+  EXPECT_GT(neuralUpdates, 0U);
+}
+
 /// Проверяет отказ от ограничения времени, которое невозможно безопасно представить часами.
 TEST(PolygonOnnxInference, RejectsOversizedTimeout)
 {
