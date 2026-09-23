@@ -5,7 +5,8 @@
 #include <optional>
 #include <string>
 
-#include <polygonworkspaceview.h>
+#include <activepolygondocument.h>
+#include <polygonworkspaceports.h>
 
 /// Управляет полигональным пользовательским сценарием как однопоточный автомат состояния.
 class PolygonWorkspaceController : public std::enable_shared_from_this<PolygonWorkspaceController>
@@ -50,7 +51,7 @@ private:
   std::shared_ptr<IPolygonDocumentGateway> documents_;
   std::shared_ptr<INestingJobRunner> jobs_;
   std::shared_ptr<IPolygonModelGateway> models_;
-  std::optional<PolygonDocumentHandle> document_;
+  ActivePolygonDocument document_;
   std::optional<PolygonSolutionHandle> solution_;
   std::optional<PolygonModelHandle> model_;
   std::optional<NestingJobHandle> activeJob_;

@@ -33,8 +33,8 @@ PolygonWorkspaceController::~PolygonWorkspaceController()
     jobs_->cancel(*activeJob_);
   releaseSolution();
   releaseModel();
-  if (document_)
-    documents_->release(*document_);
+  if (document_.state().handle)
+    documents_->release(*document_.state().handle);
 }
 
 /// Создаёт функции, которые удерживают контроллер только на время конкретного вызова.
@@ -101,7 +101,7 @@ void PolygonWorkspaceController::openProblem(const std::string & filePath)
   PolygonDocumentLoadResult loaded = documents_->load(filePath);
   if (!loaded.success)
   {
-    if (!document_)
+    if (!document_.state().handle)
       snapshot_.state = PolygonWorkspaceState::Error;
     snapshot_.statusText = "Ошибка загрузки: " + loaded.error;
     publish();
@@ -109,9 +109,9 @@ void PolygonWorkspaceController::openProblem(const std::string & filePath)
   }
 
   releaseSolution();
-  if (document_)
-    documents_->release(*document_);
-  document_ = loaded.document;
+  if (document_.state().handle)
+    documents_->release(*document_.state().handle);
+  document_.replace(loaded.document, PolygonDocumentSource::ProblemFile, filePath, true);
   const std::string modelId = snapshot_.modelId;
   const std::string modelSha256 = snapshot_.modelSha256;
   const std::string modelStatus = snapshot_.modelStatusText;
@@ -141,7 +141,7 @@ void PolygonWorkspaceController::saveSolution(const std::string & filePath)
 /// Проверяет запрос, создаёт функции событий и передаёт выполнение средству запуска.
 void PolygonWorkspaceController::start(const NestingRunRequest & request)
 {
-  if (!document_ || activeJob_)
+  if (!document_.state().handle || activeJob_)
     return;
   if (!validRequest(request))
   {
@@ -177,7 +177,8 @@ void PolygonWorkspaceController::start(const NestingRunRequest & request)
   std::string error;
   NestingRunRequest effectiveRequest = request;
   effectiveRequest.model = request.method == NestingMethod::Baseline ? std::nullopt : model_;
-  const std::optional<NestingJobHandle> job = jobs_->start(*document_, effectiveRequest, std::move(callbacks), error);
+  const std::optional<NestingJobHandle> job =
+    jobs_->start(*document_.state().handle, effectiveRequest, std::move(callbacks), error);
   if (!job)
   {
     snapshot_.statusText = "Не удалось запустить поиск: " + error;
@@ -185,6 +186,7 @@ void PolygonWorkspaceController::start(const NestingRunRequest & request)
     return;
   }
   activeJob_ = job;
+  document_.beginRun();
   snapshot_.state = PolygonWorkspaceState::Running;
   snapshot_.statusText = "Выполняется полигональный поиск";
   snapshot_.progress = {};
@@ -212,7 +214,7 @@ void PolygonWorkspaceController::publish()
 {
   const bool running = snapshot_.state == PolygonWorkspaceState::Running;
   snapshot_.canOpen = !running;
-  snapshot_.canRun = document_.has_value() && !running;
+  snapshot_.canRun = document_.state().handle.has_value() && document_.state().valid && !running;
   snapshot_.canCancel = running;
   snapshot_.canSave = solution_.has_value() && !running;
   snapshot_.canLoadModel = !running && static_cast<bool>(models_);
@@ -258,11 +260,13 @@ void PolygonWorkspaceController::acceptResult(NestingJobHandle job, NestingRunRe
     snapshot_.statusText = "Поиск отменён; показано последнее частичное решение";
     if (result.solution)
       documents_->release(*result.solution);
+    document_.finishRun(false);
   }
   else
   {
     snapshot_.state = PolygonWorkspaceState::Completed;
     solution_ = result.solution;
+    document_.finishRun(solution_.has_value());
     switch (result.completion)
     {
       case NestingCompletion::TimedOut:
@@ -291,6 +295,7 @@ void PolygonWorkspaceController::acceptFailure(NestingJobHandle job, const std::
   if (!activeJob_ || job != *activeJob_ || snapshot_.state != PolygonWorkspaceState::Running)
     return;
   activeJob_.reset();
+  document_.finishRun(solution_.has_value());
   snapshot_.state = PolygonWorkspaceState::Error;
   snapshot_.statusText = "Ошибка внутренней реализации решателя: " + error;
   publish();
@@ -302,6 +307,7 @@ void PolygonWorkspaceController::releaseSolution() noexcept
   if (solution_)
     documents_->release(*solution_);
   solution_.reset();
+  document_.clearSolution();
 }
 
 /// Передаёт освобождение модели её шлюзу и очищает опубликованную идентичность.

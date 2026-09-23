@@ -16,6 +16,8 @@
   ],
   "layers": {
     "app": "src/core/app",
+    "editor": "src/editor",
+    "dxf_import": "src/import/dxf",
     "nesting_core": "src/nesting/core",
     "grid_core": "src/solver/grid",
     "polygon_core": "src/solver/polygon",
@@ -32,6 +34,13 @@
   "allowedInternalDependencies": {
     "app": [
       "app"
+    ],
+    "editor": [
+      "editor"
+    ],
+    "dxf_import": [
+      "dxf_import",
+      "editor"
     ],
     "nesting_core": [
       "nesting_core"
@@ -99,7 +108,8 @@
     ],
     "gui": [
       "gui",
-      "app"
+      "app",
+      "editor"
     ],
     "cli": [
       "cli",

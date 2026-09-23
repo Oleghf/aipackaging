@@ -125,6 +125,41 @@ class DependencyCheckerTests(unittest.TestCase):
             self.assertEqual(2, len(violations))
             self.assertTrue(all("не может включать search" in item.message for item in violations))
 
+    def test_rejects_editor_to_infrastructure_and_dxf_to_gui(self) -> None:
+        """Будущие редактор и импорт DXF должны сохранять нейтральные границы."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            editor = root / "src/editor/example.cpp"
+            dxf = root / "src/import/dxf/example.cpp"
+            onnx = root / "src/inference/onnx/example_onnx.h"
+            gui = root / "src/gui/example_gui.h"
+            editor.parent.mkdir(parents=True)
+            dxf.parent.mkdir(parents=True)
+            onnx.parent.mkdir(parents=True)
+            gui.parent.mkdir(parents=True)
+            editor.write_text("#include <example_onnx.h>\n", encoding="utf-8")
+            dxf.write_text("#include <example_gui.h>\n", encoding="utf-8")
+            onnx.write_text("#pragma once\n", encoding="utf-8")
+            gui.write_text("#pragma once\n", encoding="utf-8")
+            rules = self._rules(
+                {
+                    "editor": "src/editor",
+                    "dxf_import": "src/import/dxf",
+                    "onnx_inference": "src/inference/onnx",
+                    "gui": "src/gui",
+                },
+                {"editor": ["editor"], "dxf_import": ["dxf_import", "editor"]},
+                {
+                    "src/inference/onnx/example_onnx.h": "onnx_inference",
+                    "src/gui/example_gui.h": "gui",
+                },
+            )
+            violations = self._check(root, rules)
+            self.assertEqual(2, len(violations))
+            self.assertTrue(any("editor не может включать onnx_inference" in item.message for item in violations))
+            self.assertTrue(any("dxf_import не может включать gui" in item.message for item in violations))
+
     def test_rejects_external_libraries_outside_owner(self) -> None:
         """GridCore и PolygonCore не могут напрямую включать чужие внешние библиотеки."""
 

@@ -1,6 +1,7 @@
 #include <memory>
 #include <utility>
 
+#include <activepolygondocument.h>
 #include <gtest/gtest.h>
 #include <polygonworkspacecontroller.h>
 
@@ -156,6 +157,49 @@ NestingRunResult solvedResult(std::uint64_t handle = 7)
   return result;
 }
 } // namespace
+
+/// Проверяет полный жизненный цикл документа и устаревание решения после изменения.
+TEST(ActivePolygonDocument, TracksDirtyValidityRunAndStaleSolution)
+{
+  ActivePolygonDocument document;
+  ASSERT_TRUE(document.replace({7}, PolygonDocumentSource::ProblemFile, "problem.json", true));
+  EXPECT_FALSE(document.state().dirty);
+  EXPECT_TRUE(document.state().valid);
+  ASSERT_TRUE(document.beginRun());
+  EXPECT_TRUE(document.state().running);
+  document.finishRun(true);
+  EXPECT_TRUE(document.state().hasSolution);
+
+  document.markChanged(false);
+  EXPECT_TRUE(document.state().dirty);
+  EXPECT_FALSE(document.state().valid);
+  EXPECT_FALSE(document.state().hasSolution);
+  EXPECT_TRUE(document.state().solutionStale);
+  EXPECT_FALSE(document.beginRun());
+
+  document.setValid(true);
+  document.markSaved(PolygonDocumentSource::Draft, "draft.json");
+  EXPECT_FALSE(document.state().dirty);
+  EXPECT_EQ(document.state().source, PolygonDocumentSource::Draft);
+  EXPECT_TRUE(document.beginRun());
+}
+
+/// Проверяет запрет замены и очистки документа до завершения активной работы.
+TEST(ActivePolygonDocument, RequiresRunCompletionBeforeReplacement)
+{
+  ActivePolygonDocument document;
+  ASSERT_TRUE(document.replace({1}, PolygonDocumentSource::ProblemFile, "first.json", true));
+  ASSERT_TRUE(document.beginRun());
+  EXPECT_FALSE(document.replace({2}, PolygonDocumentSource::Imported, "second.dxf", true));
+  EXPECT_FALSE(document.clear());
+  ASSERT_TRUE(document.state().handle.has_value());
+  EXPECT_EQ(document.state().handle->value, 1);
+
+  document.finishRun(false);
+  EXPECT_TRUE(document.replace({2}, PolygonDocumentSource::Imported, "second.dxf", true));
+  ASSERT_TRUE(document.state().handle.has_value());
+  EXPECT_EQ(document.state().handle->value, 2);
+}
 
 /// Проверяет полный прикладной цикл без решателя, Qt и файловой системы.
 TEST(PolygonWorkspaceController, LoadsRunsAndSavesThroughPorts)
