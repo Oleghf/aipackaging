@@ -11,8 +11,8 @@ namespace internal
 /// Возвращает знак ориентированной площади треугольника без переполнения типа `int64_t`.
 Wide cross(const PolygonPoint64 & a, const PolygonPoint64 & b, const PolygonPoint64 & c)
 {
-  return static_cast<Wide>(b.x - a.x) * static_cast<Wide>(c.y - a.y) -
-         static_cast<Wide>(b.y - a.y) * static_cast<Wide>(c.x - a.x);
+  return (static_cast<Wide>(b.x) - static_cast<Wide>(a.x)) * (static_cast<Wide>(c.y) - static_cast<Wide>(a.y)) -
+         (static_cast<Wide>(b.y) - static_cast<Wide>(a.y)) * (static_cast<Wide>(c.x) - static_cast<Wide>(a.x));
 }
 
 /// Проверяет принадлежность точки замкнутому отрезку.
@@ -40,19 +40,21 @@ int segmentIntersection(const PolygonPoint64 & a, const PolygonPoint64 & b, cons
 /// Вычисляет квадрат расстояния от точки до отрезка.
 Wide pointSegmentDistanceSquared(const PolygonPoint64 & point, const PolygonPoint64 & a, const PolygonPoint64 & b)
 {
-  const Wide dx = static_cast<Wide>(b.x - a.x);
-  const Wide dy = static_cast<Wide>(b.y - a.y);
+  const Wide dx = static_cast<Wide>(b.x) - static_cast<Wide>(a.x);
+  const Wide dy = static_cast<Wide>(b.y) - static_cast<Wide>(a.y);
   const Wide lengthSquared = dx * dx + dy * dy;
   if (lengthSquared == 0)
   {
-    const Wide px = static_cast<Wide>(point.x - a.x);
-    const Wide py = static_cast<Wide>(point.y - a.y);
+    const Wide px = static_cast<Wide>(point.x) - static_cast<Wide>(a.x);
+    const Wide py = static_cast<Wide>(point.y) - static_cast<Wide>(a.y);
     return px * px + py * py;
   }
-  const Wide projection =
-    std::clamp((static_cast<Wide>(point.x - a.x) * dx + static_cast<Wide>(point.y - a.y) * dy) / lengthSquared, 0.0L, 1.0L);
-  const Wide px = static_cast<Wide>(point.x - a.x) - projection * dx;
-  const Wide py = static_cast<Wide>(point.y - a.y) - projection * dy;
+  const Wide projection = std::clamp(
+    ((static_cast<Wide>(point.x) - static_cast<Wide>(a.x)) * dx + (static_cast<Wide>(point.y) - static_cast<Wide>(a.y)) * dy) /
+      lengthSquared,
+    0.0L, 1.0L);
+  const Wide px = (static_cast<Wide>(point.x) - static_cast<Wide>(a.x)) - projection * dx;
+  const Wide py = (static_cast<Wide>(point.y) - static_cast<Wide>(a.y)) - projection * dy;
   return px * px + py * py;
 }
 
@@ -90,8 +92,10 @@ int pointInRing(const PolygonPoint64 & point, const PolygonRing64 & ring)
     const bool crosses = (a.y > point.y) != (b.y > point.y);
     if (crosses)
     {
-      const Wide intersectionX =
-        static_cast<Wide>(b.x - a.x) * static_cast<Wide>(point.y - a.y) / static_cast<Wide>(b.y - a.y) + static_cast<Wide>(a.x);
+      const Wide intersectionX = (static_cast<Wide>(b.x) - static_cast<Wide>(a.x)) *
+                                   (static_cast<Wide>(point.y) - static_cast<Wide>(a.y)) /
+                                   (static_cast<Wide>(b.y) - static_cast<Wide>(a.y)) +
+                                 static_cast<Wide>(a.x);
       if (static_cast<Wide>(point.x) < intersectionX)
         inside = !inside;
     }
@@ -99,16 +103,24 @@ int pointInRing(const PolygonPoint64 & point, const PolygonRing64 & ring)
   return inside ? 1 : -1;
 }
 
-/// Переносит кольцо в координаты листа.
-PolygonRing64 translateRing(const PolygonRing64 & ring, std::int64_t x, std::int64_t y)
+/// Переносит кольцо только тогда, когда каждое сложение представимо в `int64_t`.
+bool translateRing(const PolygonRing64 & ring, std::int64_t x, std::int64_t y, PolygonRing64 & result)
 {
-  PolygonRing64 result = ring;
+  result = ring;
   for (PolygonPoint64 & point : result)
   {
+    if ((x > 0 && point.x > std::numeric_limits<std::int64_t>::max() - x) ||
+        (x < 0 && point.x < std::numeric_limits<std::int64_t>::min() - x) ||
+        (y > 0 && point.y > std::numeric_limits<std::int64_t>::max() - y) ||
+        (y < 0 && point.y < std::numeric_limits<std::int64_t>::min() - y))
+    {
+      result.clear();
+      return false;
+    }
     point.x += x;
     point.y += y;
   }
-  return result;
+  return true;
 }
 
 } // namespace internal
@@ -125,12 +137,18 @@ bool PolygonEnvironment::canApply(const PolygonState & state, const PolygonActio
   const PolygonOrientation * orientation = findOrientation(instances_[instancePosition].partIndex, action.rotationDegrees);
   if (!orientation)
     return false;
-  const PolygonRing64 moving = translateRing(orientation->outer, action.x, action.y);
+  const std::int64_t maxX = sheetWidth_ - sheetMargin_ - orientation->width;
+  const std::int64_t maxY = sheetHeight_ - sheetMargin_ - orientation->height;
+  if (action.x < sheetMargin_ || action.y < sheetMargin_ || action.x > maxX || action.y > maxY)
+    return false;
+  PolygonRing64 moving;
+  if (!translateRing(orientation->outer, action.x, action.y, moving))
+    return false;
   for (const PolygonPoint64 & point : moving)
     if (point.x < sheetMargin_ || point.y < sheetMargin_ || point.x > sheetWidth_ - sheetMargin_ ||
         point.y > sheetHeight_ - sheetMargin_)
       return false;
-  const Wide requiredSquared = static_cast<Wide>(partSpacing_) * partSpacing_;
+  const Wide requiredSquared = static_cast<Wide>(partSpacing_) * static_cast<Wide>(partSpacing_);
   for (const PolygonPlacement & placement : state.placements)
   {
     const PolygonRing64 fixed = placedOuter(placement);

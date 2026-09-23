@@ -79,50 +79,100 @@ bool sourceEqual(const PolygonPointMm & lhs, const PolygonPointMm & rhs)
   return std::abs(lhs.x - rhs.x) <= 0.0005 && std::abs(lhs.y - rhs.y) <= 0.0005;
 }
 
-/// Добавляет точку кривой после округления, не создавая последовательных дублей.
-bool appendPoint(PolygonRing64 & ring, const PolygonPointMm & point)
+/// Добавляет точку кривой после округления и расходует общий предел вершин детали.
+bool appendPoint(PolygonRing64 & ring, const PolygonPointMm & point, std::size_t & remainingVertices)
 {
   PolygonPoint64 normalized;
   if (!toMicrons(point.x, normalized.x) || !toMicrons(point.y, normalized.y))
     return false;
   if (ring.empty() || !(ring.back() == normalized))
+  {
+    if (remainingVertices == 0)
+      return false;
     ring.push_back(normalized);
+    --remainingVertices;
+  }
   return true;
 }
 
-/// Возвращает расстояние контрольной точки до бесконечной прямой хорды в миллиметрах.
-double pointLineDistance(const PolygonPointMm & point, const PolygonPointMm & start, const PolygonPointMm & end)
+/// Возвращает расстояние контрольной точки до конечной хорды в миллиметрах.
+double pointSegmentDistance(const PolygonPointMm & point, const PolygonPointMm & start, const PolygonPointMm & end)
 {
   const double dx = end.x - start.x;
   const double dy = end.y - start.y;
-  const double length = std::hypot(dx, dy);
-  if (length == 0.0)
+  const double lengthSquared = dx * dx + dy * dy;
+  if (!std::isfinite(lengthSquared) || lengthSquared == 0.0)
     return std::hypot(point.x - start.x, point.y - start.y);
-  return std::abs(dx * (start.y - point.y) - (start.x - point.x) * dy) / length;
+  const double projection = std::clamp(((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared, 0.0, 1.0);
+  return std::hypot(point.x - (start.x + projection * dx), point.y - (start.y + projection * dy));
 }
 
-/// Делит кривую Bézier слева направо, пока обе контрольные точки не окажутся в пределах допуска от хорды.
+/// Делит кривую Bézier до гарантированной близости к конечной хорде и соблюдает предел вершин.
 bool flattenBezier(const PolygonPointMm & p0, const PolygonPointMm & p1, const PolygonPointMm & p2, const PolygonPointMm & p3,
-                   double tolerance, int depth, PolygonRing64 & result)
+                   double tolerance, int depth, PolygonRing64 & result, std::size_t & remainingVertices)
 {
-  if ((pointLineDistance(p1, p0, p3) <= tolerance && pointLineDistance(p2, p0, p3) <= tolerance) || depth >= 20)
-    return appendPoint(result, p3);
+  const bool flat = pointSegmentDistance(p1, p0, p3) <= tolerance && pointSegmentDistance(p2, p0, p3) <= tolerance;
+  if (flat)
+    return appendPoint(result, p3, remainingVertices);
+  if (depth >= 20)
+    return false;
   const PolygonPointMm p01{(p0.x + p1.x) / 2.0, (p0.y + p1.y) / 2.0};
   const PolygonPointMm p12{(p1.x + p2.x) / 2.0, (p1.y + p2.y) / 2.0};
   const PolygonPointMm p23{(p2.x + p3.x) / 2.0, (p2.y + p3.y) / 2.0};
   const PolygonPointMm p012{(p01.x + p12.x) / 2.0, (p01.y + p12.y) / 2.0};
   const PolygonPointMm p123{(p12.x + p23.x) / 2.0, (p12.y + p23.y) / 2.0};
   const PolygonPointMm middle{(p012.x + p123.x) / 2.0, (p012.y + p123.y) / 2.0};
-  return flattenBezier(p0, p01, p012, middle, tolerance, depth + 1, result) &&
-         flattenBezier(middle, p123, p23, p3, tolerance, depth + 1, result);
+  return flattenBezier(p0, p01, p012, middle, tolerance, depth + 1, result, remainingVertices) &&
+         flattenBezier(middle, p123, p23, p3, tolerance, depth + 1, result, remainingVertices);
 }
 
-/// Аппроксимирует один исходный путь с заданной ошибкой и микронным округлением.
-bool flattenPath(const PolygonPath & path, double tolerance, PolygonRing64 & result, std::string & error)
+/// Проверяет все аналитические точки пути до вычисления радиусов и рекурсивного разбиения.
+bool validateSourcePath(const PolygonPath & path)
 {
-  if (path.segments.empty() || !appendPoint(result, path.start))
+  std::int64_t minX = std::numeric_limits<std::int64_t>::max();
+  std::int64_t minY = std::numeric_limits<std::int64_t>::max();
+  std::int64_t maxX = std::numeric_limits<std::int64_t>::min();
+  std::int64_t maxY = std::numeric_limits<std::int64_t>::min();
+  const auto inspect = [&](const PolygonPointMm & point)
   {
-    error = "polygon path is empty or contains invalid coordinates";
+    std::int64_t x = 0;
+    std::int64_t y = 0;
+    if (!toMicrons(point.x, x) || !toMicrons(point.y, y))
+      return false;
+    minX = std::min(minX, x);
+    minY = std::min(minY, y);
+    maxX = std::max(maxX, x);
+    maxY = std::max(maxY, y);
+    return true;
+  };
+  if (!inspect(path.start))
+    return false;
+  for (const PolygonSegment & segment : path.segments)
+  {
+    if (!inspect(segment.end) || (segment.kind == PolygonSegmentKind::Arc && !inspect(segment.center)) ||
+        (segment.kind == PolygonSegmentKind::CubicBezier && (!inspect(segment.control1) || !inspect(segment.control2))))
+      return false;
+  }
+  return extentWithinLimit(minX, maxX) && extentWithinLimit(minY, maxY);
+}
+
+/// Аппроксимирует один исходный путь с заданной ошибкой и общим пределом вершин детали.
+bool flattenPath(const PolygonPath & path, double tolerance, PolygonRing64 & result, std::size_t & remainingVertices,
+                 std::string & error)
+{
+  if (path.segments.empty())
+  {
+    error = "polygon path is empty";
+    return false;
+  }
+  if (!validateSourcePath(path))
+  {
+    error = "polygon path extent or coordinates are outside normalized M4 limits";
+    return false;
+  }
+  if (!appendPoint(result, path.start, remainingVertices))
+  {
+    error = "polygon path exceeds the supported vertex budget";
     return false;
   }
   PolygonPointMm current = path.start;
@@ -130,7 +180,7 @@ bool flattenPath(const PolygonPath & path, double tolerance, PolygonRing64 & res
   {
     if (segment.kind == PolygonSegmentKind::Line)
     {
-      if (!appendPoint(result, segment.end))
+      if (!appendPoint(result, segment.end, remainingVertices))
       {
         error = "line contains invalid coordinates";
         return false;
@@ -159,12 +209,20 @@ bool flattenPath(const PolygonPath & path, double tolerance, PolygonRing64 & res
           sweep += 2.0 * std::numbers::pi;
       }
       const double maxAngle = 2.0 * std::acos(std::clamp(1.0 - tolerance / radius, -1.0, 1.0));
-      const std::size_t pieces = std::max<std::size_t>(1, static_cast<std::size_t>(std::ceil(std::abs(sweep) / maxAngle)));
+      const double requiredPieces = std::ceil(std::abs(sweep) / maxAngle);
+      if (!std::isfinite(startAngle) || !std::isfinite(endAngle) || !std::isfinite(sweep) || !std::isfinite(maxAngle) ||
+          maxAngle <= 0.0 || !std::isfinite(requiredPieces) || requiredPieces < 1.0 ||
+          requiredPieces > static_cast<double>(remainingVertices))
+      {
+        error = "arc approximation exceeds the supported vertex budget";
+        return false;
+      }
+      const std::size_t pieces = static_cast<std::size_t>(requiredPieces);
       for (std::size_t index = 1; index <= pieces; ++index)
       {
         const double angle = startAngle + sweep * static_cast<double>(index) / static_cast<double>(pieces);
         const PolygonPointMm point{segment.center.x + radius * std::cos(angle), segment.center.y + radius * std::sin(angle)};
-        if (!appendPoint(result, index == pieces ? segment.end : point))
+        if (!appendPoint(result, index == pieces ? segment.end : point, remainingVertices))
         {
           error = "arc approximation is outside coordinate range";
           return false;
@@ -173,7 +231,7 @@ bool flattenPath(const PolygonPath & path, double tolerance, PolygonRing64 & res
     }
     else
     {
-      if (!flattenBezier(current, segment.control1, segment.control2, segment.end, tolerance, 0, result))
+      if (!flattenBezier(current, segment.control1, segment.control2, segment.end, tolerance, 0, result, remainingVertices))
       {
         error = "Bezier approximation is outside coordinate range";
         return false;
@@ -187,7 +245,10 @@ bool flattenPath(const PolygonPath & path, double tolerance, PolygonRing64 & res
     return false;
   }
   if (result.size() > 1 && result.front() == result.back())
+  {
     result.pop_back();
+    ++remainingVertices;
+  }
 
   // Очистка коллинеарных точек вызывает векторное произведение. Сначала
   // отклоняем кольца, чьи разности координат не представимы безопасно.
@@ -208,14 +269,20 @@ bool flattenPath(const PolygonPath & path, double tolerance, PolygonRing64 & res
     return false;
   }
 
-  // Коллинеарные вершины не несут геометрии, но резко увеличивают NFP-каталог.
+  // Удалять можно только точку между соседями. Коллинеарный обратный ход
+  // является частью геометрии и не должен исчезать как обычная избыточная вершина.
   bool changed = true;
   while (changed && result.size() >= 3)
   {
     changed = false;
     for (std::size_t index = 0; index < result.size(); ++index)
     {
-      if (cross(result[(index + result.size() - 1) % result.size()], result[index], result[(index + 1) % result.size()]) == 0)
+      const PolygonPoint64 & previous = result[(index + result.size() - 1) % result.size()];
+      const PolygonPoint64 & current = result[index];
+      const PolygonPoint64 & next = result[(index + 1) % result.size()];
+      if (cross(previous, current, next) == 0 && current.x >= std::min(previous.x, next.x) &&
+          current.x <= std::max(previous.x, next.x) && current.y >= std::min(previous.y, next.y) &&
+          current.y <= std::max(previous.y, next.y))
       {
         result.erase(result.begin() + static_cast<std::ptrdiff_t>(index));
         changed = true;
@@ -239,7 +306,7 @@ Wide signedDoubleArea(const PolygonRing64 & ring)
   {
     const PolygonPoint64 & a = ring[index];
     const PolygonPoint64 & b = ring[(index + 1) % ring.size()];
-    area += static_cast<Wide>(a.x) * b.y - static_cast<Wide>(b.x) * a.y;
+    area += static_cast<Wide>(a.x) * static_cast<Wide>(b.y) - static_cast<Wide>(b.x) * static_cast<Wide>(a.y);
   }
   return area;
 }
@@ -384,15 +451,16 @@ std::unique_ptr<PolygonEnvironment> PolygonEnvironment::Create(const PolygonProb
   for (std::size_t partIndex = 0; partIndex < problem.parts.size(); ++partIndex)
   {
     const PolygonPart & part = problem.parts[partIndex];
+    std::size_t remainingVertices = MAX_VERTICES;
     PolygonRing64 outer;
-    if (!flattenPath(part.outer, problem.manufacturing.curveTolerance, outer, error))
+    if (!flattenPath(part.outer, problem.manufacturing.curveTolerance, outer, remainingVertices, error))
       return nullptr;
     std::vector<PolygonRing64> holes;
     std::size_t vertexCount = outer.size();
     for (const PolygonPath & path : part.holes)
     {
       PolygonRing64 hole;
-      if (!flattenPath(path, problem.manufacturing.curveTolerance, hole, error))
+      if (!flattenPath(path, problem.manufacturing.curveTolerance, hole, remainingVertices, error))
         return nullptr;
       vertexCount += hole.size();
       holes.push_back(std::move(hole));

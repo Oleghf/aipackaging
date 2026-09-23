@@ -1,0 +1,11 @@
+{
+  "format": "aipackaging.grid_solution",
+  "version": 1,
+  "problemId": "contract-grid",
+  "status": "solved",
+  "placements": [{"partId": "cell", "instanceIndex": 0, "column": 0, "row": 0, "rotationDegrees": 0}],
+  "objective": {"usedLength": 1, "primaryRemnantWidth": 1, "largestExtraRectangleArea": 1, "fragmentationPenalty": 0, "placedParts": 1, "totalParts": 1, "placedCells": 1, "totalPartCells": 1, "materialUtilization": 0.25},
+  "metrics": {"candidatesGenerated": 0, "candidatesValidated": 0, "expandedStates": 0, "candidateGenerationTimeUs": 0, "validationTimeUs": 0, "searchTimeUs": 0, "totalTimeUs": 0},
+  "solver": {"name": "area-left-bottom", "projectVersion": "fixture", "revision": "fixture", "seed": 42, "randomIterations": 0, "beamWidth": 32, "maxExpandedStates": 50000, "timeoutMs": 0},
+  "errorMessage": ""
+}

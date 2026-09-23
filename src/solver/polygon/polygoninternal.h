@@ -27,8 +27,8 @@ Wide ringDistanceSquared(const PolygonRing64 & lhs, const PolygonRing64 & rhs);
 int pointInRing(const PolygonPoint64 & point, const PolygonRing64 & ring);
 /// Сообщает о положительном перекрытии заполненных внешних колец.
 bool interiorsOverlap(const PolygonRing64 & lhs, const PolygonRing64 & rhs);
-/// Возвращает копию кольца, перенесённую на заданный микронный вектор.
-PolygonRing64 translateRing(const PolygonRing64 & ring, std::int64_t x, std::int64_t y);
+/// Безопасно переносит кольцо на заданный микронный вектор и сообщает о переполнении.
+bool translateRing(const PolygonRing64 & ring, std::int64_t x, std::int64_t y, PolygonRing64 & result);
 } // namespace aipackaging::solver::internal
 
 #endif

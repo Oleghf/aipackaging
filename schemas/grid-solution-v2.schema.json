@@ -49,13 +49,13 @@
       "required": ["family", "name", "projectVersion", "revision", "seed", "baseline", "policy"],
       "properties": {
         "family": { "enum": ["baseline", "neural", "hybrid"] }, "name": { "type": "string", "minLength": 1 },
-        "projectVersion": { "type": "string" }, "revision": { "type": "string" }, "seed": { "type": "integer", "minimum": 0 },
+        "projectVersion": { "type": "string", "minLength": 1 }, "revision": { "type": "string", "minLength": 1 }, "seed": { "type": "integer", "minimum": 0 },
         "baseline": {
           "type": ["object", "null"], "additionalProperties": false,
           "required": ["randomIterations", "beamWidth", "maxExpandedStates", "timeoutMs"],
           "properties": {
-            "randomIterations": { "type": "integer", "minimum": 0 }, "beamWidth": { "type": "integer", "minimum": 0 },
-            "maxExpandedStates": { "type": "integer", "minimum": 0 }, "timeoutMs": { "type": "integer", "minimum": 0 }
+            "randomIterations": { "type": "integer", "minimum": 1 }, "beamWidth": { "type": "integer", "minimum": 1 },
+            "maxExpandedStates": { "type": "integer", "minimum": 1 }, "timeoutMs": { "type": "integer", "minimum": 0 }
           }
         },
         "policy": {

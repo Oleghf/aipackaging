@@ -1,3 +1,4 @@
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -42,6 +43,47 @@ TEST(PolygonIo, RejectsMismatchedSolutionObjective)
   PolygonSolution solution = solvePolygonProblem(problem());
   ASSERT_TRUE(solution.complete());
   ++solution.objective.usedLength;
+  EXPECT_FALSE(validatePolygonSolution(problem(), solution).success);
+}
+
+/// Проверяет запрет статуса некорректной задачи после успешной нормализации задачи.
+TEST(PolygonIo, RejectsInvalidProblemStatusForValidProblem)
+{
+  PolygonProblem value = problem();
+  value.sheet = {10.0, 10.0, "mm"};
+  value.manufacturing.sheetMargin = 0.0;
+  PolygonSolution solution = solvePolygonProblem(value);
+  ASSERT_FALSE(solution.complete());
+  solution.status = SolveStatus::InvalidProblem;
+  EXPECT_FALSE(validatePolygonSolution(value, solution).success);
+}
+
+/// Проверяет соответствие метаданных базового решателя ограничениям JSON Schema v1.
+TEST(PolygonIo, RejectsInvalidBaselineMetadata)
+{
+  const std::string valid = savePolygonSolutionToText(solvePolygonProblem(problem()));
+
+  std::string unknown = valid;
+  const std::size_t name = unknown.find("\"area-left-bottom\"");
+  ASSERT_NE(name, std::string::npos);
+  unknown.replace(name, std::string("\"area-left-bottom\"").size(), "\"not-a-solver\"");
+  EXPECT_FALSE(loadPolygonSolutionFromText(unknown).success);
+
+  std::string zeroBudget = valid;
+  const std::size_t budget = zeroBudget.find("\"randomIterations\": 64");
+  ASSERT_NE(budget, std::string::npos);
+  zeroBudget.replace(budget, std::string("\"randomIterations\": 64").size(), "\"randomIterations\": 0");
+  EXPECT_FALSE(loadPolygonSolutionFromText(zeroBudget).success);
+}
+
+/// Проверяет безопасный отказ валидатора на предельных координатах размещения.
+TEST(PolygonIo, RejectsExtremePlacementCoordinates)
+{
+  PolygonSolution solution = solvePolygonProblem(problem());
+  ASSERT_FALSE(solution.placements.empty());
+  solution.placements.front().x = std::numeric_limits<std::int64_t>::max();
+  EXPECT_FALSE(validatePolygonSolution(problem(), solution).success);
+  solution.placements.front().x = std::numeric_limits<std::int64_t>::min();
   EXPECT_FALSE(validatePolygonSolution(problem(), solution).success);
 }
 

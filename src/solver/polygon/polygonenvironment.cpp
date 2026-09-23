@@ -67,7 +67,8 @@ PolygonRing64 PolygonEnvironment::placedOuter(const PolygonPlacement & placement
   if (instancePosition == instances_.size())
     return {};
   const PolygonOrientation * orientation = findOrientation(instances_[instancePosition].partIndex, placement.rotationDegrees);
-  return orientation ? translateRing(orientation->outer, placement.x, placement.y) : PolygonRing64{};
+  PolygonRing64 result;
+  return orientation && translateRing(orientation->outer, placement.x, placement.y, result) ? result : PolygonRing64{};
 }
 
 /// Помечает экземпляр и добавляет размещение только после полной canApply-проверки.

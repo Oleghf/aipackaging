@@ -64,6 +64,8 @@ ValidationResult validatePolygonSolution(const PolygonProblem & problem, const P
       std::abs(actual.materialUtilization - recorded.materialUtilization) > 1e-12 ||
       actual.rasterColumns != recorded.rasterColumns || actual.rasterRows != recorded.rasterRows)
     return {false, "polygon solution objective does not match geometry"};
+  if (solution.status == SolveStatus::InvalidProblem)
+    return {false, "valid polygon problem cannot have invalid_problem solution status"};
   if ((solution.status == SolveStatus::Solved) != (actual.placedParts == actual.totalParts))
     return {false, "polygon solution status does not match completeness"};
   return {true, {}};

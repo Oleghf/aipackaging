@@ -61,8 +61,8 @@
       "required": ["name", "projectVersion", "revision", "seed", "randomIterations", "beamWidth", "maxExpandedStates", "timeoutMs"],
       "properties": {
         "name": { "enum": ["input-first-fit", "area-left-bottom", "max-side-left-bottom", "random-left-bottom", "beam"] },
-        "projectVersion": { "type": "string" },
-        "revision": { "type": "string" },
+        "projectVersion": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 },
         "seed": { "type": "integer", "minimum": 0 },
         "randomIterations": { "type": "integer", "minimum": 1 },
         "beamWidth": { "type": "integer", "minimum": 1 },

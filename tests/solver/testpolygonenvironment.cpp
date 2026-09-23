@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <numbers>
 #include <string>
@@ -95,6 +96,64 @@ TEST(PolygonEnvironment, ApproximatesArcAndBezierPaths)
   EXPECT_GT(environment->orientations(1).front().outer.size(), 4);
   EXPECT_NEAR(static_cast<double>(environment->orientations(0).front().materialArea), 100.0 * std::numbers::pi * 1000000.0,
               2100000.0);
+}
+
+/// Проверяет, что обратный ход коллинеарной Bézier не заменяется одной хордой.
+TEST(PolygonEnvironment, RejectsBacktrackingCollinearBezier)
+{
+  PolygonProblem value = problem();
+  value.sheet = {10.0, 10.0, "mm"};
+  value.manufacturing.sheetMargin = 0.0;
+  value.manufacturing.partSpacing = 0.0;
+  value.parts.clear();
+  PolygonPart curved;
+  curved.id = "backtracking";
+  curved.outer.start = {0.0, 0.0};
+  curved.outer.segments = {
+    {PolygonSegmentKind::CubicBezier, {10.0, 0.0}, {}, {100.0, 0.0}, {-100.0, 0.0}},
+    {PolygonSegmentKind::Line, {10.0, 10.0}},
+    {PolygonSegmentKind::Line, {0.0, 10.0}},
+    {PolygonSegmentKind::Line, {0.0, 0.0}},
+  };
+  curved.allowedRotations = {0};
+  value.parts.push_back(curved);
+  std::string error;
+  EXPECT_EQ(PolygonEnvironment::Create(value, error), nullptr);
+  EXPECT_FALSE(error.empty());
+}
+
+/// Проверяет отказ от сверхдальнего центра дуги до вычисления её разбиения.
+TEST(PolygonEnvironment, RejectsArcCenterOutsideSupportedRange)
+{
+  PolygonProblem value = problem();
+  value.parts.clear();
+  PolygonPart curved;
+  curved.id = "invalid-arc";
+  curved.outer.start = {0.0, 0.0};
+  curved.outer.segments = {
+    {PolygonSegmentKind::Arc, {10.0, 0.0}, {1e308, 1e308}, {}, {}, false},
+    {PolygonSegmentKind::Line, {10.0, 10.0}},
+    {PolygonSegmentKind::Line, {0.0, 10.0}},
+    {PolygonSegmentKind::Line, {0.0, 0.0}},
+  };
+  curved.allowedRotations = {0};
+  value.parts.push_back(curved);
+  std::string error;
+  EXPECT_EQ(PolygonEnvironment::Create(value, error), nullptr);
+  EXPECT_FALSE(error.empty());
+}
+
+/// Проверяет отклонение предельных переносов до знакового сложения координат.
+TEST(PolygonEnvironment, RejectsExtremePlacementCoordinatesWithoutOverflow)
+{
+  std::string error;
+  std::unique_ptr<PolygonEnvironment> environment = PolygonEnvironment::Create(problem(), error);
+  ASSERT_NE(environment, nullptr) << error;
+  const PolygonState state = environment->initialState();
+  EXPECT_FALSE(environment->canApply(state, {"rectangle", 0, std::numeric_limits<std::int64_t>::max(), 0, 0}));
+  EXPECT_FALSE(environment->canApply(state, {"rectangle", 0, std::numeric_limits<std::int64_t>::min(), 0, 90}));
+  EXPECT_FALSE(environment->canApply(state, {"rectangle", 0, 0, std::numeric_limits<std::int64_t>::max(), 0}));
+  EXPECT_FALSE(environment->canApply(state, {"rectangle", 0, 0, std::numeric_limits<std::int64_t>::min(), 0}));
 }
 
 /// Проверяет отказ от самопересечения и касающегося внешней границы отверстия.

@@ -12,6 +12,7 @@
 #include <nlohmann/json.hpp>
 
 #include "atomicfile.h"
+#include "solvermetadatavalidation.h"
 
 namespace aipackaging::solver
 {
@@ -99,13 +100,6 @@ bool readSize(const Json & object, const char * key, std::size_t & value)
     return false;
   value = static_cast<std::size_t>(parsed);
   return true;
-}
-
-/// Проверяет каноническую запись SHA-256 в нижнем регистре.
-bool validSha256(const std::string & value)
-{
-  return value.size() == 64 && std::all_of(value.begin(), value.end(), [](unsigned char character)
-                                           { return std::isdigit(character) || (character >= 'a' && character <= 'f'); });
 }
 
 /// Читает обязательную знаковую микронную координату.
@@ -251,7 +245,7 @@ bool readSolver(const Json & value, SolverMetadata & solver)
   solver.randomIterations = static_cast<std::size_t>(randomIterations);
   solver.beamWidth = static_cast<std::size_t>(beamWidth);
   solver.maxExpandedStates = static_cast<std::size_t>(maxExpanded);
-  return true;
+  return internal::validateSolverMetadata(solver, 1, internal::SolverMetadataContract::Polygon);
 }
 
 /// Читает происхождение нейросетевого или гибридного решения полигонального формата v2.
@@ -284,8 +278,7 @@ bool readSolverV2(const Json & value, SolverMetadata & solver)
   {
     const Json & policy = value.at("policy");
     if (!onlyKeys(policy, {"modelId", "modelSha256", "rollouts", "selectionMode"}) ||
-        !readString(policy, "modelId", solver.modelId) || solver.modelId.empty() ||
-        !readString(policy, "modelSha256", solver.modelSha256) || !validSha256(solver.modelSha256) ||
+        !readString(policy, "modelId", solver.modelId) || !readString(policy, "modelSha256", solver.modelSha256) ||
         !readSize(policy, "rollouts", solver.rollouts) || solver.rollouts == 0 ||
         !readString(policy, "selectionMode", solver.selectionMode) ||
         (solver.selectionMode != "greedy" && solver.selectionMode != "sampled-best-of" &&
@@ -294,7 +287,7 @@ bool readSolverV2(const Json & value, SolverMetadata & solver)
     if ((solver.family == SolverFamily::Hybrid) != (solver.selectionMode == "hybrid-best-of"))
       return false;
   }
-  return true;
+  return internal::validateSolverMetadata(solver, 2, internal::SolverMetadataContract::Polygon);
 }
 } // namespace
 

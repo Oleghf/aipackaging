@@ -13,6 +13,7 @@
 #include <nlohmann/json.hpp>
 
 #include "atomicfile.h"
+#include "solvermetadatavalidation.h"
 
 namespace aipackaging::solver
 {
@@ -32,13 +33,6 @@ bool onlyKeys(const Json & value, std::initializer_list<std::string_view> keys)
       return false;
   }
   return true;
-}
-
-/// Проверяет каноническую 64-символьную шестнадцатеричную запись SHA-256 из сведений о происхождении модели.
-bool validSha256(const std::string & value)
-{
-  return value.size() == 64 &&
-         std::all_of(value.begin(), value.end(), [](unsigned char character) { return std::isxdigit(character) != 0; });
 }
 
 /// Читает обязательное строковое поле без неявных преобразований типов.
@@ -437,6 +431,8 @@ GridSolutionLoadResult loadGridSolutionFromText(const std::string & text)
     solution.solver.randomIterations = randomIterations;
     solution.solver.beamWidth = beamWidth;
     solution.solver.maxExpandedStates = maxExpandedStates;
+    if (!internal::validateSolverMetadata(solution.solver, 1, internal::SolverMetadataContract::Grid))
+      return solutionFailure("invalid solver values");
     return {true, std::move(solution), {}};
   }
 
@@ -472,8 +468,8 @@ GridSolutionLoadResult loadGridSolutionFromText(const std::string & text)
   {
     const Json & policy = solver.at("policy");
     if (!onlyKeys(policy, {"modelId", "modelSha256", "rollouts", "selectionMode"}) ||
-        !readString(policy, "modelId", solution.solver.modelId) || solution.solver.modelId.empty() ||
-        !readString(policy, "modelSha256", solution.solver.modelSha256) || !validSha256(solution.solver.modelSha256) ||
+        !readString(policy, "modelId", solution.solver.modelId) ||
+        !readString(policy, "modelSha256", solution.solver.modelSha256) ||
         !readSize(policy, "rollouts", solution.solver.rollouts) || solution.solver.rollouts == 0 ||
         !readString(policy, "selectionMode", solution.solver.selectionMode) ||
         (solution.solver.selectionMode != "greedy" && solution.solver.selectionMode != "sampled-best-of" &&
@@ -483,6 +479,8 @@ GridSolutionLoadResult loadGridSolutionFromText(const std::string & text)
     if ((solution.solver.family == SolverFamily::Hybrid) != hybridSelection)
       return solutionFailure("solution v2 family and policy selection mode mismatch");
   }
+  if (!internal::validateSolverMetadata(solution.solver, 2, internal::SolverMetadataContract::Grid))
+    return solutionFailure("invalid solution v2 solver values");
   return {true, std::move(solution), {}};
 }
 

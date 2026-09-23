@@ -64,7 +64,12 @@ target_compile_definitions(AIPackaging_Search PRIVATE
   AIPACKAGING_BUILD_REVISION="${AIPACKAGING_BUILD_REVISION}"
 )
 
-add_library(AIPackaging_Json STATIC "json/atomicfile.cpp" "json/gridio.cpp" "json/polygonio.cpp")
+add_library(AIPackaging_Json STATIC
+  "json/atomicfile.cpp"
+  "json/gridio.cpp"
+  "json/polygonio.cpp"
+  "json/solvermetadatavalidation.cpp"
+)
 target_include_directories(AIPackaging_Json PUBLIC "${AIPACKAGING_NESTING_INCLUDE_DIR}")
 target_link_libraries(AIPackaging_Json
   PUBLIC AIPackaging_GridCore AIPackaging_PolygonCore
