@@ -210,6 +210,25 @@ PolygonMainWindow -> PolygonWorkspaceWidget -> PolygonWorkspaceController -> INe
 может быть сохранён. Qt получает готовые кольца в миллиметрах и выполняет только
 отрисовку.
 
+После R5 жизненный цикл одного активного документа принадлежит отдельному
+`ActivePolygonDocument`. Он не зависит от Qt, JSON, `Search`, ONNX или файловой
+системы и хранит источник, чистую точку, корректность, активную работу и
+устаревание решения. `PolygonWorkspaceController` по-прежнему отвечает только
+за запуск и публикацию результата. Контракты документа, модели, запуска,
+представления и портов находятся в отдельных заголовках, а прежний
+`polygonworkspaceview.h` является совместимым фасадом.
+
+Зарезервированные границы развития имеют вид:
+
+```text
+GUI -> Application -> Editor commands
+DxfImport -> Editor model
+DesktopInfrastructure -> Application + Search + Json + OnnxInference
+```
+
+`Editor` не может зависеть от Qt, JSON, `DxfImport`, `Search` или ONNX. Типы DXF не
+выходят из адаптера импорта в прикладные порты.
+
 ## Предлагаемый доменный контракт
 
 ```text

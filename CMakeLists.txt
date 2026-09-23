@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.27)
-project("AIPackaging" VERSION 0.9.0 LANGUAGES CXX)
+project("AIPackaging" VERSION 0.9.1 LANGUAGES CXX)
 
 set(AIPACKAGING_BUILD_REVISION "unknown")
 find_package(Git QUIET)
