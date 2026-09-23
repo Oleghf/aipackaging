@@ -113,6 +113,21 @@ def _bc_training_state(budget: PolygonTrainingBudget | None, epoch: int, best_nl
     })
 
 
+def _ppo_training_state(
+    budget: PolygonTrainingBudget | None,
+    update: int,
+    best_score: Sequence[float] | None,
+    history: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Отмечает подтверждённую границу обновления PPO и сохраняет полную историю запуска."""
+
+    return _budget_state(budget, {
+        "ppoCommittedUpdate": update,
+        "bestScore": list(best_score) if best_score is not None else None,
+        "history": [dict(item) for item in history],
+    })
+
+
 def _checkpoint_payload(model: HierarchicalPolygonPolicyV1, optimizer: torch.optim.Optimizer,
                         scheduler: torch.optim.lr_scheduler.LRScheduler, *, stage: str, step: int,
                         config: Mapping[str, Any], training_state: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -152,7 +167,8 @@ def save_polygon_checkpoint(path: str | Path, model: HierarchicalPolygonPolicyV1
 def load_polygon_checkpoint(path: str | Path, model: HierarchicalPolygonPolicyV1, device: torch.device, *,
                             optimizer: torch.optim.Optimizer | None = None,
                             scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
-                            restore_rng: bool = False, expected_sha256: str | None = None) -> dict[str, Any]:
+                            restore_rng: bool = False, expected_sha256: str | None = None,
+                            expected_config: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Проверяет хеш и загружает доверенную локальную контрольную точку."""
 
     source = Path(path)
@@ -177,6 +193,8 @@ def load_polygon_checkpoint(path: str | Path, model: HierarchicalPolygonPolicyV1
         raise ValueError("контрольная точка содержит неизвестные или пропущенные поля")
     if payload["stage"] not in {"bc", "ppo"} or not isinstance(payload["step"], int) or payload["step"] < 0:
         raise ValueError("контрольная точка содержит некорректный этап обучения")
+    if expected_config is not None and payload["config"] != dict(expected_config):
+        raise ValueError("конфигурация контрольной точки не совпадает с запрошенным продолжением")
     model.load_state_dict(payload["modelState"])
     if optimizer is not None:
         optimizer.load_state_dict(payload["optimizerState"])
@@ -231,7 +249,10 @@ def train_polygon_bc(model: HierarchicalPolygonPolicyV1, train_samples: Sequence
     stale = 0
     start_epoch = 0
     if resume is not None:
-        payload = load_polygon_checkpoint(resume, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True)
+        payload = load_polygon_checkpoint(
+            resume, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True,
+            expected_config=config,
+        )
         if payload["stage"] != "bc":
             raise ValueError("для продолжения BC требуется контрольная точка этапа BC")
         start_epoch = int(payload["step"])
@@ -431,7 +452,8 @@ def train_polygon_ppo(model: HierarchicalPolygonPolicyV1, train_episodes: Sequen
                       validation_episodes: Sequence[PolygonExpertEpisode], validation_baselines: Mapping[str, Any],
                       config: Mapping[str, Any], run_dir: Path, device: torch.device, *, smoke: bool,
                       deadline: float, resume: str | Path | None = None,
-                      budget: PolygonTrainingBudget | None = None) -> tuple[Path, list[dict[str, Any]], str]:
+                      budget: PolygonTrainingBudget | None = None,
+                      prior_history: Sequence[Mapping[str, Any]] = ()) -> tuple[Path, list[dict[str, Any]], str]:
     """Дообучает BC-модель методом PPO и сохраняет лучший проверочный результат."""
 
     settings = config["ppo"]
@@ -443,42 +465,42 @@ def train_polygon_ppo(model: HierarchicalPolygonPolicyV1, train_episodes: Sequen
     best_path = run_dir / "polygon-ppo-best.pt"
     resume_path = run_dir / "polygon-resume.pt"
     start = 0
+    history: list[dict[str, Any]] = [dict(item) for item in prior_history]
     if resume is not None:
-        payload = load_polygon_checkpoint(resume, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True)
+        payload = load_polygon_checkpoint(
+            resume, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True,
+            expected_config=config,
+        )
         if payload["stage"] != "ppo":
             raise ValueError("для продолжения PPO требуется контрольная точка этапа PPO")
         start = int(payload["step"])
+        saved_state = payload["trainingState"]
+        if saved_state.get("ppoCommittedUpdate") != start or not isinstance(saved_state.get("history"), list):
+            raise ValueError("контрольная точка PPO не подтверждает завершённое обновление; продолжение небезопасно")
+        history = [dict(item) for item in saved_state["history"]]
     stored_score = payload.get("trainingState", {}).get("bestScore") if resume is not None else None
     best_score: tuple[float, ...] | None = tuple(stored_score) if stored_score is not None else None
-    history: list[dict[str, Any]] = []
     status = "complete"
+    committed_update = start
     interval = 1 if smoke else max(1, updates // 10)
     for update in range(start, updates):
         if time.monotonic() >= deadline:
             save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="ppo", step=update, config=config,
-                                    training_state=_budget_state(
-                                        budget, {"bestScore": list(best_score) if best_score is not None else None}
-                                    ))
+                                    training_state=_ppo_training_state(budget, update, best_score, history))
             status = "budget_exhausted"; break
         transitions = _collect_transitions(model, train_episodes, count, device, config["seed"] + update,
                                            settings["workers"], deadline)
         if len(transitions) != count:
             save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="ppo", step=update, config=config,
-                                    training_state=_budget_state(
-                                        budget, {"bestScore": list(best_score) if best_score is not None else None}
-                                    ))
+                                    training_state=_ppo_training_state(budget, update, best_score, history))
             status = "budget_exhausted"; break
         # Файл содержит только согласованное состояние до текущего обновления.
         # При истечении времени частично применённые градиенты будут отброшены.
         save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="ppo", step=update, config=config,
-                                training_state=_budget_state(
-                                    budget, {"bestScore": list(best_score) if best_score is not None else None}
-                                ))
+                                training_state=_ppo_training_state(budget, update, best_score, history))
         if time.monotonic() >= deadline:
             save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="ppo", step=update, config=config,
-                                    training_state=_budget_state(
-                                        budget, {"bestScore": list(best_score) if best_score is not None else None}
-                                    ))
+                                    training_state=_ppo_training_state(budget, update, best_score, history))
             status = "budget_exhausted"; break
         advantages, returns = _advantages(transitions, settings["gamma"], settings["gaeLambda"])
         advantages = (advantages - advantages.mean()) / max(float(advantages.std()), 1e-8)
@@ -520,38 +542,34 @@ def train_polygon_ppo(model: HierarchicalPolygonPolicyV1, train_episodes: Sequen
         if exhausted or time.monotonic() >= deadline:
             load_polygon_checkpoint(resume_path, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True)
             save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="ppo", step=update, config=config,
-                                    training_state=_budget_state(
-                                        budget, {"bestScore": list(best_score) if best_score is not None else None}
-                                    ))
+                                    training_state=_ppo_training_state(budget, update, best_score, history))
             status = "budget_exhausted"
             break
         scheduler.step()
         record: dict[str, Any] = {"stage": "ppo", "update": update + 1, "transitions": count,
                                   "loss": total_loss / max(count * epochs, 1), "entropyCoefficient": entropy}
+        improved = False
         if (update + 1) % interval == 0 or update + 1 == updates:
             validation = _validation_score(model, validation_episodes, validation_baselines, device, config["seed"], deadline)
             if validation is None:
                 load_polygon_checkpoint(resume_path, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True)
                 save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="ppo", step=update, config=config,
-                                        training_state=_budget_state(
-                                            budget, {"bestScore": list(best_score) if best_score is not None else None}
-                                        ))
+                                        training_state=_ppo_training_state(budget, update, best_score, history))
                 status = "budget_exhausted"; break
             score, details = validation; record["validation"] = details
             if best_score is None or score > best_score:
                 best_score = score
-                save_polygon_checkpoint(best_path, model, optimizer, scheduler, stage="ppo", step=update + 1, config=config,
-                                        training_state=_budget_state(budget, {"bestScore": list(best_score)}))
+                improved = True
         history.append(record)
+        committed_update = update + 1
+        if improved:
+            save_polygon_checkpoint(best_path, model, optimizer, scheduler, stage="ppo", step=committed_update, config=config,
+                                    training_state=_ppo_training_state(budget, committed_update, best_score, history))
         save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="ppo", step=update + 1, config=config,
-                                training_state=_budget_state(
-                                    budget, {"bestScore": list(best_score) if best_score is not None else None}
-                                ))
+                                training_state=_ppo_training_state(budget, committed_update, best_score, history))
     if not best_path.exists():
-        save_polygon_checkpoint(best_path, model, optimizer, scheduler, stage="ppo", step=start + len(history), config=config,
-                                training_state=_budget_state(
-                                    budget, {"bestScore": list(best_score) if best_score is not None else None}
-                                ))
+        save_polygon_checkpoint(best_path, model, optimizer, scheduler, stage="ppo", step=committed_update, config=config,
+                                training_state=_ppo_training_state(budget, committed_update, best_score, history))
     load_polygon_checkpoint(best_path, model, device)
     return best_path, history, status
 
@@ -568,9 +586,9 @@ def train_polygon_pipeline(config_path: str | Path, dataset_root: str | Path, ru
     configure_determinism(config["seed"])
     invocation_started = time.monotonic()
     output = Path(run_dir); output.mkdir(parents=True, exist_ok=True)
-    write_canonical_json(output / "training-config.json", config)
     model = HierarchicalPolygonPolicyV1(config["model"]["hiddenSize"]).to(device)
-    resume_payload = load_polygon_checkpoint(resume, model, device) if resume is not None else None
+    resume_payload = load_polygon_checkpoint(resume, model, device, expected_config=config) if resume is not None else None
+    write_canonical_json(output / "training-config.json", config)
     limit_seconds = float(config["ppo"]["maxWallTimeSeconds"])
     elapsed_before = _resume_elapsed_seconds(resume_payload, limit_seconds) if resume_payload is not None else 0.0
     budget = PolygonTrainingBudget(limit_seconds, elapsed_before, invocation_started)
@@ -596,6 +614,7 @@ def train_polygon_pipeline(config_path: str | Path, dataset_root: str | Path, ru
         cache_path, {"train": train, "validation": validation}, cache_fingerprint
     )
     bc_history: list[dict[str, Any]] = []
+    run_history: list[dict[str, Any]] = []
     ppo_resume = None
     if resume is None:
         bc_path, bc_history, bc_status = train_polygon_bc(model, cached["train"], cached["validation"], config, output, device,
@@ -604,7 +623,11 @@ def train_polygon_pipeline(config_path: str | Path, dataset_root: str | Path, ru
             ppo_path = bc_path; ppo_history = []; status = bc_status
         else:
             ppo_path, ppo_history, status = train_polygon_ppo(model, train, validation, baselines, config, output,
-                                                             device, smoke=smoke, deadline=deadline, budget=budget)
+                                                             device, smoke=smoke, deadline=deadline, budget=budget,
+                                                             prior_history=bc_history)
+            run_history = ppo_history
+        if bc_status != "complete":
+            run_history = bc_history
     else:
         payload = resume_payload
         assert payload is not None
@@ -620,11 +643,13 @@ def train_polygon_pipeline(config_path: str | Path, dataset_root: str | Path, ru
         if bc_status == "complete":
             ppo_path, ppo_history, status = train_polygon_ppo(model, train, validation, baselines, config, output,
                                                              device, smoke=smoke, deadline=deadline, resume=ppo_resume,
-                                                             budget=budget)
+                                                             budget=budget, prior_history=bc_history)
+            run_history = ppo_history
         else:
             ppo_path = bc_path; ppo_history = []; status = bc_status
+            run_history = bc_history
     metrics_path = output / "metrics.jsonl"
-    metrics_path.write_text("".join(canonical_json(item) + "\n" for item in (*bc_history, *ppo_history)),
+    metrics_path.write_text("".join(canonical_json(item) + "\n" for item in run_history),
                             encoding="utf-8", newline="\n")
     config_hash = sha256_file(config_path)
     checkpoint_hash = sha256_file(ppo_path)

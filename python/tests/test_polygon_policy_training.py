@@ -121,6 +121,26 @@ def test_polygon_checkpoint_restores_model_and_rng(tmp_path: Path) -> None:
         load_polygon_checkpoint(path, model, torch.device("cpu"))
 
 
+def test_polygon_checkpoint_rejects_incompatible_resume_before_model_change(tmp_path: Path) -> None:
+    """Несовместимая конфигурация отклоняется до загрузки весов в модель."""
+
+    torch = pytest.importorskip("torch")
+    from aipackaging_ml.polygon_model import HierarchicalPolygonPolicyV1
+    from aipackaging_ml.polygon_training import load_polygon_checkpoint, save_polygon_checkpoint
+
+    source = HierarchicalPolygonPolicyV1(32)
+    optimizer = torch.optim.AdamW(source.parameters(), lr=1e-3)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.0)
+    path = tmp_path / "checkpoint.pt"
+    save_polygon_checkpoint(path, source, optimizer, scheduler, stage="ppo", step=0, config={"seed": 42})
+
+    target = HierarchicalPolygonPolicyV1(32)
+    before = {name: value.detach().clone() for name, value in target.state_dict().items()}
+    with pytest.raises(ValueError, match="конфигурация"):
+        load_polygon_checkpoint(path, target, torch.device("cpu"), expected_config={"seed": 43})
+    assert all(torch.equal(target.state_dict()[name], value) for name, value in before.items())
+
+
 def test_polygon_checkpoint_restores_rng_when_loaded_to_cuda(tmp_path: Path) -> None:
     """Загрузка на CUDA оставляет состояние основного генератора на CPU."""
 
@@ -313,7 +333,61 @@ def test_polygon_ppo_deadline_rolls_back_partial_update(tmp_path: Path, monkeypa
     assert all(torch.equal(value, original[name]) for name, value in model.state_dict().items())
     payload = polygon_training.load_polygon_checkpoint(tmp_path / "polygon-resume.pt", model, torch.device("cpu"))
     assert payload["step"] == 0
+    assert payload["trainingState"]["ppoCommittedUpdate"] == 0
+    assert payload["trainingState"]["history"] == []
     assert payload["trainingState"]["elapsedTrainingSeconds"] == 5.0
+
+
+def test_polygon_ppo_resume_restores_complete_history(tmp_path: Path) -> None:
+    """Продолжение PPO возвращает подтверждённую историю из контрольной точки."""
+
+    import torch
+    from aipackaging_ml import polygon_training
+
+    model = torch.nn.Linear(1, 1)
+    config = {"seed": 42, "ppo": {"learningRate": 1e-3, "updates": 2, "transitionsPerUpdate": 1,
+                                     "epochsPerUpdate": 1, "workers": 1, "gamma": 1.0, "gaeLambda": 0.95,
+                                     "entropyStart": 0.01, "entropyEnd": 0.001, "clipRatio": 0.2,
+                                     "valueCoefficient": 0.5, "maxGradientNorm": 0.5}}
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.0)
+    history = [{"stage": "bc", "epoch": 1}, {"stage": "ppo", "update": 1}]
+    checkpoint = tmp_path / "resume-source.pt"
+    polygon_training.save_polygon_checkpoint(
+        checkpoint, model, optimizer, scheduler, stage="ppo", step=1, config=config,
+        training_state={"ppoCommittedUpdate": 1, "bestScore": None, "history": history},
+    )
+    _, restored, status = polygon_training.train_polygon_ppo(
+        model, [], [], {}, config, tmp_path, torch.device("cpu"), smoke=False, deadline=0.0, resume=checkpoint,
+    )
+    assert status == "budget_exhausted"
+    assert restored == history
+
+
+def test_polygon_ppo_rejects_legacy_resume_without_committed_history(tmp_path: Path) -> None:
+    """Старая PPO-точка остаётся читаемой, но не допускается к продолжению."""
+
+    import torch
+    from aipackaging_ml import polygon_training
+
+    model = torch.nn.Linear(1, 1)
+    config = {"seed": 42, "ppo": {"learningRate": 1e-3, "updates": 1, "transitionsPerUpdate": 1,
+                                     "epochsPerUpdate": 1, "workers": 1, "gamma": 1.0, "gaeLambda": 0.95,
+                                     "entropyStart": 0.01, "entropyEnd": 0.001, "clipRatio": 0.2,
+                                     "valueCoefficient": 0.5, "maxGradientNorm": 0.5}}
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.0)
+    checkpoint = tmp_path / "legacy-ppo.pt"
+    polygon_training.save_polygon_checkpoint(
+        checkpoint, model, optimizer, scheduler, stage="ppo", step=0, config=config,
+        training_state={"bestScore": None},
+    )
+    assert polygon_training.load_polygon_checkpoint(checkpoint, model, torch.device("cpu"))["stage"] == "ppo"
+    with pytest.raises(ValueError, match="не подтверждает завершённое обновление"):
+        polygon_training.train_polygon_ppo(
+            model, [], [], {}, config, tmp_path, torch.device("cpu"), smoke=False,
+            deadline=float("inf"), resume=checkpoint,
+        )
 
 
 def test_polygon_bc_deadline_rolls_back_epoch_and_resumes_exactly(
