@@ -33,6 +33,12 @@ if (BUILD_DESKTOP)
     AIPackaging_Application AIPackaging_DesktopInfrastructure AIPackaging_GUI)
 
   copy_target_qt_dll(${PROJECT_NAME})
+  add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/examples/polygon"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      "${CMAKE_SOURCE_DIR}/examples/polygon"
+      "$<TARGET_FILE_DIR:${PROJECT_NAME}>/examples/polygon"
+    VERBATIM)
   if (BUILD_ONNX_BACKEND)
     target_compile_definitions(${PROJECT_NAME} PRIVATE AIPACKAGING_HAS_ONNX_BACKEND=1)
     aipackaging_copy_onnxruntime(${PROJECT_NAME})

@@ -385,6 +385,7 @@ TEST(PolygonDesktopInfrastructure, DestructionStopsAndJoinsWorker)
 }
 
 /// Проверяет отложенную доставку результата фоновой проверки модели.
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
 TEST(PolygonDesktopInfrastructure, LoadsModelThroughBackgroundRunner)
 {
   auto gateway = std::make_shared<ImmediateModelGateway>();
@@ -406,6 +407,7 @@ TEST(PolygonDesktopInfrastructure, LoadsModelThroughBackgroundRunner)
   ASSERT_TRUE(gateway->released.has_value());
   EXPECT_EQ(gateway->released->value, 7U);
 }
+#endif
 
 #ifdef AIPACKAGING_HAS_ONNX_BACKEND
 /// Проверяет загрузку комплекта и нейросетевой запуск через прикладные идентификаторы.
@@ -436,10 +438,11 @@ TEST(PolygonDesktopInfrastructure, LoadsModelAndRunsNeuralBackend)
   std::filesystem::remove(input);
 }
 
-/// Проверяет явное происхождение исправного гибридного результата.
-TEST(PolygonDesktopInfrastructure, PublishesHybridProvenance)
+/// Проверяет гибридный запуск с поставляемой моделью и сохранение проверенного результата.
+TEST(PolygonDesktopInfrastructure, RunsRecommendedHybridAndSaves)
 {
   const auto input = writeProblem();
+  const auto output = std::filesystem::temp_directory_path() / "aipackaging-u1-hybrid-solution.json";
   const auto store = std::make_shared<PolygonArtifactStore>();
   LocalPolygonDocumentGateway documents(store);
   LocalPolygonModelGateway models(store);
@@ -452,15 +455,22 @@ TEST(PolygonDesktopInfrastructure, PublishesHybridProvenance)
   NestingRunRequest request;
   request.method = NestingMethod::Hybrid;
   request.model = model.model;
-  request.neuralRollouts = 2;
-  request.fallbackRandomIterations = 2;
+  request.neuralRollouts = 16;
+  request.fallbackRandomIterations = 64;
   request.timeoutMs = 0;
   const NestingRunResult result = backend.run(loaded.document, request, {});
   EXPECT_EQ(result.provenance, NestingProvenance::Hybrid);
-  EXPECT_TRUE(result.solution.has_value());
+  ASSERT_TRUE(result.solution.has_value());
+  const PolygonDocumentOperationResult saved = documents.save(output.string(), *result.solution);
+  ASSERT_TRUE(saved.success) << saved.error;
+  const PolygonSolutionLoadResult parsed = loadPolygonSolutionFromFile(output.string());
+  ASSERT_TRUE(parsed.success) << parsed.error;
+  EXPECT_TRUE(validatePolygonSolution(testProblem(), parsed.solution).success);
 
+  documents.release(*result.solution);
   models.release(model.model);
   documents.release(loaded.document);
   std::filesystem::remove(input);
+  std::filesystem::remove(output);
 }
 #endif

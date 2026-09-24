@@ -125,7 +125,10 @@ void PolygonCanvasWidget::paintEvent(QPaintEvent * event)
     fill.setAlpha(185);
     QPen outline(fill.darker(155));
     outline.setCosmetic(true);
-    outline.setWidthF(1.5);
+    const bool selected = part.partId == selectedPartId_ && part.instanceIndex == selectedInstanceIndex_;
+    outline.setWidthF(selected ? 3.0 : 1.5);
+    if (selected)
+      outline.setColor(QColor("#0F172A"));
     painter.setPen(outline);
     painter.setBrush(fill);
     painter.drawPath(path);
@@ -138,6 +141,7 @@ void PolygonCanvasWidget::mousePressEvent(QMouseEvent * event)
   if (event->button() == Qt::LeftButton)
   {
     panning_ = true;
+    dragged_ = false;
     lastMousePosition_ = event->position();
     setCursor(Qt::ClosedHandCursor);
     event->accept();
@@ -151,12 +155,19 @@ void PolygonCanvasWidget::mouseMoveEvent(QMouseEvent * event)
 {
   if (panning_)
   {
-    pan_ += event->position() - lastMousePosition_;
+    const QPointF delta = event->position() - lastMousePosition_;
+    if (std::abs(delta.x()) + std::abs(delta.y()) > 1.0)
+      dragged_ = true;
+    pan_ += delta;
     lastMousePosition_ = event->position();
     update();
     event->accept();
     return;
   }
+  const QPointF sheet = mapToSheet(event->position());
+  const bool inside =
+    sheet.x() >= 0.0 && sheet.y() >= 0.0 && sheet.x() <= snapshot_.scene.sheetWidth && sheet.y() <= snapshot_.scene.sheetHeight;
+  emit cursorPositionChanged(sheet.x(), sheet.y(), inside);
   QWidget::mouseMoveEvent(event);
 }
 
@@ -167,6 +178,16 @@ void PolygonCanvasWidget::mouseReleaseEvent(QMouseEvent * event)
   {
     panning_ = false;
     setCursor(Qt::OpenHandCursor);
+    if (!dragged_)
+    {
+      if (const PolygonPlacedPartView * part = hitTest(mapToSheet(event->position())))
+      {
+        selectedPartId_ = part->partId;
+        selectedInstanceIndex_ = part->instanceIndex;
+        emit partSelected(QString::fromStdString(part->partId), part->instanceIndex);
+        update();
+      }
+    }
     event->accept();
     return;
   }
@@ -180,4 +201,33 @@ void PolygonCanvasWidget::wheelEvent(QWheelEvent * event)
   zoom_ = std::clamp(zoom_ * factor, 0.2, 20.0);
   update();
   event->accept();
+}
+
+/// Обращает преобразование камеры без изменения геометрии модели представления.
+QPointF PolygonCanvasWidget::mapToSheet(const QPointF & position) const
+{
+  const PolygonSceneView & scene = snapshot_.scene;
+  if (scene.sheetWidth <= 0.0 || scene.sheetHeight <= 0.0)
+    return {};
+  const double availableWidth = std::max(1.0, width() - 2.0 * VIEW_PADDING);
+  const double availableHeight = std::max(1.0, height() - 2.0 * VIEW_PADDING);
+  const double scale = std::min(availableWidth / scene.sheetWidth, availableHeight / scene.sheetHeight) * zoom_;
+  return {(position.x() - width() / 2.0 - pan_.x()) / scale + scene.sheetWidth / 2.0,
+          -(position.y() - height() / 2.0 - pan_.y()) / scale + scene.sheetHeight / 2.0};
+}
+
+/// Проверяет детали в обратном порядке отрисовки и учитывает прозрачные отверстия.
+const PolygonPlacedPartView * PolygonCanvasWidget::hitTest(const QPointF & sheetPoint) const
+{
+  for (auto iterator = snapshot_.scene.placements.rbegin(); iterator != snapshot_.scene.placements.rend(); ++iterator)
+  {
+    QPainterPath path;
+    path.setFillRule(Qt::OddEvenFill);
+    appendRing(path, iterator->outer);
+    for (const auto & hole : iterator->holes)
+      appendRing(path, hole);
+    if (path.contains(sheetPoint))
+      return &*iterator;
+  }
+  return nullptr;
 }

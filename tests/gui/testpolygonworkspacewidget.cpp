@@ -13,6 +13,7 @@
 #include <QRegularExpression>
 #include <QThread>
 #include <QToolButton>
+#include <QTreeWidget>
 #include <stdexcept>
 #include <utility>
 
@@ -244,11 +245,12 @@ TEST(PolygonWorkspaceWidget, RequiresVerifiedModelForNeuralMode)
   snapshot.canRun = true;
   snapshot.canLoadModel = true;
   widget.present(snapshot);
-  solver->setCurrentIndex(5);
+  solver->setCurrentIndex(2);
   EXPECT_EQ(widget.solverConfig().method, NestingMethod::Neural);
   EXPECT_FALSE(start->isEnabled());
 
   snapshot.modelReady = true;
+  snapshot.modelState = PolygonModelState::Ready;
   snapshot.modelId = "policy";
   snapshot.modelSha256 = "0123456789abcdef";
   widget.present(snapshot);
@@ -256,4 +258,57 @@ TEST(PolygonWorkspaceWidget, RequiresVerifiedModelForNeuralMode)
   const auto * label = widget.findChild<QLabel *>("polygonModelStatus");
   ASSERT_NE(label, nullptr);
   EXPECT_TRUE(label->text().contains(QStringLiteral("0123456789ab")));
+}
+
+/// Проверяет закреплённое соответствие четырёх понятных режимов прикладным запросам.
+TEST(PolygonWorkspaceWidget, MapsFriendlyModesToRunRequests)
+{
+  ensureApplication();
+  PolygonWorkspaceWidget widget;
+  auto * modes = widget.findChild<QComboBox *>("polygonSolverBox");
+  ASSERT_NE(modes, nullptr);
+
+  modes->setCurrentIndex(0);
+  EXPECT_EQ(widget.solverConfig().method, NestingMethod::Baseline);
+  EXPECT_EQ(widget.solverConfig().algorithm, BaselineAlgorithm::AreaLeftBottom);
+  EXPECT_EQ(widget.solverConfig().timeoutMs, 30'000U);
+  modes->setCurrentIndex(1);
+  EXPECT_EQ(widget.solverConfig().algorithm, BaselineAlgorithm::Beam);
+  EXPECT_EQ(widget.solverConfig().maxExpandedStates, 50'000U);
+  modes->setCurrentIndex(2);
+  EXPECT_EQ(widget.solverConfig().method, NestingMethod::Neural);
+  EXPECT_EQ(widget.solverConfig().neuralSelection, NeuralSelectionMode::BestOf);
+  EXPECT_EQ(widget.solverConfig().neuralRollouts, 16U);
+  EXPECT_EQ(widget.solverConfig().timeoutMs, 300'000U);
+  modes->setCurrentIndex(3);
+  EXPECT_EQ(widget.solverConfig().method, NestingMethod::Hybrid);
+  EXPECT_EQ(widget.solverConfig().fallbackRandomIterations, 64U);
+}
+
+/// Проверяет нейтральные сведения документа и названия этапов выполнения.
+TEST(PolygonWorkspaceWidget, PresentsDocumentStructureAndFriendlyProgressStage)
+{
+  ensureApplication();
+  PolygonWorkspaceWidget widget;
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.state = PolygonWorkspaceState::Running;
+  snapshot.canCancel = true;
+  snapshot.problemId = "workpiece";
+  snapshot.progress = {NestingProgressStage::NeuralRollouts, 3, 16, 0};
+  PolygonPartSummary part;
+  part.id = "bracket";
+  part.quantity = 2;
+  part.allowedRotations = {0, 90};
+  part.width = 12.5;
+  part.height = 8.0;
+  snapshot.document.parts.push_back(part);
+  widget.present(snapshot);
+
+  auto * tree = widget.findChild<QTreeWidget *>("polygonPartTree");
+  auto * stage = widget.findChild<QLabel *>("polygonProgressStage");
+  ASSERT_NE(tree, nullptr);
+  ASSERT_NE(stage, nullptr);
+  ASSERT_EQ(tree->topLevelItemCount(), 1);
+  EXPECT_EQ(tree->topLevelItem(0)->text(0), QStringLiteral("bracket"));
+  EXPECT_TRUE(stage->text().contains(QStringLiteral("нейросетевые")));
 }

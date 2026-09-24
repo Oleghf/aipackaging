@@ -1,63 +1,140 @@
+#include <QCloseEvent>
+#include <QCoreApplication>
+#include <QDebug>
+#include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QLabel>
 #include <QMenuBar>
 #include <QSettings>
+#include <QStackedWidget>
+#include <QStatusBar>
+#include <QTimer>
+#include <QToolBar>
 #include <utility>
 
 #include <polygonmainwindow.h>
+#include <polygonstartpage.h>
 #include <polygonworkspacewidget.h>
 
-/// Создаёт одно рабочее полотно и связывает его сигналы с действиями контроллера.
+namespace
+{
+constexpr qsizetype MAX_RECENT_PROBLEMS = 8;
+
+/// Возвращает каталог поставляемых примеров рядом с исполняемым файлом.
+QString exampleDirectory()
+{
+  return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("examples/polygon"));
+}
+} // namespace
+
+/// Создаёт стартовую и рабочую страницы, основные команды и строку состояния.
 PolygonMainWindow::PolygonMainWindow(QWidget * parent)
   : QMainWindow(parent)
   , workspace_(new PolygonWorkspaceWidget(this))
+  , startPage_(new PolygonStartPage(this))
+  , pages_(new QStackedWidget(this))
+  , coordinatesLabel_(new QLabel(tr("Координаты: —"), this))
   , openProblemAction_(nullptr)
   , saveSolutionAction_(nullptr)
   , openModelAction_(nullptr)
 {
   setObjectName(QStringLiteral("polygonMainWindow"));
   setWindowTitle(tr("AIPackaging — полигональный раскрой"));
-  setCentralWidget(workspace_);
+  setMinimumSize(1280, 720);
+  pages_->setObjectName(QStringLiteral("mainPages"));
+  pages_->addWidget(startPage_);
+  pages_->addWidget(workspace_);
+  pages_->setCurrentWidget(startPage_);
+  setCentralWidget(pages_);
 
-  QMenu * fileMenu = menuBar()->addMenu(tr("Файл"));
-  openProblemAction_ = fileMenu->addAction(tr("Открыть задачу"));
-  saveSolutionAction_ = fileMenu->addAction(tr("Сохранить решение"));
-  openModelAction_ = fileMenu->addAction(tr("Загрузить модель"));
+  QMenu * fileMenu = menuBar()->addMenu(tr("&Файл"));
+  QAction * homeAction = fileMenu->addAction(tr("&Начальная страница"));
+  openProblemAction_ = fileMenu->addAction(tr("&Открыть задачу…"));
+  saveSolutionAction_ = fileMenu->addAction(tr("&Сохранить решение…"));
+  fileMenu->addSeparator();
+  openModelAction_ = fileMenu->addAction(tr("Подключить &модель…"));
+  QAction * forgetModelAction = fileMenu->addAction(tr("Забыть модель"));
   openProblemAction_->setShortcut(QKeySequence::Open);
   saveSolutionAction_->setShortcut(QKeySequence::Save);
+  openProblemAction_->setObjectName(QStringLiteral("openProblemAction"));
+  saveSolutionAction_->setObjectName(QStringLiteral("saveSolutionAction"));
+  openModelAction_->setObjectName(QStringLiteral("openModelAction"));
 
-  connect(openProblemAction_, &QAction::triggered, workspace_, &PolygonWorkspaceWidget::requestOpenProblem);
-  connect(saveSolutionAction_, &QAction::triggered, workspace_, &PolygonWorkspaceWidget::requestSaveSolution);
-  connect(openModelAction_, &QAction::triggered, workspace_, &PolygonWorkspaceWidget::requestOpenModel);
+  auto * toolbar = addToolBar(tr("Основные команды"));
+  toolbar->setObjectName(QStringLiteral("mainToolbar"));
+  toolbar->setMovable(false);
+  toolbar->addAction(homeAction);
+  toolbar->addAction(openProblemAction_);
+  toolbar->addAction(saveSolutionAction_);
+  toolbar->addSeparator();
+  toolbar->addAction(openModelAction_);
+  toolbar->addSeparator();
+  toolbar->addAction(workspace_->startAction());
+  toolbar->addAction(workspace_->cancelAction());
+  toolbar->addAction(workspace_->fitAction());
 
-  connect(workspace_, &PolygonWorkspaceWidget::requestOpenProblem, this,
-          [this]()
-          {
-            if (!actions_.openProblem)
-              return;
-            const QString path = QFileDialog::getOpenFileName(this, tr("Откройте полигональную задачу"), QString(),
-                                                              tr("JSON (*.json);;Все файлы (*)"));
-            if (!path.isEmpty())
-              actions_.openProblem(path.toStdString());
-          });
-  connect(workspace_, &PolygonWorkspaceWidget::requestSaveSolution, this,
+  statusBar()->addPermanentWidget(coordinatesLabel_);
+  coordinatesLabel_->setObjectName(QStringLiteral("cursorCoordinates"));
+  coordinatesLabel_->setAccessibleName(tr("Координаты курсора на листе"));
+
+  connect(homeAction, &QAction::triggered, this, [this]() { pages_->setCurrentWidget(startPage_); });
+  connect(openProblemAction_, &QAction::triggered, this, &PolygonMainWindow::chooseProblem);
+  connect(saveSolutionAction_, &QAction::triggered, this,
           [this]()
           {
             if (!actions_.saveSolution)
               return;
-            const QString path =
-              QFileDialog::getSaveFileName(this, tr("Сохраните полигональное решение"), QStringLiteral("polygon-solution.json"),
-                                           tr("JSON (*.json);;Все файлы (*)"));
+            QSettings settings;
+            const QString directory = settings.value(QStringLiteral("files/lastDirectory")).toString();
+            const QString path = QFileDialog::getSaveFileName(this, tr("Сохраните полигональное решение"),
+                                                              QDir(directory).filePath(QStringLiteral("polygon-solution.json")),
+                                                              tr("JSON (*.json);;Все файлы (*)"));
             if (!path.isEmpty())
+            {
+              settings.setValue(QStringLiteral("files/lastDirectory"), QFileInfo(path).absolutePath());
               actions_.saveSolution(path.toStdString());
+            }
           });
-  connect(workspace_, &PolygonWorkspaceWidget::requestOpenModel, this,
+  connect(openModelAction_, &QAction::triggered, this,
           [this]()
           {
             if (!actions_.openModel)
               return;
-            const QString path = QFileDialog::getExistingDirectory(this, tr("Выберите каталог модели ONNX"));
-            if (!path.isEmpty() && actions_.openModel(path.toStdString()))
-              QSettings().setValue(QStringLiteral("polygon/modelDirectory"), path);
+            QSettings settings;
+            const QString initial = settings.value(QStringLiteral("model/lastDirectory")).toString();
+            const QString path = QFileDialog::getExistingDirectory(this, tr("Выберите каталог модели ONNX"), initial);
+            if (!path.isEmpty())
+            {
+              pendingModelPath_ = path;
+              modelLoadTimer_.start();
+              actions_.openModel(path.toStdString());
+            }
+          });
+  connect(forgetModelAction, &QAction::triggered, this,
+          [this]()
+          {
+            if (actions_.forgetModel)
+              actions_.forgetModel();
+            QSettings().remove(QStringLiteral("polygon/modelDirectory"));
+          });
+  connect(startPage_, &PolygonStartPage::requestOpenProblem, this, &PolygonMainWindow::chooseProblem);
+  connect(startPage_, &PolygonStartPage::requestOpenPath, this, &PolygonMainWindow::openPath);
+  connect(startPage_, &PolygonStartPage::requestRemoveRecent, this,
+          [this](const QString & path)
+          {
+            recentProblems_.removeAll(path);
+            QSettings().setValue(QStringLiteral("files/recentProblems"), recentProblems_);
+            startPage_->setRecentFiles(recentProblems_);
+          });
+  connect(workspace_, &PolygonWorkspaceWidget::requestOpenProblem, this, &PolygonMainWindow::chooseProblem);
+  connect(workspace_, &PolygonWorkspaceWidget::requestSaveSolution, saveSolutionAction_, &QAction::trigger);
+  connect(workspace_, &PolygonWorkspaceWidget::requestOpenModel, openModelAction_, &QAction::trigger);
+  connect(workspace_, &PolygonWorkspaceWidget::requestCancelModelLoad, this,
+          [this]()
+          {
+            if (actions_.cancelModelLoad)
+              actions_.cancelModelLoad();
           });
   connect(workspace_, &PolygonWorkspaceWidget::requestStart, this,
           [this]()
@@ -71,25 +148,148 @@ PolygonMainWindow::PolygonMainWindow(QWidget * parent)
             if (actions_.cancel)
               actions_.cancel();
           });
+  connect(
+    workspace_, &PolygonWorkspaceWidget::cursorPositionChanged, this, [this](double x, double y, bool inside)
+    { coordinatesLabel_->setText(inside ? tr("X: %1 мм; Y: %2 мм").arg(x, 0, 'f', 2).arg(y, 0, 'f', 2) : tr("Координаты: —")); });
 
-  // До первого снимка контроллера файловое меню должно совпадать с пустым состоянием виджета.
+  restoreUiState();
+  firstWorkspaceDisplayTimer_.start();
   presentPolygonWorkspace({});
 }
 
-/// Сохраняет функции действий и повторно проверяет ранее выбранный комплект модели.
+/// Сохраняет функции действий и запускает фоновую проверку ранее выбранной модели.
 void PolygonMainWindow::setPolygonWorkspaceActions(PolygonWorkspaceActions actions)
 {
   actions_ = std::move(actions);
   const QString remembered = QSettings().value(QStringLiteral("polygon/modelDirectory")).toString();
   if (!remembered.isEmpty() && actions_.openModel)
+  {
+    pendingModelPath_ = remembered;
+    modelLoadTimer_.start();
     actions_.openModel(remembered.toStdString());
+  }
 }
 
-/// Передаёт проверенный снимок виджету без преобразования геометрии.
+/// Передаёт снимок рабочей странице и согласует навигацию, недавние файлы и модель.
 void PolygonMainWindow::presentPolygonWorkspace(const PolygonWorkspaceSnapshot & snapshot)
 {
   workspace_->present(snapshot);
   openProblemAction_->setEnabled(snapshot.canOpen);
   saveSolutionAction_->setEnabled(snapshot.canSave);
   openModelAction_->setEnabled(snapshot.canLoadModel);
+  statusBar()->showMessage(QString::fromStdString(snapshot.statusText));
+  if (!snapshot.problemId.empty())
+  {
+    pages_->setCurrentWidget(workspace_);
+    const QString loadedPath = QString::fromStdString(snapshot.document.sourceIdentifier);
+    if (!loadedPath.isEmpty())
+      rememberProblem(loadedPath);
+    pendingProblemPath_.clear();
+    if (documentLoadTimer_.isValid())
+    {
+      qInfo() << "document_load_ms" << documentLoadTimer_.elapsed();
+      documentLoadTimer_.invalidate();
+    }
+    if (!firstWorkspaceShown_)
+    {
+      firstWorkspaceShown_ = true;
+      // Нулевая задержка переносит измерение за обработку переключения страницы и первой перерисовки.
+      QTimer::singleShot(0, this,
+                         [this]()
+                         {
+                           qInfo() << "first_workspace_display_ms" << firstWorkspaceDisplayTimer_.elapsed();
+                           firstWorkspaceDisplayTimer_.invalidate();
+                         });
+    }
+  }
+  else if (snapshot.state == PolygonWorkspaceState::Empty || snapshot.state == PolygonWorkspaceState::Error)
+    pages_->setCurrentWidget(startPage_);
+
+  if (snapshot.modelState == PolygonModelState::Ready && !pendingModelPath_.isEmpty())
+  {
+    if (modelLoadTimer_.isValid())
+    {
+      qInfo() << "model_load_ms" << modelLoadTimer_.elapsed();
+      modelLoadTimer_.invalidate();
+    }
+    QSettings settings;
+    settings.setValue(QStringLiteral("polygon/modelDirectory"), pendingModelPath_);
+    settings.setValue(QStringLiteral("model/lastDirectory"), pendingModelPath_);
+    pendingModelPath_.clear();
+    if (initialModelChoicePending_)
+      workspace_->selectRecommendedMode();
+  }
+  if (snapshot.modelState == PolygonModelState::Error)
+  {
+    modelLoadTimer_.invalidate();
+    pendingModelPath_.clear();
+  }
+  initialModelChoicePending_ = initialModelChoicePending_ && snapshot.state == PolygonWorkspaceState::Empty;
+}
+
+/// Сохраняет настройки рабочего места перед штатным закрытием.
+void PolygonMainWindow::closeEvent(QCloseEvent * event)
+{
+  QSettings settings;
+  settings.setValue(QStringLiteral("ui/mainWindowGeometry"), saveGeometry());
+  settings.setValue(QStringLiteral("ui/mainWindowState"), saveState());
+  settings.setValue(QStringLiteral("ui/expertExpanded"), workspace_->advancedExpanded());
+  settings.setValue(QStringLiteral("ui/workspaceSplitter"), workspace_->splitterState());
+  settings.setValue(QStringLiteral("ui/runPreset"), workspace_->selectedPreset());
+  QMainWindow::closeEvent(event);
+}
+
+/// Открывает диалог в последнем каталоге и передаёт выбранный путь общему сценарию.
+void PolygonMainWindow::chooseProblem()
+{
+  QSettings settings;
+  const QString directory = settings.value(QStringLiteral("files/lastDirectory")).toString();
+  const QString path =
+    QFileDialog::getOpenFileName(this, tr("Откройте полигональную задачу"), directory, tr("JSON (*.json);;Все файлы (*)"));
+  if (!path.isEmpty())
+    openPath(path);
+}
+
+/// Запоминает каталог, но добавляет путь в недавние только после успешного снимка.
+void PolygonMainWindow::openPath(const QString & path)
+{
+  if (path.isEmpty() || !actions_.openProblem)
+    return;
+  pendingProblemPath_ = path;
+  documentLoadTimer_.start();
+  QSettings().setValue(QStringLiteral("files/lastDirectory"), QFileInfo(path).absolutePath());
+  actions_.openProblem(path.toStdString());
+}
+
+/// Перемещает путь в начало ограниченного списка и обновляет стартовую страницу.
+void PolygonMainWindow::rememberProblem(const QString & path)
+{
+  if (!QFileInfo(path).isFile())
+    return;
+  recentProblems_.removeAll(path);
+  recentProblems_.prepend(path);
+  while (recentProblems_.size() > MAX_RECENT_PROBLEMS)
+    recentProblems_.removeLast();
+  QSettings().setValue(QStringLiteral("files/recentProblems"), recentProblems_);
+  startPage_->setRecentFiles(recentProblems_);
+}
+
+/// Восстанавливает геометрию, пользовательские панели, режим и каталоги примеров.
+void PolygonMainWindow::restoreUiState()
+{
+  QSettings settings;
+  restoreGeometry(settings.value(QStringLiteral("ui/mainWindowGeometry")).toByteArray());
+  restoreState(settings.value(QStringLiteral("ui/mainWindowState")).toByteArray());
+  recentProblems_ = settings.value(QStringLiteral("files/recentProblems")).toStringList();
+  while (recentProblems_.size() > MAX_RECENT_PROBLEMS)
+    recentProblems_.removeLast();
+  settings.setValue(QStringLiteral("files/recentProblems"), recentProblems_);
+  startPage_->setRecentFiles(recentProblems_);
+  const QString examples = exampleDirectory();
+  startPage_->setExamples({{tr("Простой раскрой"), QDir(examples).filePath(QStringLiteral("problem-small.json"))},
+                           {tr("Вогнутая деталь"), QDir(examples).filePath(QStringLiteral("problem-concave.json"))},
+                           {tr("Кривые и отверстие"), QDir(examples).filePath(QStringLiteral("problem-curves-and-hole.json"))}});
+  workspace_->setAdvancedExpanded(settings.value(QStringLiteral("ui/expertExpanded"), false).toBool());
+  workspace_->restoreSplitterState(settings.value(QStringLiteral("ui/workspaceSplitter")).toByteArray());
+  workspace_->selectPreset(settings.value(QStringLiteral("ui/runPreset"), 0).toInt());
 }

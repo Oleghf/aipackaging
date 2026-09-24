@@ -112,6 +112,15 @@ if (BUILD_DESKTOP)
   target_include_directories(AIPackaging_GuiTests PRIVATE "${CMAKE_SOURCE_DIR}/src/gui")
   target_link_libraries(AIPackaging_GuiTests PRIVATE AIPackaging_GUI AIPackaging_Application)
   set_tests_properties(AIPackaging_GuiTests PROPERTIES LABELS "gui")
+  foreach(scale IN ITEMS 1 1.5 2)
+    string(REPLACE "." "_" scale_name "${scale}")
+    add_test(NAME "AIPackaging_GuiScale_${scale_name}"
+      COMMAND $<TARGET_FILE:AIPackaging_GuiTests>
+        --gtest_filter=PolygonMainWindow.FitsMinimumResolutionAndExposesAccessibleControls)
+    set_tests_properties("AIPackaging_GuiScale_${scale_name}" PROPERTIES
+      LABELS "gui;scale"
+      ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=${scale}")
+  endforeach()
 endif()
 
 if (BUILD_SOLVER_CLI)
@@ -232,6 +241,12 @@ if (BUILD_DESKTOP)
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       "$<TARGET_FILE:Qt6::QOffscreenIntegrationPlugin>"
       "$<TARGET_FILE_DIR:AIPackaging_GuiTests>/platforms"
+    VERBATIM)
+  add_custom_command(TARGET AIPackaging_GuiTests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:AIPackaging_GuiTests>/examples/polygon"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      "${CMAKE_SOURCE_DIR}/examples/polygon"
+      "$<TARGET_FILE_DIR:AIPackaging_GuiTests>/examples/polygon"
     VERBATIM)
 endif()
 

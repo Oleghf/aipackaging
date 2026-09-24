@@ -1,8 +1,11 @@
 #ifndef AIPACKAGING_GUI_POLYGONCANVASWIDGET_H
 #define AIPACKAGING_GUI_POLYGONCANVASWIDGET_H
 
+#include <cstdint>
 #include <QPointF>
+#include <QString>
 #include <QWidget>
+#include <string>
 
 #include <polygonworkspaceview.h>
 
@@ -23,6 +26,12 @@ public:
   /// Сбрасывает пользовательский масштаб и смещение, чтобы вписать сцену в область просмотра.
   void fitToView();
 
+signals:
+  /// Сообщает координаты курсора в миллиметрах и нахождение внутри листа.
+  void cursorPositionChanged(double x, double y, bool inside);
+  /// Сообщает выбранный щелчком экземпляр детали.
+  void partSelected(const QString & partId, std::uint32_t instanceIndex);
+
 protected:
   /// Рисует лист, отступ, полезный остаток, детали и отверстия.
   void paintEvent(QPaintEvent * event) override;
@@ -36,11 +45,19 @@ protected:
   void wheelEvent(QWheelEvent * event) override;
 
 private:
+  /// Переводит экранную точку в миллиметровые координаты листа.
+  QPointF mapToSheet(const QPointF & position) const;
+  /// Находит верхнюю деталь под точкой с учётом отверстий.
+  const PolygonPlacedPartView * hitTest(const QPointF & sheetPoint) const;
+
   PolygonWorkspaceSnapshot snapshot_;
   double zoom_ = 1.0;
   QPointF pan_;
   QPointF lastMousePosition_;
   bool panning_ = false;
+  bool dragged_ = false;
+  std::string selectedPartId_;
+  std::uint32_t selectedInstanceIndex_ = 0;
 };
 
 #endif

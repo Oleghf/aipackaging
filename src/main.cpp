@@ -9,6 +9,8 @@
 int main(int argc, char * argv[])
 {
   QApplication app(argc, argv);
+  QApplication::setOrganizationName(QStringLiteral("AIPackaging"));
+  QApplication::setApplicationName(QStringLiteral("AIPackaging"));
 
   PolygonMainWindow mainWindow;
   mainWindow.show();
