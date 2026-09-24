@@ -84,6 +84,17 @@ def architecture_checks() -> int:
         )
 
 
+def documentation_checks() -> int:
+    """Проверяет ссылки и согласованность ключевых фактов документации."""
+
+    return run_sequence(
+        [
+            [sys.executable, "tools/documentation/check_documentation.py"],
+            [sys.executable, "-m", "unittest", "discover", "-s", "tools/documentation/tests", "-v"],
+        ]
+    )
+
+
 def headless_checks() -> int:
     """Проверяет предустановку сборки без графического интерфейса для текущей ОС."""
 
@@ -159,13 +170,23 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "check",
-        choices=["architecture", "language", "nesting", "headless", "python", "desktop", "all"],
+        choices=[
+            "architecture",
+            "documentation",
+            "language",
+            "nesting",
+            "headless",
+            "python",
+            "desktop",
+            "all",
+        ],
     )
     parser.add_argument("--qt-dir", help="Каталог с Qt6Config.cmake для проверки настольного приложения")
     arguments = parser.parse_args()
 
     actions = {
         "architecture": architecture_checks,
+        "documentation": documentation_checks,
         "language": lambda: run_sequence(
             [
                 [sys.executable, "tools/language/check_russian_prose.py"],
@@ -179,7 +200,7 @@ def main() -> int:
     }
     if arguments.check != "all":
         return actions[arguments.check]()
-    for name in ("language", "architecture", "nesting", "headless", "python", "desktop"):
+    for name in ("documentation", "language", "architecture", "nesting", "headless", "python", "desktop"):
         result = actions[name]()
         if result:
             return result

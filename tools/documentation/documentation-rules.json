@@ -1,0 +1,68 @@
+{
+  "requiredIndexLinks": [
+    "docs/current-state.md",
+    "docs/architecture.md",
+    "docs/quality.md",
+    "docs/roadmap.md",
+    "docs/product-vision.md",
+    "docs/user-guide.md",
+    "docs/terminology.md",
+    "docs/m3-training.md",
+    "docs/m6-2-training.md",
+    "docs/m6-3-model-delivery.md"
+  ],
+  "removedDocuments": [
+    "architecture-audit.md",
+    "target-architecture.md",
+    "architecture-refactoring-plan.md",
+    "code-review-a8.md",
+    "code-review-r4.md",
+    "m3-smoke-2026-09-10.md",
+    "m6-2-polygon-policy-smoke-2026-09-13.md"
+  ],
+  "versionDocuments": [
+    "README.md",
+    "docs/README.md",
+    "docs/current-state.md",
+    "docs/product-vision.md"
+  ],
+  "requiredText": {
+    "docs/current-state.md": [
+      "завершённый этап — U1",
+      "следующий этап — M7"
+    ],
+    "docs/roadmap.md": [
+      "| U1 | Дружелюбное рабочее место технолога версии `0.10.0` |",
+      "## M7 — редактируемый документ и импорт DXF"
+    ]
+  },
+  "hashes": {
+    "polygonDatasetManifest": {
+      "value": "747ade28a858de2f1d484cdf6c942df07cb59af017eeb886f8c18d9105422c44",
+      "files": [
+        "docs/current-state.md",
+        "docs/quality.md",
+        "docs/experiments/m6-1-polygon-dataset-v2-2026-09-13.md",
+        "docs/experiments/m6-2-polygon-policy-2026-09-16.md",
+        "docs/experiments/m6-3-polygon-onnx-2026-09-19.md"
+      ]
+    },
+    "polygonCheckpoint": {
+      "value": "ff15a085836fa9c8e31e28ace360a91bc38dfbca926c2d3d6d332ff007151937",
+      "files": [
+        "docs/current-state.md",
+        "docs/quality.md",
+        "docs/experiments/m6-2-polygon-policy-2026-09-16.md",
+        "docs/experiments/m6-3-polygon-onnx-2026-09-19.md"
+      ]
+    },
+    "polygonModelIdentity": {
+      "value": "2c792b5b63b62c3b2f74207f9842300dc3cfc580c9655a15f98a3d850a23bb33",
+      "files": [
+        "docs/current-state.md",
+        "docs/quality.md",
+        "docs/experiments/m6-3-polygon-onnx-2026-09-19.md"
+      ]
+    }
+  }
+}
