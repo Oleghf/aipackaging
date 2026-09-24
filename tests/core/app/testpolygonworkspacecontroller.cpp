@@ -29,6 +29,8 @@ public:
     result.success = true;
     result.document = {nextDocument++};
     result.problemId = filePath;
+    result.summary.sheetWidth = 100.0;
+    result.summary.parts.push_back({"part", 1, {0, 90}, 20.0, 10.0, 200.0, 0});
     result.scene.sheetWidth = 100.0;
     result.unplacedInstances = {"part #0"};
     return result;
@@ -107,16 +109,26 @@ public:
 };
 
 /// Имитирует строгую загрузку и освобождение внешнего комплекта модели.
-class ModelGatewayStub final : public IPolygonModelGateway
+class ModelGatewayStub final : public IPolygonModelJobRunner
 {
 public:
-  /// Возвращает проверенную модель либо диагностическую ошибку для специального пути.
-  PolygonModelLoadResult load(const std::string & directory) override
+  /// Сохраняет функции событий для управляемого завершения проверки.
+  std::optional<PolygonModelJobHandle> start(const std::string & directory, PolygonModelJobCallbacks value,
+                                             std::string & error) override
   {
-    if (directory == "bad-model")
-      return {false, "повреждённая модель"};
-    return {true, {}, PolygonModelHandle{nextModel++}, "policy", "0123456789abcdef"};
+    if (rejectStart)
+    {
+      error = "нет свободного исполнителя";
+      return std::nullopt;
+    }
+    requestedDirectory = directory;
+    callbacks = std::move(value);
+    current = {nextJob++};
+    return current;
   }
+
+  /// Запоминает отмену актуальной проверки.
+  void cancel(PolygonModelJobHandle job) noexcept override { cancelled = job; }
 
   /// Запоминает освобождённую модель.
   void release(PolygonModelHandle model) noexcept override
@@ -125,7 +137,23 @@ public:
     lastReleased = model;
   }
 
+  /// Доставляет успешный результат актуальной проверки.
+  void complete(std::string id = "policy")
+  {
+    callbacks.completed(current, {true, {}, PolygonModelHandle{nextModel++}, std::move(id), "0123456789abcdef"});
+  }
+  /// Доставляет ошибку актуальной проверки.
+  void fail(const std::string & error) { callbacks.failed(current, error); }
+  /// Доставляет подтверждение отмены актуальной проверки.
+  void completeCancellation() { callbacks.cancelled(current); }
+
+  std::uint64_t nextJob = 1;
   std::uint64_t nextModel = 1;
+  bool rejectStart = false;
+  std::string requestedDirectory;
+  PolygonModelJobHandle current;
+  std::optional<PolygonModelJobHandle> cancelled;
+  PolygonModelJobCallbacks callbacks;
   std::size_t releasedCount = 0;
   PolygonModelHandle lastReleased;
 };
@@ -346,7 +374,9 @@ TEST(PolygonWorkspaceController, LoadsReplacesAndUsesModel)
   auto models = std::make_shared<ModelGatewayStub>();
   const auto controller = makeController(output, documents, jobs, models);
   controller->openProblem("problem");
-  ASSERT_TRUE(controller->openModel("first"));
+  controller->openModel("first");
+  ASSERT_EQ(output->snapshot.modelState, PolygonModelState::Loading);
+  models->complete();
   ASSERT_TRUE(output->snapshot.modelReady);
   EXPECT_EQ(output->snapshot.modelId, "policy");
 
@@ -358,7 +388,8 @@ TEST(PolygonWorkspaceController, LoadsReplacesAndUsesModel)
   EXPECT_EQ(jobs->startedRequest.model->value, 1);
   jobs->complete(solvedResult());
 
-  ASSERT_TRUE(controller->openModel("second"));
+  controller->openModel("second");
+  models->complete("policy-2");
   EXPECT_EQ(models->releasedCount, 1);
   EXPECT_EQ(models->lastReleased.value, 1);
   EXPECT_EQ(output->snapshot.modelSha256, "0123456789abcdef");
@@ -373,10 +404,54 @@ TEST(PolygonWorkspaceController, KeepsPreviousModelAfterLoadFailure)
   auto models = std::make_shared<ModelGatewayStub>();
   const auto controller = makeController(output, documents, jobs, models);
   controller->openProblem("problem");
-  ASSERT_TRUE(controller->openModel("valid-model"));
-  EXPECT_FALSE(controller->openModel("bad-model"));
+  controller->openModel("valid-model");
+  models->complete();
+  controller->openModel("bad-model");
+  models->fail("повреждённая модель");
   EXPECT_TRUE(output->snapshot.modelReady);
   EXPECT_EQ(output->snapshot.modelId, "policy");
   EXPECT_NE(output->snapshot.modelStatusText.find("Ошибка"), std::string::npos);
   EXPECT_EQ(models->releasedCount, 0);
+}
+
+/// Проверяет отмену и освобождение результата запоздалой проверки модели.
+TEST(PolygonWorkspaceController, CancelsModelLoadAndRejectsStaleResult)
+{
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<JobRunnerStub> jobs;
+  auto models = std::make_shared<ModelGatewayStub>();
+  const auto controller = makeController(output, documents, jobs, models);
+  controller->openModel("slow-model");
+  const PolygonModelJobHandle oldJob = models->current;
+  EXPECT_EQ(output->snapshot.modelState, PolygonModelState::Loading);
+  EXPECT_TRUE(output->snapshot.canCancelModelLoad);
+  controller->cancelModelLoad();
+  ASSERT_TRUE(models->cancelled.has_value());
+  EXPECT_EQ(models->cancelled->value, oldJob.value);
+  models->completeCancellation();
+  EXPECT_EQ(output->snapshot.modelState, PolygonModelState::NotSelected);
+
+  controller->openModel("new-model");
+  const PolygonModelJobHandle current = models->current;
+  models->callbacks.completed(oldJob, {true, {}, PolygonModelHandle{77}, "stale", "hash"});
+  EXPECT_EQ(models->releasedCount, 1);
+  EXPECT_EQ(models->lastReleased.value, 77U);
+  models->callbacks.completed(current, {true, {}, PolygonModelHandle{78}, "current", "hash-2"});
+  EXPECT_EQ(output->snapshot.modelId, "current");
+}
+
+/// Проверяет публикацию нейтральных сведений документа и его источника.
+TEST(PolygonWorkspaceController, PublishesNeutralDocumentSummary)
+{
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto controller = makeController(output, documents, jobs);
+  controller->openProblem("folder/problem.json");
+  EXPECT_EQ(output->snapshot.document.sourceIdentifier, "folder/problem.json");
+  EXPECT_DOUBLE_EQ(output->snapshot.document.sheetWidth, 100.0);
+  ASSERT_EQ(output->snapshot.document.parts.size(), 1U);
+  EXPECT_EQ(output->snapshot.document.parts.front().id, "part");
+  EXPECT_TRUE(output->snapshot.documentValid);
 }

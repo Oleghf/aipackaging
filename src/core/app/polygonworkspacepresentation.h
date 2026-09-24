@@ -41,6 +41,40 @@ struct PolygonPlacedPartView
   std::vector<PolygonViewPoint> outer;
   std::vector<std::vector<PolygonViewPoint>> holes;
   std::size_t colorIndex = 0;
+  int rotationDegrees = 0;
+};
+
+/// Кратко описывает один тип детали без раскрытия геометрии решателя.
+struct PolygonPartSummary
+{
+  std::string id;
+  std::uint32_t quantity = 0;
+  std::vector<int> allowedRotations;
+  double width = 0.0;
+  double height = 0.0;
+  double materialArea = 0.0;
+  std::size_t colorIndex = 0;
+};
+
+/// Содержит сведения о загруженной задаче, необходимые рабочему месту.
+struct PolygonDocumentSummary
+{
+  std::string sourceIdentifier;
+  double sheetWidth = 0.0;
+  double sheetHeight = 0.0;
+  double sheetMargin = 0.0;
+  double partSpacing = 0.0;
+  double kerf = 0.0;
+  std::vector<PolygonPartSummary> parts;
+};
+
+/// Обозначает состояние фоновой проверки комплекта модели.
+enum class PolygonModelState : std::uint8_t
+{
+  NotSelected,
+  Loading,
+  Ready,
+  Error
 };
 
 /// Полная модель представления листа и текущей раскладки.
@@ -97,10 +131,16 @@ struct PolygonWorkspaceSnapshot
   bool canCancel = false;
   bool canSave = false;
   bool canLoadModel = true;
+  bool canCancelModelLoad = false;
   bool modelReady = false;
+  PolygonModelState modelState = PolygonModelState::NotSelected;
   std::string modelId;
   std::string modelSha256;
   std::string modelStatusText;
+  PolygonDocumentSummary document;
+  bool documentDirty = false;
+  bool documentValid = false;
+  bool solutionStale = false;
   NestingProgress progress;
   NestingObjectiveSummary objective;
   NestingMetricsSummary metrics;

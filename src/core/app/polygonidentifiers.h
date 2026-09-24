@@ -33,6 +33,16 @@ struct PolygonModelHandle
   friend bool operator==(const PolygonModelHandle &, const PolygonModelHandle &) = default;
 };
 
+/// Непостоянный идентификатор фоновой проверки комплекта модели.
+struct PolygonModelJobHandle
+{
+  std::uint64_t value = 0;
+  /// Сообщает, ссылается ли идентификатор на зарегистрированную работу.
+  explicit operator bool() const noexcept { return value != 0; }
+  /// Сравнивает два идентификатора одной процессной области.
+  friend bool operator==(const PolygonModelJobHandle &, const PolygonModelJobHandle &) = default;
+};
+
 /// Непостоянный идентификатор фонового запуска в текущем процессе.
 struct NestingJobHandle
 {

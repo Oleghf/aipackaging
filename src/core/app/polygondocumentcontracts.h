@@ -14,6 +14,7 @@ struct PolygonDocumentLoadResult
   std::string error;
   PolygonDocumentHandle document;
   std::string problemId;
+  PolygonDocumentSummary summary;
   PolygonSceneView scene;
   std::vector<std::string> unplacedInstances;
 };

@@ -129,6 +129,7 @@ void buildPresentation(const PolygonArtifactStore::DocumentRecord & record, cons
       part.partId = placement.partId;
       part.instanceIndex = placement.instanceIndex;
       part.colorIndex = partIndex;
+      part.rotationDegrees = placement.rotationDegrees;
       for (const PolygonPoint64 & point : orientation->outer)
         part.outer.push_back(toViewPoint(point, placement.x, placement.y));
       for (const PolygonRing64 & hole : orientation->holes)
@@ -148,6 +149,36 @@ void buildPresentation(const PolygonArtifactStore::DocumentRecord & record, cons
     if (!placed.contains({id, instance.instanceIndex}))
       unplaced.push_back(id + " #" + std::to_string(instance.instanceIndex));
   }
+}
+
+/// Формирует нейтральное описание листа и типов деталей для панелей рабочего места.
+PolygonDocumentSummary buildDocumentSummary(const PolygonArtifactStore::DocumentRecord & record)
+{
+  PolygonDocumentSummary summary;
+  summary.sheetWidth = record.problem.sheet.width;
+  summary.sheetHeight = record.problem.sheet.height;
+  summary.sheetMargin = record.problem.manufacturing.sheetMargin;
+  summary.partSpacing = record.problem.manufacturing.partSpacing;
+  summary.kerf = record.problem.manufacturing.kerf;
+  summary.parts.reserve(record.problem.parts.size());
+  for (std::size_t index = 0; index < record.problem.parts.size(); ++index)
+  {
+    const PolygonPart & source = record.problem.parts[index];
+    const auto & orientations = record.environment->orientations(index);
+    PolygonPartSummary part;
+    part.id = source.id;
+    part.quantity = source.quantity;
+    part.allowedRotations = source.allowedRotations;
+    part.colorIndex = index;
+    if (!orientations.empty())
+    {
+      part.width = static_cast<double>(orientations.front().width) / 1000.0;
+      part.height = static_cast<double>(orientations.front().height) / 1000.0;
+      part.materialArea = static_cast<double>(orientations.front().materialArea) / 1'000'000.0;
+    }
+    summary.parts.push_back(std::move(part));
+  }
+  return summary;
 }
 
 /// Преобразует проверяемое решение ядра в прикладной результат и регистрирует его для сохранения.
@@ -306,6 +337,95 @@ void LocalPolygonModelGateway::release(PolygonModelHandle model) noexcept
 {
   store_->release(model);
 }
+
+/// Сохраняет шлюз и диспетчер; поток создаётся только при первой проверке.
+StdThreadPolygonModelJobRunner::StdThreadPolygonModelJobRunner(std::shared_ptr<IPolygonModelGateway> gateway,
+                                                               std::shared_ptr<IApplicationDispatcher> dispatcher)
+  : gateway_(std::move(gateway))
+  , dispatcher_(std::move(dispatcher))
+{
+}
+
+/// Останавливает активную проверку и не оставляет поток после уничтожения адаптера.
+StdThreadPolygonModelJobRunner::~StdThreadPolygonModelJobRunner()
+{
+  if (worker_.joinable())
+  {
+    worker_.request_stop();
+    worker_.join();
+  }
+}
+
+/// Завершает прежний поток и выполняет одну проверку с отложенной доставкой результата.
+std::optional<PolygonModelJobHandle>
+StdThreadPolygonModelJobRunner::start(const std::string & directory, PolygonModelJobCallbacks callbacks, std::string & error)
+{
+  std::lock_guard lock(mutex_);
+  if (activeJob_)
+  {
+    error = "Другая модель уже проверяется";
+    return std::nullopt;
+  }
+  if (worker_.joinable())
+    worker_.join();
+  const PolygonModelJobHandle job{nextJob_++};
+  activeJob_ = job;
+  const auto gateway = gateway_;
+  const auto dispatcher = dispatcher_;
+  worker_ = std::jthread(
+    [this, gateway, dispatcher, directory, callbacks = std::move(callbacks), job](const std::stop_token & stopToken) mutable
+    {
+      PolygonModelLoadResult result;
+      std::string failure;
+      try
+      {
+        result = gateway->load(directory);
+        if (!result.success)
+          failure = result.error;
+      }
+      catch (const std::exception & exception)
+      {
+        failure = exception.what();
+      }
+      catch (...)
+      {
+        failure = "Проверка модели завершилась неизвестной ошибкой";
+      }
+      const bool cancelled = stopToken.stop_requested();
+      if (cancelled && result.success && result.model)
+      {
+        gateway->release(result.model);
+        result = {};
+      }
+      {
+        std::lock_guard finishLock(mutex_);
+        if (activeJob_ == job)
+          activeJob_.reset();
+      }
+      if (cancelled && callbacks.cancelled)
+        dispatcher->post([callback = callbacks.cancelled, job]() { callback(job); });
+      else if (result.success && callbacks.completed)
+        dispatcher->post([callback = callbacks.completed, job, value = std::move(result)]() mutable
+                         { callback(job, std::move(value)); });
+      else if (callbacks.failed)
+        dispatcher->post([callback = callbacks.failed, job, failure]() { callback(job, failure); });
+    });
+  return job;
+}
+
+/// Запрашивает остановку только совпадающей актуальной проверки.
+void StdThreadPolygonModelJobRunner::cancel(PolygonModelJobHandle job) noexcept
+{
+  std::lock_guard lock(mutex_);
+  if (activeJob_ == job && worker_.joinable())
+    worker_.request_stop();
+}
+
+/// Передаёт освобождение модели потокобезопасному шлюзу.
+void StdThreadPolygonModelJobRunner::release(PolygonModelHandle model) noexcept
+{
+  gateway_->release(model);
+}
 #endif
 
 /// Сохраняет общее хранилище, используемое шлюзом и внутренними реализациями.
@@ -330,6 +450,7 @@ PolygonDocumentLoadResult LocalPolygonDocumentGateway::load(const std::string & 
   result.problemId = loaded.problem.problemId;
   result.document = store_->addDocument(loaded.problem, environment);
   const auto record = store_->document(result.document);
+  result.summary = buildDocumentSummary(*record);
   buildPresentation(*record, nullptr, result.scene, result.unplacedInstances);
   return result;
 }

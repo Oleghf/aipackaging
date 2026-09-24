@@ -171,6 +171,26 @@ public:
   }
 };
 
+/// Возвращает подготовленную модель и запоминает освобождение без ONNX Runtime.
+class ImmediateModelGateway final : public IPolygonModelGateway
+{
+public:
+  /// Возвращает успешный результат либо имитирует исключение.
+  PolygonModelLoadResult load(const std::string &) override
+  {
+    entered = true;
+    if (fail)
+      throw std::runtime_error("искусственная ошибка модели");
+    return {true, {}, {7}, "policy", "hash"};
+  }
+  /// Запоминает освобождённую модель.
+  void release(PolygonModelHandle model) noexcept override { released = model; }
+
+  std::atomic<bool> entered = false;
+  bool fail = false;
+  std::optional<PolygonModelHandle> released;
+};
+
 /// Ожидает выполнения условия с коротким предельным сроком.
 bool waitUntil(const std::function<bool()> & predicate)
 {
@@ -362,6 +382,29 @@ TEST(PolygonDesktopInfrastructure, DestructionStopsAndJoinsWorker)
     ASSERT_TRUE(waitUntil([&]() { return backend->entered.load(); }));
   }
   EXPECT_TRUE(backend->finished.load());
+}
+
+/// Проверяет отложенную доставку результата фоновой проверки модели.
+TEST(PolygonDesktopInfrastructure, LoadsModelThroughBackgroundRunner)
+{
+  auto gateway = std::make_shared<ImmediateModelGateway>();
+  auto dispatcher = std::make_shared<QueueDispatcher>();
+  StdThreadPolygonModelJobRunner runner(gateway, dispatcher);
+  bool completed = false;
+  PolygonModelJobCallbacks callbacks;
+  callbacks.completed = [&completed](PolygonModelJobHandle, PolygonModelLoadResult result)
+  {
+    completed = result.success && result.model.value == 7;
+  };
+  std::string error;
+  ASSERT_TRUE(runner.start("model", std::move(callbacks), error).has_value()) << error;
+  ASSERT_TRUE(waitUntil([&]() { return gateway->entered.load(); }));
+  EXPECT_FALSE(completed);
+  ASSERT_TRUE(waitUntil([&]() { return dispatcher->drain() > 0; }));
+  EXPECT_TRUE(completed);
+  runner.release({7});
+  ASSERT_TRUE(gateway->released.has_value());
+  EXPECT_EQ(gateway->released->value, 7U);
 }
 
 #ifdef AIPACKAGING_HAS_ONNX_BACKEND

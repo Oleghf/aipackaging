@@ -14,7 +14,9 @@ struct PolygonWorkspaceActions
 {
   std::function<void(const std::string &)> openProblem;
   std::function<void(const std::string &)> saveSolution;
-  std::function<bool(const std::string &)> openModel;
+  std::function<void(const std::string &)> openModel;
+  std::function<void()> cancelModelLoad;
+  std::function<void()> forgetModel;
   std::function<void(const NestingRunRequest &)> start;
   std::function<void()> cancel;
 };

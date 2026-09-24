@@ -18,15 +18,16 @@ int main(int argc, char * argv[])
   auto polygonStore = std::make_shared<PolygonArtifactStore>();
   auto polygonDocuments = std::make_shared<LocalPolygonDocumentGateway>(polygonStore);
   auto baselineBackend = std::make_shared<BaselinePolygonBackend>(polygonStore);
+  auto polygonDispatcher = std::make_shared<QtApplicationDispatcher>(&mainWindow);
 #ifdef AIPACKAGING_HAS_ONNX_BACKEND
-  auto polygonModels = std::make_shared<LocalPolygonModelGateway>(polygonStore);
+  auto polygonModelGateway = std::make_shared<LocalPolygonModelGateway>(polygonStore);
+  auto polygonModels = std::make_shared<StdThreadPolygonModelJobRunner>(polygonModelGateway, polygonDispatcher);
   auto neuralBackend = std::make_shared<OnnxPolygonBackend>(polygonStore);
   auto polygonBackend = std::make_shared<PolygonBackendRouter>(baselineBackend, neuralBackend);
 #else
-  std::shared_ptr<IPolygonModelGateway> polygonModels;
+  std::shared_ptr<IPolygonModelJobRunner> polygonModels;
   auto polygonBackend = std::make_shared<PolygonBackendRouter>(baselineBackend);
 #endif
-  auto polygonDispatcher = std::make_shared<QtApplicationDispatcher>(&mainWindow);
   auto polygonJobs = std::make_shared<StdThreadNestingJobRunner>(polygonBackend, polygonDispatcher);
   auto polygonController =
     std::make_shared<PolygonWorkspaceController>(polygonOutput, polygonDocuments, polygonJobs, polygonModels);

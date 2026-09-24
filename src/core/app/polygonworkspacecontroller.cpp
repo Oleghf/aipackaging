@@ -16,11 +16,11 @@ bool validRequest(const NestingRunRequest & request)
 PolygonWorkspaceController::PolygonWorkspaceController(std::shared_ptr<IPolygonWorkspaceOutput> output,
                                                        std::shared_ptr<IPolygonDocumentGateway> documents,
                                                        std::shared_ptr<INestingJobRunner> jobs,
-                                                       std::shared_ptr<IPolygonModelGateway> models)
+                                                       std::shared_ptr<IPolygonModelJobRunner> modelJobs)
   : output_(std::move(output))
   , documents_(std::move(documents))
   , jobs_(std::move(jobs))
-  , models_(std::move(models))
+  , modelJobs_(std::move(modelJobs))
 {
   snapshot_.statusText = "Откройте задачу `polygon_problem` v1";
   publish();
@@ -31,6 +31,8 @@ PolygonWorkspaceController::~PolygonWorkspaceController()
 {
   if (activeJob_)
     jobs_->cancel(*activeJob_);
+  if (activeModelJob_)
+    modelJobs_->cancel(*activeModelJob_);
   releaseSolution();
   releaseModel();
   if (document_.state().handle)
@@ -55,8 +57,17 @@ PolygonWorkspaceActions PolygonWorkspaceController::actions()
   result.openModel = [weak](const std::string & path)
   {
     if (const auto self = weak.lock())
-      return self->openModel(path);
-    return false;
+      self->openModel(path);
+  };
+  result.cancelModelLoad = [weak]()
+  {
+    if (const auto self = weak.lock())
+      self->cancelModelLoad();
+  };
+  result.forgetModel = [weak]()
+  {
+    if (const auto self = weak.lock())
+      self->forgetModel();
   };
   result.start = [weak](const NestingRunRequest & request)
   {
@@ -71,26 +82,59 @@ PolygonWorkspaceActions PolygonWorkspaceController::actions()
   return result;
 }
 
-/// Загружает комплект через порт и заменяет текущую модель только после полной проверки.
-bool PolygonWorkspaceController::openModel(const std::string & directory)
+/// Создаёт функции событий и передаёт проверку модели фоновому средству запуска.
+void PolygonWorkspaceController::openModel(const std::string & directory)
 {
-  if (directory.empty() || snapshot_.state == PolygonWorkspaceState::Running || !models_)
-    return false;
-  PolygonModelLoadResult loaded = models_->load(directory);
-  if (!loaded.success)
+  if (directory.empty() || snapshot_.state == PolygonWorkspaceState::Running || !modelJobs_ || activeModelJob_)
+    return;
+  const std::weak_ptr<PolygonWorkspaceController> weak = weak_from_this();
+  PolygonModelJobCallbacks callbacks;
+  callbacks.completed = [weak](PolygonModelJobHandle job, PolygonModelLoadResult result)
   {
-    snapshot_.modelStatusText = "Ошибка загрузки модели: " + loaded.error;
+    if (const auto self = weak.lock())
+      self->acceptModel(job, std::move(result));
+  };
+  callbacks.failed = [weak](PolygonModelJobHandle job, const std::string & error)
+  {
+    if (const auto self = weak.lock())
+      self->acceptModelFailure(job, error);
+  };
+  callbacks.cancelled = [weak](PolygonModelJobHandle job)
+  {
+    if (const auto self = weak.lock())
+      self->acceptModelCancellation(job);
+  };
+  std::string error;
+  const auto job = modelJobs_->start(directory, std::move(callbacks), error);
+  if (!job)
+  {
+    snapshot_.modelState = PolygonModelState::Error;
+    snapshot_.modelStatusText = "Не удалось начать проверку модели: " + error;
     publish();
-    return false;
+    return;
   }
-  releaseModel();
-  model_ = loaded.model;
-  snapshot_.modelReady = true;
-  snapshot_.modelId = std::move(loaded.modelId);
-  snapshot_.modelSha256 = std::move(loaded.modelSha256);
-  snapshot_.modelStatusText = "Модель проверена";
+  activeModelJob_ = job;
+  snapshot_.modelState = PolygonModelState::Loading;
+  snapshot_.modelStatusText = "Проверяется комплект модели…";
   publish();
-  return true;
+}
+
+/// Передаёт запрос остановки актуальной фоновой проверке модели.
+void PolygonWorkspaceController::cancelModelLoad()
+{
+  if (activeModelJob_ && modelJobs_)
+    modelJobs_->cancel(*activeModelJob_);
+}
+
+/// Освобождает проверенную модель только вне активной работы.
+void PolygonWorkspaceController::forgetModel()
+{
+  if (snapshot_.state == PolygonWorkspaceState::Running || activeModelJob_)
+    return;
+  releaseModel();
+  snapshot_.modelState = PolygonModelState::NotSelected;
+  snapshot_.modelStatusText = "Модель не выбрана";
+  publish();
 }
 
 /// Загружает документ через порт и заменяет текущий только после полного успеха.
@@ -115,13 +159,17 @@ void PolygonWorkspaceController::openProblem(const std::string & filePath)
   const std::string modelId = snapshot_.modelId;
   const std::string modelSha256 = snapshot_.modelSha256;
   const std::string modelStatus = snapshot_.modelStatusText;
+  const PolygonModelState modelState = snapshot_.modelState;
   snapshot_ = {};
   snapshot_.modelReady = model_.has_value();
   snapshot_.modelId = modelId;
   snapshot_.modelSha256 = modelSha256;
   snapshot_.modelStatusText = modelStatus;
+  snapshot_.modelState = modelState;
   snapshot_.state = PolygonWorkspaceState::Ready;
   snapshot_.problemId = std::move(loaded.problemId);
+  snapshot_.document = std::move(loaded.summary);
+  snapshot_.document.sourceIdentifier = filePath;
   snapshot_.statusText = "Задача загружена";
   snapshot_.scene = std::move(loaded.scene);
   snapshot_.unplacedInstances = std::move(loaded.unplacedInstances);
@@ -214,11 +262,16 @@ void PolygonWorkspaceController::publish()
 {
   const bool running = snapshot_.state == PolygonWorkspaceState::Running;
   snapshot_.canOpen = !running;
-  snapshot_.canRun = document_.state().handle.has_value() && document_.state().valid && !running;
+  snapshot_.canRun = document_.state().handle.has_value() && document_.state().valid && !running && !activeModelJob_;
   snapshot_.canCancel = running;
   snapshot_.canSave = solution_.has_value() && !running;
-  snapshot_.canLoadModel = !running && static_cast<bool>(models_);
+  snapshot_.canLoadModel = !running && !activeModelJob_ && static_cast<bool>(modelJobs_);
+  snapshot_.canCancelModelLoad = activeModelJob_.has_value();
   snapshot_.modelReady = model_.has_value();
+  const auto & document = document_.state();
+  snapshot_.documentDirty = document.dirty;
+  snapshot_.documentValid = document.valid;
+  snapshot_.solutionStale = document.solutionStale;
   if (output_)
     output_->presentPolygonWorkspace(snapshot_);
 }
@@ -301,6 +354,55 @@ void PolygonWorkspaceController::acceptFailure(NestingJobHandle job, const std::
   publish();
 }
 
+/// Заменяет модель только после полной успешной проверки актуальной работы.
+void PolygonWorkspaceController::acceptModel(PolygonModelJobHandle job, PolygonModelLoadResult result)
+{
+  if (!activeModelJob_ || job != *activeModelJob_)
+  {
+    if (result.success && result.model && modelJobs_)
+      modelJobs_->release(result.model);
+    return;
+  }
+  activeModelJob_.reset();
+  if (!result.success)
+  {
+    snapshot_.modelState = PolygonModelState::Error;
+    snapshot_.modelStatusText = "Ошибка загрузки модели: " + result.error;
+    publish();
+    return;
+  }
+  releaseModel();
+  model_ = result.model;
+  snapshot_.modelReady = true;
+  snapshot_.modelState = PolygonModelState::Ready;
+  snapshot_.modelId = std::move(result.modelId);
+  snapshot_.modelSha256 = std::move(result.modelSha256);
+  snapshot_.modelStatusText = "Модель проверена";
+  publish();
+}
+
+/// Сохраняет прежнюю модель и публикует ошибку актуальной проверки.
+void PolygonWorkspaceController::acceptModelFailure(PolygonModelJobHandle job, const std::string & error)
+{
+  if (!activeModelJob_ || job != *activeModelJob_)
+    return;
+  activeModelJob_.reset();
+  snapshot_.modelState = PolygonModelState::Error;
+  snapshot_.modelStatusText = "Ошибка загрузки модели: " + error;
+  publish();
+}
+
+/// Сохраняет прежнюю модель после согласованной отмены проверки.
+void PolygonWorkspaceController::acceptModelCancellation(PolygonModelJobHandle job)
+{
+  if (!activeModelJob_ || job != *activeModelJob_)
+    return;
+  activeModelJob_.reset();
+  snapshot_.modelState = model_ ? PolygonModelState::Ready : PolygonModelState::NotSelected;
+  snapshot_.modelStatusText = model_ ? "Проверка отменена; сохранена прежняя модель" : "Проверка модели отменена";
+  publish();
+}
+
 /// Освобождает зарегистрированное решение и очищает прикладной идентификатор.
 void PolygonWorkspaceController::releaseSolution() noexcept
 {
@@ -310,11 +412,11 @@ void PolygonWorkspaceController::releaseSolution() noexcept
   document_.clearSolution();
 }
 
-/// Передаёт освобождение модели её шлюзу и очищает опубликованную идентичность.
+/// Передаёт освобождение модели фоновому средству и очищает опубликованную идентичность.
 void PolygonWorkspaceController::releaseModel() noexcept
 {
-  if (model_ && models_)
-    models_->release(*model_);
+  if (model_ && modelJobs_)
+    modelJobs_->release(*model_);
   model_.reset();
   snapshot_.modelReady = false;
   snapshot_.modelId.clear();
