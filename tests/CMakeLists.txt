@@ -145,6 +145,12 @@ if (BUILD_DESKTOP)
 endif()
 
 if (BUILD_SOLVER_CLI)
+  aipackaging_add_test_executable(AIPackaging_CliUnitTests
+    "cli/testcliboundary.cpp" "${CMAKE_SOURCE_DIR}/src/cli/cli_boundary.cpp"
+  )
+  target_include_directories(AIPackaging_CliUnitTests PRIVATE "${CMAKE_SOURCE_DIR}/src/cli")
+  set_tests_properties(AIPackaging_CliUnitTests PROPERTIES LABELS "cli")
+
   foreach(solver_name IN ITEMS input-first-fit area-left-bottom max-side-left-bottom random-left-bottom beam)
     add_test(
       NAME "GridCli_${solver_name}"

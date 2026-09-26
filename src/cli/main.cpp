@@ -13,6 +13,7 @@
 #include <aipackaging/nesting/polygon_environment.h>
 #include <aipackaging/nesting/polygon_io.h>
 #include <aipackaging/nesting/polygon_solver.h>
+#include <cli_boundary.h>
 #ifdef AIPACKAGING_HAS_ONNX_BACKEND
 #include <aipackaging/inference/polygon_onnx.h>
 #endif
@@ -153,201 +154,210 @@ int validateModelCommand(int argc, char ** argv)
   return 0;
 }
 #endif
-} // namespace
-
 /// Разбирает команду, загружает задачу, запускает решатель и возвращает согласованный код.
-int main(int argc, char ** argv)
+int runCli(int argc, char ** argv)
 {
   using namespace aipackaging::solver;
-  try
+  if (argc >= 2 && std::string_view(argv[1]) == "validate")
+    return validateCommand(argc, argv);
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+  if (argc >= 2 && std::string_view(argv[1]) == "validate-model")
+    return validateModelCommand(argc, argv);
+#endif
+  if (argc < 2 || std::string_view(argv[1]) != "solve")
   {
-    if (argc >= 2 && std::string_view(argv[1]) == "validate")
-      return validateCommand(argc, argv);
-#ifdef AIPACKAGING_HAS_ONNX_BACKEND
-    if (argc >= 2 && std::string_view(argv[1]) == "validate-model")
-      return validateModelCommand(argc, argv);
-#endif
-    if (argc < 2 || std::string_view(argv[1]) != "solve")
+    printUsage();
+    return 1;
+  }
+
+  std::string inputPath;
+  std::string outputPath;
+  std::string solverName = "area-left-bottom";
+  std::string modelPath;
+  std::size_t neuralRollouts = 16;
+  SolverConfig config;
+  for (int index = 2; index < argc; ++index)
+  {
+    const std::string_view option = argv[index];
+    std::string value;
+    if (option == "--input")
     {
+      if (!readValue(argc, argv, index, inputPath))
+        return printUsage(), 1;
+    }
+    else if (option == "--output")
+    {
+      if (!readValue(argc, argv, index, outputPath))
+        return printUsage(), 1;
+    }
+    else if (option == "--solver")
+    {
+      if (!readValue(argc, argv, index, value))
+        return printUsage(), 1;
+      solverName = value;
+      if (solverName != "neural-greedy" && solverName != "neural-best-of" && solverName != "hybrid" &&
+          !parseSolverKind(value, config.solver))
+      {
+        std::cerr << "Неизвестный решатель\n";
+        return 1;
+      }
+    }
+    else if (option == "--seed")
+    {
+      if (!readValue(argc, argv, index, value) || !parseUnsigned(value, config.seed))
+        return printUsage(), 1;
+    }
+    else if (option == "--random-iterations")
+    {
+      if (!readSizeOption(argc, argv, index, config.randomIterations) || config.randomIterations == 0)
+        return printUsage(), 1;
+    }
+    else if (option == "--beam-width")
+    {
+      if (!readSizeOption(argc, argv, index, config.beamWidth) || config.beamWidth == 0)
+        return printUsage(), 1;
+    }
+    else if (option == "--max-expanded-states")
+    {
+      if (!readSizeOption(argc, argv, index, config.maxExpandedStates) || config.maxExpandedStates == 0)
+        return printUsage(), 1;
+    }
+    else if (option == "--timeout-ms")
+    {
+      if (!readValue(argc, argv, index, value) || !parseUnsigned(value, config.timeoutMs))
+        return printUsage(), 1;
+    }
+    else if (option == "--model")
+    {
+      if (!readValue(argc, argv, index, modelPath))
+        return printUsage(), 1;
+    }
+    else if (option == "--rollouts")
+    {
+      if (!readSizeOption(argc, argv, index, neuralRollouts) || neuralRollouts == 0)
+        return printUsage(), 1;
+    }
+    else
+    {
+      std::cerr << "Неизвестный параметр: " << option << '\n';
       printUsage();
       return 1;
     }
+  }
 
-    std::string inputPath;
-    std::string outputPath;
-    std::string solverName = "area-left-bottom";
-    std::string modelPath;
-    std::size_t neuralRollouts = 16;
-    SolverConfig config;
-    for (int index = 2; index < argc; ++index)
-    {
-      const std::string_view option = argv[index];
-      std::string value;
-      if (option == "--input")
-      {
-        if (!readValue(argc, argv, index, inputPath))
-          return printUsage(), 1;
-      }
-      else if (option == "--output")
-      {
-        if (!readValue(argc, argv, index, outputPath))
-          return printUsage(), 1;
-      }
-      else if (option == "--solver")
-      {
-        if (!readValue(argc, argv, index, value))
-          return printUsage(), 1;
-        solverName = value;
-        if (solverName != "neural-greedy" && solverName != "neural-best-of" && solverName != "hybrid" &&
-            !parseSolverKind(value, config.solver))
-        {
-          std::cerr << "Неизвестный решатель\n";
-          return 1;
-        }
-      }
-      else if (option == "--seed")
-      {
-        if (!readValue(argc, argv, index, value) || !parseUnsigned(value, config.seed))
-          return printUsage(), 1;
-      }
-      else if (option == "--random-iterations")
-      {
-        if (!readSizeOption(argc, argv, index, config.randomIterations) || config.randomIterations == 0)
-          return printUsage(), 1;
-      }
-      else if (option == "--beam-width")
-      {
-        if (!readSizeOption(argc, argv, index, config.beamWidth) || config.beamWidth == 0)
-          return printUsage(), 1;
-      }
-      else if (option == "--max-expanded-states")
-      {
-        if (!readSizeOption(argc, argv, index, config.maxExpandedStates) || config.maxExpandedStates == 0)
-          return printUsage(), 1;
-      }
-      else if (option == "--timeout-ms")
-      {
-        if (!readValue(argc, argv, index, value) || !parseUnsigned(value, config.timeoutMs))
-          return printUsage(), 1;
-      }
-      else if (option == "--model")
-      {
-        if (!readValue(argc, argv, index, modelPath))
-          return printUsage(), 1;
-      }
-      else if (option == "--rollouts")
-      {
-        if (!readSizeOption(argc, argv, index, neuralRollouts) || neuralRollouts == 0)
-          return printUsage(), 1;
-      }
-      else
-      {
-        std::cerr << "Неизвестный параметр: " << option << '\n';
-        printUsage();
-        return 1;
-      }
-    }
+  if (inputPath.empty() || outputPath.empty())
+  {
+    printUsage();
+    return 1;
+  }
 
-    if (inputPath.empty() || outputPath.empty())
-    {
-      printUsage();
-      return 1;
-    }
-
-    // Невалидный вход не порождает псевдорешение: ошибка относится к контракту
-    // задачи и возвращается отдельным кодом до запуска поиска.
-    std::string inputText;
-    if (!readTextFile(inputPath, inputText))
-    {
-      std::cerr << "Не удалось открыть входной файл задачи\n";
-      return 1;
-    }
-    const std::string format = detectJsonFormat(inputText);
-    if (format == "aipackaging.polygon_problem")
-    {
-      const PolygonProblemLoadResult loaded = loadPolygonProblemFromText(inputText);
-      if (!loaded.success)
-      {
-        std::cerr << loaded.error << '\n';
-        return 3;
-      }
-      PolygonSolution solution;
-      if (solverName == "neural-greedy" || solverName == "neural-best-of" || solverName == "hybrid")
-      {
-#ifdef AIPACKAGING_HAS_ONNX_BACKEND
-        if (modelPath.empty())
-        {
-          std::cerr << "Для нейросетевого решателя требуется путь к модели\n";
-          return 1;
-        }
-        std::string modelError;
-        const auto model = aipackaging::inference::PolygonOnnxPolicy::Load(modelPath, modelError);
-        if (!model)
-        {
-          std::cerr << modelError << '\n';
-          return 3;
-        }
-        aipackaging::inference::PolygonPolicyConfig policy;
-        policy.mode = solverName == "neural-greedy" ? aipackaging::inference::PolygonPolicyMode::Greedy
-                                                    : aipackaging::inference::PolygonPolicyMode::BestOf;
-        policy.seed = config.seed;
-        policy.rollouts = neuralRollouts;
-        policy.timeoutMs = config.timeoutMs;
-        if (solverName == "hybrid")
-        {
-          SolverConfig fallback = config;
-          fallback.solver = SolverKind::RandomLeftBottom;
-          fallback.randomIterations = 64;
-          const auto result = model->runHybrid(loaded.problem, policy, fallback);
-          if (result.fallbackUsed)
-            std::cerr << result.warning << '\n';
-          solution = result.solution;
-        }
-        else
-          solution = model->run(loaded.problem, policy).solution;
-#else
-        std::cerr << "Эта сборка не содержит внутреннюю реализацию ONNX\n";
-        return 1;
-#endif
-      }
-      else
-        solution = solvePolygonProblem(loaded.problem, config);
-      std::string outputError;
-      if (!savePolygonSolutionToFile(outputPath, solution, outputError))
-      {
-        std::cerr << outputError << '\n';
-        return 1;
-      }
-      return solution.complete() ? 0 : 2;
-    }
-    if (format != "aipackaging.grid_problem")
-    {
-      std::cerr << "Формат задачи отсутствует или не поддерживается\n";
-      return 3;
-    }
-    if (solverName == "neural-greedy" || solverName == "neural-best-of" || solverName == "hybrid")
-    {
-      std::cerr << "Нейросетевые режимы доступны только для полигональных задач\n";
-      return 1;
-    }
-    const GridProblemLoadResult loaded = loadGridProblemFromText(inputText);
+  // Невалидный вход не порождает псевдорешение: ошибка относится к контракту
+  // задачи и возвращается отдельным кодом до запуска поиска.
+  std::string inputText;
+  if (!readTextFile(inputPath, inputText))
+  {
+    std::cerr << "Не удалось открыть входной файл задачи\n";
+    return 1;
+  }
+  const std::string format = detectJsonFormat(inputText);
+  if (format == "aipackaging.polygon_problem")
+  {
+    const PolygonProblemLoadResult loaded = loadPolygonProblemFromText(inputText);
     if (!loaded.success)
     {
       std::cerr << loaded.error << '\n';
       return 3;
     }
-    const GridSolution solution = solveGridProblem(loaded.problem, config);
+    PolygonSolution solution;
+    if (solverName == "neural-greedy" || solverName == "neural-best-of" || solverName == "hybrid")
+    {
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+      if (modelPath.empty())
+      {
+        std::cerr << "Для нейросетевого решателя требуется путь к модели\n";
+        return 1;
+      }
+      std::string modelError;
+      const auto model = aipackaging::inference::PolygonOnnxPolicy::Load(modelPath, modelError);
+      if (!model)
+      {
+        std::cerr << modelError << '\n';
+        return 3;
+      }
+      aipackaging::inference::PolygonPolicyConfig policy;
+      policy.mode = solverName == "neural-greedy" ? aipackaging::inference::PolygonPolicyMode::Greedy
+                                                  : aipackaging::inference::PolygonPolicyMode::BestOf;
+      policy.seed = config.seed;
+      policy.rollouts = neuralRollouts;
+      policy.timeoutMs = config.timeoutMs;
+      if (solverName == "hybrid")
+      {
+        SolverConfig fallback = config;
+        fallback.solver = SolverKind::RandomLeftBottom;
+        fallback.randomIterations = 64;
+        const auto result = model->runHybrid(loaded.problem, policy, fallback);
+        if (result.fallbackUsed)
+          std::cerr << result.warning << '\n';
+        solution = result.solution;
+      }
+      else
+        solution = model->run(loaded.problem, policy).solution;
+#else
+      std::cerr << "Эта сборка не содержит внутреннюю реализацию ONNX\n";
+      return 1;
+#endif
+    }
+    else
+      solution = solvePolygonProblem(loaded.problem, config);
     std::string outputError;
-    if (!saveGridSolutionToFile(outputPath, solution, outputError))
+    if (!savePolygonSolutionToFile(outputPath, solution, outputError))
     {
       std::cerr << outputError << '\n';
       return 1;
     }
     return solution.complete() ? 0 : 2;
   }
-  catch (const std::exception & error)
+  if (format != "aipackaging.grid_problem")
   {
-    std::cerr << "Внутренняя ошибка: " << error.what() << '\n';
+    std::cerr << "Формат задачи отсутствует или не поддерживается\n";
+    return 3;
+  }
+  if (solverName == "neural-greedy" || solverName == "neural-best-of" || solverName == "hybrid")
+  {
+    std::cerr << "Нейросетевые режимы доступны только для полигональных задач\n";
     return 1;
   }
+  const GridProblemLoadResult loaded = loadGridProblemFromText(inputText);
+  if (!loaded.success)
+  {
+    std::cerr << loaded.error << '\n';
+    return 3;
+  }
+  const GridSolution solution = solveGridProblem(loaded.problem, config);
+  std::string outputError;
+  if (!saveGridSolutionToFile(outputPath, solution, outputError))
+  {
+    std::cerr << outputError << '\n';
+    return 1;
+  }
+  return solution.complete() ? 0 : 2;
+}
+} // namespace
+
+/// Передаёт весь разбор и выполнение в невыбрасывающую границу процесса CLI.
+int main(int argc, char ** argv)
+{
+  /// Хранит невладеющие аргументы процесса на время синхронного вызова границы.
+  struct Arguments
+  {
+    int count;
+    char ** values;
+  } arguments{argc, argv};
+  return aipackaging::cli::runCliGuarded(
+    [](void * context)
+    {
+      const auto * arguments = static_cast<const Arguments *>(context);
+      return runCli(arguments->count, arguments->values);
+    },
+    &arguments, std::cerr);
 }

@@ -1,4 +1,5 @@
-add_executable(AIPackaging_Cli "main.cpp")
+add_executable(AIPackaging_Cli "main.cpp" "cli_boundary.cpp")
+target_include_directories(AIPackaging_Cli PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(AIPackaging_Cli PRIVATE AIPackaging_Search AIPackaging_Json)
 if (BUILD_ONNX_BACKEND)
   target_link_libraries(AIPackaging_Cli PRIVATE AIPackaging_OnnxInference)
