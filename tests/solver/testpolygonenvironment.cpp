@@ -180,10 +180,23 @@ TEST(PolygonEnvironment, GeneratesStableNfpCandidatesAndObjective)
 {
   std::string error;
   std::unique_ptr<PolygonEnvironment> environment = PolygonEnvironment::Create(problem(), error);
+  std::unique_ptr<PolygonEnvironment> legacy = PolygonEnvironment::Create(problem(), PolygonActionCatalogVersion::Legacy, error);
   ASSERT_NE(environment, nullptr) << error;
+  ASSERT_NE(legacy, nullptr) << error;
   PolygonState state = environment->initialState();
   const auto first = environment->enumerateCandidates(state, 0);
+  const std::vector<PolygonAction> expected{{"rectangle", 0, 2000, 2000, 90},   {"rectangle", 0, 2000, 28000, 90},
+                                            {"rectangle", 0, 2000, 2000, 0},    {"rectangle", 0, 2000, 38000, 0},
+                                            {"rectangle", 0, 68000, 2000, 0},   {"rectangle", 0, 78000, 2000, 90},
+                                            {"rectangle", 0, 78000, 28000, 90}, {"rectangle", 0, 68000, 38000, 0}};
+  EXPECT_EQ(first, expected);
+  EXPECT_EQ(legacy->enumerateCandidates(legacy->initialState(), 0), expected);
   EXPECT_EQ(first, environment->enumerateCandidates(state, 0));
+  const PolygonObjectiveComponents emptyObjective = environment->evaluate(state);
+  EXPECT_EQ(emptyObjective.usedLength, 0);
+  EXPECT_EQ(emptyObjective.primaryRemnantWidth, 96000);
+  EXPECT_EQ(emptyObjective.largestExtraRectangleArea, 0U);
+  EXPECT_EQ(emptyObjective.fragmentationPenalty, 0U);
   ASSERT_TRUE(environment->apply(state, first.front()));
   const auto second = environment->enumerateCandidates(state, 1);
   EXPECT_EQ(second, environment->enumerateCandidates(state, 1));
@@ -192,7 +205,10 @@ TEST(PolygonEnvironment, GeneratesStableNfpCandidatesAndObjective)
   const PolygonObjectiveComponents objective = environment->evaluate(state);
   EXPECT_EQ(objective.usedLength, 30000);
   EXPECT_EQ(objective.primaryRemnantWidth, 66000);
+  EXPECT_EQ(objective.largestExtraRectangleArea, 298593750U);
+  EXPECT_EQ(objective.fragmentationPenalty, 144375000U);
   EXPECT_EQ(objective.placedParts, 2);
+  EXPECT_DOUBLE_EQ(objective.materialUtilization, 1200000000.0 / (96000.0 * 56000.0));
 }
 
 /// Проверяет сохранение точечного варианта внутреннего размещения при точном размере листа.
@@ -263,7 +279,12 @@ TEST(PolygonEnvironment, RecoversContactOnDegenerateInnerFitSegment)
   ASSERT_TRUE(corrected->apply(state, {"small", 1, 0, 25000, 0}));
   const PolygonAction contact{"big", 0, 0, 5000, 0};
   const auto candidates = corrected->enumerateCandidates(state, 2);
-  EXPECT_NE(std::find(candidates.begin(), candidates.end(), contact), candidates.end());
+  const std::vector<PolygonAction> expected{{"big", 0, 0, 5000, 0},
+                                            {"big", 0, 0, 5001, 0},
+                                            {"big", 0, 0, 5002, 0},
+                                            {"big", 0, 0, 14999, 0},
+                                            {"big", 0, 0, 15000, 0}};
+  EXPECT_EQ(candidates, expected);
   EXPECT_EQ(candidates, corrected->enumerateCandidates(state, 2));
   EXPECT_TRUE(legacy->enumerateCandidates(state, 2).empty());
   EXPECT_TRUE(corrected->canApply(state, contact));
@@ -286,7 +307,12 @@ TEST(PolygonEnvironment, RecoversRotatedContactOnDegenerateInnerFitSegment)
   ASSERT_TRUE(environment->apply(state, {"small", 0, 0, 0, 90}));
   ASSERT_TRUE(environment->apply(state, {"small", 1, 25000, 0, 90}));
   const auto candidates = environment->enumerateCandidates(state, 2);
-  EXPECT_NE(std::find(candidates.begin(), candidates.end(), PolygonAction{"big", 0, 5000, 0, 0}), candidates.end());
+  const std::vector<PolygonAction> expected{{"big", 0, 5000, 0, 0},
+                                            {"big", 0, 5001, 0, 0},
+                                            {"big", 0, 5002, 0, 0},
+                                            {"big", 0, 14999, 0, 0},
+                                            {"big", 0, 15000, 0, 0}};
+  EXPECT_EQ(candidates, expected);
 }
 
 /// Проверяет, что исправленный контакт учитывает отступ от листа и междетальный зазор.
@@ -308,5 +334,29 @@ TEST(PolygonEnvironment, RecoversLineContactWithMarginAndSpacing)
   const PolygonAction contact{"big", 0, 1000, 7000, 0};
   EXPECT_TRUE(environment->canApply(state, contact));
   const auto candidates = environment->enumerateCandidates(state, 2);
-  EXPECT_NE(std::find(candidates.begin(), candidates.end(), contact), candidates.end());
+  const std::vector<PolygonAction> expected{{"big", 0, 1000, 7000, 0},
+                                            {"big", 0, 1000, 7001, 0},
+                                            {"big", 0, 1000, 7002, 0},
+                                            {"big", 0, 1000, 14999, 0},
+                                            {"big", 0, 1000, 15000, 0}};
+  EXPECT_EQ(candidates, expected);
+}
+
+/// Проверяет общий предел вершин во время последовательной аппроксимации сегментов.
+TEST(PolygonEnvironment, RejectsPathBeyondVertexBudget)
+{
+  PolygonProblem value = problem();
+  value.parts[0].quantity = 1;
+  PolygonPath path;
+  path.start = {0.0, 0.0};
+  for (std::size_t index = 1; index <= 2001; ++index)
+    path.segments.push_back({PolygonSegmentKind::Line, {static_cast<double>(index) / 1000.0, 0.0}});
+  path.segments.push_back({PolygonSegmentKind::Line, {0.0, 1.0}});
+  path.segments.push_back({PolygonSegmentKind::Line, {0.0, 0.0}});
+  value.parts[0].outer = std::move(path);
+  value.parts[0].allowedRotations = {0};
+
+  std::string error;
+  EXPECT_EQ(PolygonEnvironment::Create(value, error), nullptr);
+  EXPECT_EQ(error, "line contains invalid coordinates");
 }

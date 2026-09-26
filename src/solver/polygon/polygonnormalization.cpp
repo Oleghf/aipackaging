@@ -156,90 +156,80 @@ bool validateSourcePath(const PolygonPath & path)
   return extentWithinLimit(minX, maxX) && extentWithinLimit(minY, maxY);
 }
 
-/// Аппроксимирует один исходный путь с заданной ошибкой и общим пределом вершин детали.
-bool flattenPath(const PolygonPath & path, double tolerance, PolygonRing64 & result, std::size_t & remainingVertices,
-                 std::string & error)
+/// Добавляет конец линейного сегмента, сохраняя прежнюю диагностику координат.
+bool appendLineSegment(const PolygonSegment & segment, PolygonRing64 & result, std::size_t & remainingVertices,
+                       std::string & error)
 {
-  if (path.segments.empty())
+  if (appendPoint(result, segment.end, remainingVertices))
+    return true;
+  error = "line contains invalid coordinates";
+  return false;
+}
+
+/// Аппроксимирует круговую дугу в прежнем порядке от начальной к конечной точке.
+bool appendArcSegment(const PolygonPointMm & current, const PolygonSegment & segment, double tolerance, PolygonRing64 & result,
+                      std::size_t & remainingVertices, std::string & error)
+{
+  const double startAngle = std::atan2(current.y - segment.center.y, current.x - segment.center.x);
+  const double endAngle = std::atan2(segment.end.y - segment.center.y, segment.end.x - segment.center.x);
+  const double radius = std::hypot(current.x - segment.center.x, current.y - segment.center.y);
+  const double endRadius = std::hypot(segment.end.x - segment.center.x, segment.end.y - segment.center.y);
+  if (!std::isfinite(radius) || radius <= tolerance || std::abs(radius - endRadius) > 0.001)
   {
-    error = "polygon path is empty";
+    error = "arc endpoints must have the same non-zero radius";
     return false;
   }
-  if (!validateSourcePath(path))
+
+  double sweep = endAngle - startAngle;
+  if (segment.clockwise)
   {
-    error = "polygon path extent or coordinates are outside normalized M4 limits";
+    while (sweep >= 0.0)
+      sweep -= 2.0 * std::numbers::pi;
+  }
+  else
+  {
+    while (sweep <= 0.0)
+      sweep += 2.0 * std::numbers::pi;
+  }
+  const double maxAngle = 2.0 * std::acos(std::clamp(1.0 - tolerance / radius, -1.0, 1.0));
+  const double requiredPieces = std::ceil(std::abs(sweep) / maxAngle);
+  if (!std::isfinite(startAngle) || !std::isfinite(endAngle) || !std::isfinite(sweep) || !std::isfinite(maxAngle) ||
+      maxAngle <= 0.0 || !std::isfinite(requiredPieces) || requiredPieces < 1.0 ||
+      requiredPieces > static_cast<double>(remainingVertices))
+  {
+    error = "arc approximation exceeds the supported vertex budget";
     return false;
   }
-  if (!appendPoint(result, path.start, remainingVertices))
+
+  const std::size_t pieces = static_cast<std::size_t>(requiredPieces);
+  for (std::size_t index = 1; index <= pieces; ++index)
   {
-    error = "polygon path exceeds the supported vertex budget";
-    return false;
+    const double angle = startAngle + sweep * static_cast<double>(index) / static_cast<double>(pieces);
+    const PolygonPointMm point{segment.center.x + radius * std::cos(angle), segment.center.y + radius * std::sin(angle)};
+    if (!appendPoint(result, index == pieces ? segment.end : point, remainingVertices))
+    {
+      error = "arc approximation is outside coordinate range";
+      return false;
+    }
   }
-  PolygonPointMm current = path.start;
-  for (const PolygonSegment & segment : path.segments)
-  {
-    if (segment.kind == PolygonSegmentKind::Line)
-    {
-      if (!appendPoint(result, segment.end, remainingVertices))
-      {
-        error = "line contains invalid coordinates";
-        return false;
-      }
-    }
-    else if (segment.kind == PolygonSegmentKind::Arc)
-    {
-      const double startAngle = std::atan2(current.y - segment.center.y, current.x - segment.center.x);
-      const double endAngle = std::atan2(segment.end.y - segment.center.y, segment.end.x - segment.center.x);
-      const double radius = std::hypot(current.x - segment.center.x, current.y - segment.center.y);
-      const double endRadius = std::hypot(segment.end.x - segment.center.x, segment.end.y - segment.center.y);
-      if (!std::isfinite(radius) || radius <= tolerance || std::abs(radius - endRadius) > 0.001)
-      {
-        error = "arc endpoints must have the same non-zero radius";
-        return false;
-      }
-      double sweep = endAngle - startAngle;
-      if (segment.clockwise)
-      {
-        while (sweep >= 0.0)
-          sweep -= 2.0 * std::numbers::pi;
-      }
-      else
-      {
-        while (sweep <= 0.0)
-          sweep += 2.0 * std::numbers::pi;
-      }
-      const double maxAngle = 2.0 * std::acos(std::clamp(1.0 - tolerance / radius, -1.0, 1.0));
-      const double requiredPieces = std::ceil(std::abs(sweep) / maxAngle);
-      if (!std::isfinite(startAngle) || !std::isfinite(endAngle) || !std::isfinite(sweep) || !std::isfinite(maxAngle) ||
-          maxAngle <= 0.0 || !std::isfinite(requiredPieces) || requiredPieces < 1.0 ||
-          requiredPieces > static_cast<double>(remainingVertices))
-      {
-        error = "arc approximation exceeds the supported vertex budget";
-        return false;
-      }
-      const std::size_t pieces = static_cast<std::size_t>(requiredPieces);
-      for (std::size_t index = 1; index <= pieces; ++index)
-      {
-        const double angle = startAngle + sweep * static_cast<double>(index) / static_cast<double>(pieces);
-        const PolygonPointMm point{segment.center.x + radius * std::cos(angle), segment.center.y + radius * std::sin(angle)};
-        if (!appendPoint(result, index == pieces ? segment.end : point, remainingVertices))
-        {
-          error = "arc approximation is outside coordinate range";
-          return false;
-        }
-      }
-    }
-    else
-    {
-      if (!flattenBezier(current, segment.control1, segment.control2, segment.end, tolerance, 0, result, remainingVertices))
-      {
-        error = "Bezier approximation is outside coordinate range";
-        return false;
-      }
-    }
-    current = segment.end;
-  }
-  if (!sourceEqual(current, path.start))
+  return true;
+}
+
+/// Аппроксимирует кубическую кривую и преобразует общий отказ в прежнюю диагностику пути.
+bool appendBezierSegment(const PolygonPointMm & current, const PolygonSegment & segment, double tolerance, PolygonRing64 & result,
+                         std::size_t & remainingVertices, std::string & error)
+{
+  if (flattenBezier(current, segment.control1, segment.control2, segment.end, tolerance, 0, result, remainingVertices))
+    return true;
+  error = "Bezier approximation is outside coordinate range";
+  return false;
+}
+
+/// Проверяет замыкание, удаляет конечный дубль и промежуточные коллинеарные точки.
+bool finalizeRing(const PolygonPointMm & current, const PolygonPointMm & start, PolygonRing64 & result,
+                  std::size_t & remainingVertices, std::string & error)
+{
+  if (!sourceEqual(current, start))
   {
     error = "polygon path is not closed";
     return false;
@@ -278,11 +268,11 @@ bool flattenPath(const PolygonPath & path, double tolerance, PolygonRing64 & res
     for (std::size_t index = 0; index < result.size(); ++index)
     {
       const PolygonPoint64 & previous = result[(index + result.size() - 1) % result.size()];
-      const PolygonPoint64 & current = result[index];
+      const PolygonPoint64 & point = result[index];
       const PolygonPoint64 & next = result[(index + 1) % result.size()];
-      if (cross(previous, current, next) == 0 && current.x >= std::min(previous.x, next.x) &&
-          current.x <= std::max(previous.x, next.x) && current.y >= std::min(previous.y, next.y) &&
-          current.y <= std::max(previous.y, next.y))
+      if (cross(previous, point, next) == 0 && point.x >= std::min(previous.x, next.x) &&
+          point.x <= std::max(previous.x, next.x) && point.y >= std::min(previous.y, next.y) &&
+          point.y <= std::max(previous.y, next.y))
       {
         result.erase(result.begin() + static_cast<std::ptrdiff_t>(index));
         changed = true;
@@ -296,6 +286,39 @@ bool flattenPath(const PolygonPath & path, double tolerance, PolygonRing64 & res
     return false;
   }
   return true;
+}
+
+/// Аппроксимирует один исходный путь с заданной ошибкой и общим пределом вершин детали.
+bool flattenPath(const PolygonPath & path, double tolerance, PolygonRing64 & result, std::size_t & remainingVertices,
+                 std::string & error)
+{
+  if (path.segments.empty())
+  {
+    error = "polygon path is empty";
+    return false;
+  }
+  if (!validateSourcePath(path))
+  {
+    error = "polygon path extent or coordinates are outside normalized M4 limits";
+    return false;
+  }
+  if (!appendPoint(result, path.start, remainingVertices))
+  {
+    error = "polygon path exceeds the supported vertex budget";
+    return false;
+  }
+  PolygonPointMm current = path.start;
+  for (const PolygonSegment & segment : path.segments)
+  {
+    const bool appended = segment.kind == PolygonSegmentKind::Line ? appendLineSegment(segment, result, remainingVertices, error)
+                        : segment.kind == PolygonSegmentKind::Arc
+                          ? appendArcSegment(current, segment, tolerance, result, remainingVertices, error)
+                          : appendBezierSegment(current, segment, tolerance, result, remainingVertices, error);
+    if (!appended)
+      return false;
+    current = segment.end;
+  }
+  return finalizeRing(current, path.start, result, remainingVertices, error);
 }
 
 /// Возвращает удвоенную ориентированную площадь кольца.
@@ -409,6 +432,140 @@ bool sameGeometry(const PolygonOrientation & lhs, const PolygonOrientation & rhs
   return lhs.outer == rhs.outer && lhs.holes == rhs.holes;
 }
 
+/// Хранит проверенные производственные размеры в микронной системе координат.
+struct NormalizedSheetParameters
+{
+  std::int64_t width = 0;
+  std::int64_t height = 0;
+  std::int64_t margin = 0;
+  std::int64_t spacing = 0;
+};
+
+/// Хранит нормализованные кольца одного типа детали до построения ориентаций.
+struct NormalizedPartGeometry
+{
+  PolygonRing64 outer;
+  std::vector<PolygonRing64> holes;
+};
+
+/// Преобразует размеры листа и производственные параметры в проверенные микроны.
+bool normalizeSheetParameters(const PolygonProblem & problem, NormalizedSheetParameters & result, std::string & error)
+{
+  if (!toMicrons(problem.sheet.width, result.width) || !toMicrons(problem.sheet.height, result.height) ||
+      !toMicrons(problem.manufacturing.sheetMargin, result.margin) ||
+      !toMicrons(problem.manufacturing.partSpacing, result.spacing) || result.width <= 0 || result.height <= 0 ||
+      result.width > MAX_SHEET_UM || result.height > MAX_SHEET_UM)
+  {
+    error = "sheet is outside normalized M4 limits";
+    return false;
+  }
+  return true;
+}
+
+/// Аппроксимирует все кольца детали в пределах общего бюджета вершин.
+bool flattenPartRings(const PolygonPart & part, double tolerance, NormalizedPartGeometry & result, std::size_t & vertexCount,
+                      std::string & error)
+{
+  std::size_t remainingVertices = MAX_VERTICES;
+  if (!flattenPath(part.outer, tolerance, result.outer, remainingVertices, error))
+    return false;
+
+  vertexCount = result.outer.size();
+  for (const PolygonPath & path : part.holes)
+  {
+    PolygonRing64 hole;
+    if (!flattenPath(path, tolerance, hole, remainingVertices, error))
+      return false;
+    vertexCount += hole.size();
+    result.holes.push_back(std::move(hole));
+  }
+  return true;
+}
+
+/// Проверяет внешнее кольцо и приводит его к положительной ориентации.
+bool normalizeOuterRing(PolygonRing64 & outer, std::string & error)
+{
+  if (!simpleRing(outer) || signedDoubleArea(outer) == 0)
+  {
+    if (error.empty())
+      error = "outer ring is degenerate or self-intersecting";
+    return false;
+  }
+  if (signedDoubleArea(outer) < 0)
+    std::reverse(outer.begin(), outer.end());
+  return true;
+}
+
+/// Проверяет отверстия относительно внешнего кольца и друг друга и направляет их по часовой стрелке.
+bool normalizeHoleRings(const PolygonRing64 & outer, std::vector<PolygonRing64> & holes, std::string & error)
+{
+  std::vector<PolygonRing64> acceptedHoles;
+  for (PolygonRing64 & hole : holes)
+  {
+    if (!simpleRing(hole) || signedDoubleArea(hole) == 0 || !ringsDisjoint(outer, hole) || pointInRing(hole.front(), outer) != 1)
+    {
+      if (error.empty())
+        error = "hole must be simple and strictly inside outer ring";
+      return false;
+    }
+    for (const PolygonRing64 & previous : acceptedHoles)
+      if (!ringsDisjoint(previous, hole) || pointInRing(hole.front(), previous) >= 0 || pointInRing(previous.front(), hole) >= 0)
+      {
+        error = "holes must be disjoint";
+        return false;
+      }
+    if (signedDoubleArea(hole) > 0)
+      std::reverse(hole.begin(), hole.end());
+    acceptedHoles.push_back(std::move(hole));
+  }
+  holes = std::move(acceptedHoles);
+  return true;
+}
+
+/// Аппроксимирует кольца детали, локализует их и проверяет взаимную топологию.
+bool normalizePartGeometry(const PolygonPart & part, double tolerance, NormalizedPartGeometry & result, std::string & error)
+{
+  std::size_t vertexCount = 0;
+  if (!flattenPartRings(part, tolerance, result, vertexCount, error))
+    return false;
+  if (vertexCount > MAX_VERTICES || !localizeRings(result.outer, result.holes))
+  {
+    error = "polygon part extent or vertex count is outside M4 limits";
+    return false;
+  }
+  if (!normalizeOuterRing(result.outer, error))
+    return false;
+  if (!normalizeHoleRings(result.outer, result.holes, error))
+    return false;
+  return true;
+}
+
+/// Строит уникальные ориентации детали и стабильный список её экземпляров.
+bool appendPartOrientations(const PolygonPart & part, std::size_t partIndex, const NormalizedPartGeometry & geometry,
+                            std::vector<std::vector<PolygonOrientation>> & allOrientations,
+                            std::vector<PolygonPartInstance> & instances, std::string & error)
+{
+  std::vector<PolygonOrientation> orientations;
+  for (int rotation : part.allowedRotations)
+  {
+    PolygonOrientation orientation = makeOrientation(geometry.outer, geometry.holes, rotation);
+    if (orientation.width > MAX_SHEET_UM || orientation.height > MAX_SHEET_UM || orientation.materialArea == 0)
+    {
+      error = "polygon part extent or material area is outside M4 limits";
+      return false;
+    }
+    if (std::none_of(orientations.begin(), orientations.end(),
+                     [&orientation](const auto & item) { return sameGeometry(item, orientation); }))
+      orientations.push_back(std::move(orientation));
+  }
+
+  const PolygonOrientation & canonical = orientations.front();
+  for (std::uint32_t instanceIndex = 0; instanceIndex < part.quantity; ++instanceIndex)
+    instances.push_back({partIndex, instanceIndex, canonical.materialArea, std::max(canonical.width, canonical.height)});
+  allOrientations.push_back(std::move(orientations));
+  return true;
+}
+
 } // namespace internal
 
 using namespace internal;
@@ -434,97 +591,24 @@ std::unique_ptr<PolygonEnvironment> PolygonEnvironment::Create(const PolygonProb
     error = basic.error;
     return nullptr;
   }
-  std::int64_t width = 0;
-  std::int64_t height = 0;
-  std::int64_t margin = 0;
-  std::int64_t spacing = 0;
-  if (!toMicrons(problem.sheet.width, width) || !toMicrons(problem.sheet.height, height) ||
-      !toMicrons(problem.manufacturing.sheetMargin, margin) || !toMicrons(problem.manufacturing.partSpacing, spacing) ||
-      width <= 0 || height <= 0 || width > MAX_SHEET_UM || height > MAX_SHEET_UM)
-  {
-    error = "sheet is outside normalized M4 limits";
+  NormalizedSheetParameters sheet;
+  if (!normalizeSheetParameters(problem, sheet, error))
     return nullptr;
-  }
 
   std::vector<std::vector<PolygonOrientation>> allOrientations;
   std::vector<PolygonPartInstance> instances;
   for (std::size_t partIndex = 0; partIndex < problem.parts.size(); ++partIndex)
   {
     const PolygonPart & part = problem.parts[partIndex];
-    std::size_t remainingVertices = MAX_VERTICES;
-    PolygonRing64 outer;
-    if (!flattenPath(part.outer, problem.manufacturing.curveTolerance, outer, remainingVertices, error))
+    NormalizedPartGeometry geometry;
+    if (!normalizePartGeometry(part, problem.manufacturing.curveTolerance, geometry, error))
       return nullptr;
-    std::vector<PolygonRing64> holes;
-    std::size_t vertexCount = outer.size();
-    for (const PolygonPath & path : part.holes)
-    {
-      PolygonRing64 hole;
-      if (!flattenPath(path, problem.manufacturing.curveTolerance, hole, remainingVertices, error))
-        return nullptr;
-      vertexCount += hole.size();
-      holes.push_back(std::move(hole));
-    }
-    if (vertexCount > MAX_VERTICES || !localizeRings(outer, holes))
-    {
-      error = "polygon part extent or vertex count is outside M4 limits";
+    if (!appendPartOrientations(part, partIndex, geometry, allOrientations, instances, error))
       return nullptr;
-    }
-    if (!simpleRing(outer) || signedDoubleArea(outer) == 0)
-    {
-      if (error.empty())
-        error = "outer ring is degenerate or self-intersecting";
-      return nullptr;
-    }
-    if (signedDoubleArea(outer) < 0)
-      std::reverse(outer.begin(), outer.end());
-    std::vector<PolygonRing64> acceptedHoles;
-    for (PolygonRing64 & hole : holes)
-    {
-      if (!simpleRing(hole) || signedDoubleArea(hole) == 0 || !ringsDisjoint(outer, hole) ||
-          pointInRing(hole.front(), outer) != 1)
-      {
-        if (error.empty())
-          error = "hole must be simple and strictly inside outer ring";
-        return nullptr;
-      }
-      for (const PolygonRing64 & previous : acceptedHoles)
-        if (!ringsDisjoint(previous, hole) || pointInRing(hole.front(), previous) >= 0 ||
-            pointInRing(previous.front(), hole) >= 0)
-        {
-          error = "holes must be disjoint";
-          return nullptr;
-        }
-      if (signedDoubleArea(hole) > 0)
-        std::reverse(hole.begin(), hole.end());
-      acceptedHoles.push_back(std::move(hole));
-    }
-    holes = std::move(acceptedHoles);
-    std::vector<PolygonOrientation> orientations;
-    for (int rotation : part.allowedRotations)
-    {
-      PolygonOrientation orientation = makeOrientation(outer, holes, rotation);
-      if (orientation.width > MAX_SHEET_UM || orientation.height > MAX_SHEET_UM || orientation.materialArea == 0)
-      {
-        error = "polygon part extent or material area is outside M4 limits";
-        return nullptr;
-      }
-      if (orientation.width + 2 * margin > width || orientation.height + 2 * margin > height)
-      {
-        // Ориентация сохраняется: другая может поместиться, а валидатор обязан
-        // отличать невозможный экземпляр от некорректной исходной геометрии.
-      }
-      if (std::none_of(orientations.begin(), orientations.end(),
-                       [&orientation](const auto & item) { return sameGeometry(item, orientation); }))
-        orientations.push_back(std::move(orientation));
-    }
-    const PolygonOrientation & canonical = orientations.front();
-    for (std::uint32_t instanceIndex = 0; instanceIndex < part.quantity; ++instanceIndex)
-      instances.push_back({partIndex, instanceIndex, canonical.materialArea, std::max(canonical.width, canonical.height)});
-    allOrientations.push_back(std::move(orientations));
   }
-  return std::unique_ptr<PolygonEnvironment>(new PolygonEnvironment(
-    problem, width, height, margin, spacing, std::move(allOrientations), std::move(instances), catalogVersion));
+  return std::unique_ptr<PolygonEnvironment>(new PolygonEnvironment(problem, sheet.width, sheet.height, sheet.margin,
+                                                                    sheet.spacing, std::move(allOrientations),
+                                                                    std::move(instances), catalogVersion));
 }
 
 } // namespace aipackaging::solver
