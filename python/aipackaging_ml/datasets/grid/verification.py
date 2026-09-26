@@ -19,11 +19,9 @@ from .generation import family_hash
 from .rollout import SOLVERS, best_trajectory
 
 
-def verify_dataset(path: str | Path) -> dict[str, int]:
-    """Проверяет контрольные суммы, изоляцию выборок, решения и повтор всех действий."""
+def _verify_grid_manifest(manifest: dict[str, Any]) -> None:
+    """Проверяет корневой контракт, генератор и бюджеты клеточного набора."""
 
-    root = Path(path)
-    manifest = read_canonical_json(root / "manifest.json")
     require_keys(
         manifest,
         {
@@ -50,6 +48,12 @@ def verify_dataset(path: str | Path) -> dict[str, int]:
         {"timeoutMs", "randomIterations", "beamWidth", "maxExpandedStates"},
         "solver budgets",
     )
+
+
+def _load_grid_shards(
+    root: Path, manifest: dict[str, Any]
+) -> tuple[dict[str, tuple[str, dict[str, Any]]], dict[str, dict[str, Any]], int]:
+    """Проверяет части, уникальность записей и изоляцию клеточных семейств."""
 
     problem_records: dict[str, tuple[str, dict[str, Any]]] = {}
     trajectory_records: dict[str, dict[str, Any]] = {}
@@ -96,13 +100,22 @@ def verify_dataset(path: str | Path) -> dict[str, int]:
                 trajectory_records[trajectory_id] = trajectory
         else:
             raise ValueError(f"неизвестный вид части набора: {shard['kind']}")
+    return problem_records, trajectory_records, len(family_splits)
 
-    _verify_trajectories(problem_records, trajectory_records)
-    _verify_experts(manifest["expertTrajectoryId"], problem_records, trajectory_records)
+
+def verify_dataset(path: str | Path) -> dict[str, int]:
+    """Проверяет контрольные суммы, изоляцию выборок, решения и повтор всех действий."""
+
+    root = Path(path)
+    manifest = read_canonical_json(root / "manifest.json")
+    _verify_grid_manifest(manifest)
+    problems, trajectories, family_count = _load_grid_shards(root, manifest)
+    _verify_trajectories(problems, trajectories)
+    _verify_experts(manifest["expertTrajectoryId"], problems, trajectories)
     return {
-        "problems": len(problem_records),
-        "trajectories": len(trajectory_records),
-        "families": len(family_splits),
+        "problems": len(problems),
+        "trajectories": len(trajectories),
+        "families": family_count,
     }
 
 

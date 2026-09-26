@@ -135,8 +135,10 @@ def _verify_v1(root: Path, manifest: Mapping[str, Any]) -> dict[str, int]:
     return {"problems": len(problems), "trajectories": len(trajectories)}
 
 
-def _verify_v2(root: Path, manifest: Mapping[str, Any]) -> dict[str, int]:
-    """Проверяет профили, метаданные, изоляцию семейств, покрытие и повтор данных v2."""
+def _verify_v2_contract(
+    manifest: Mapping[str, Any],
+) -> tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, int], Mapping[str, int]]:
+    """Проверяет корневой контракт, генератор, профили, размеры и бюджеты v2."""
 
     require_keys(manifest, {
         "format", "version", "problemContractVersion", "trajectoryContractVersion", "observationVersion",
@@ -191,8 +193,19 @@ def _verify_v2(root: Path, manifest: Mapping[str, Any]) -> dict[str, int]:
         for name in ("randomIterations", "beamWidth", "maxExpandedStates")
     ):
         raise ValueError("некорректные замороженные бюджеты решателей")
+    return generator, declared_tiers, split_sizes, budgets
 
-    problems, trajectories, problem_splits, _ = _load_shards(root, manifest)
+
+def _verify_v2_problems(
+    manifest: Mapping[str, Any],
+    generator: Mapping[str, Any],
+    declared_tiers: Mapping[str, Any],
+    split_sizes: Mapping[str, int],
+    problems: Mapping[str, Mapping[str, Any]],
+    problem_splits: Mapping[str, str],
+) -> dict[str, Counter[str]]:
+    """Проверяет метаданные задач, семьи, масштабы, покрытие и размеры выборок."""
+
     if not isinstance(manifest["problems"], Mapping) or set(manifest["problems"]) != set(problems):
         raise ValueError("набор ключей метаданных задачи не совпадает")
     family_splits: dict[str, str] = {}
@@ -255,6 +268,16 @@ def _verify_v2(root: Path, manifest: Mapping[str, Any]) -> dict[str, int]:
     actual_counts = Counter(problem_splits.values())
     if any(actual_counts[split] != split_sizes[split] for split in ("train", "validation", "test")):
         raise ValueError("размеры выборок не соответствуют частям набора")
+    return coverage
+
+
+def _verify_v2_trajectories(
+    manifest: Mapping[str, Any],
+    trajectories: Mapping[str, Mapping[str, Any]],
+    budgets: Mapping[str, int],
+) -> None:
+    """Проверяет ревизию, начальные значения и бюджеты всех траекторий v2."""
+
     for trajectory in trajectories.values():
         solver = trajectory["solver"]
         problem_metadata = manifest["problems"][trajectory["problemId"]]
@@ -270,6 +293,22 @@ def _verify_v2(root: Path, manifest: Mapping[str, Any]) -> dict[str, int]:
             )
         ):
             raise ValueError(f"бюджеты траектории не совпадают: {trajectory['trajectoryId']}")
+
+
+def _verify_v2(root: Path, manifest: Mapping[str, Any]) -> dict[str, int]:
+    """Проверяет контракт, задачи, траектории и повтор данных v2 отдельными этапами."""
+
+    generator, declared_tiers, split_sizes, budgets = _verify_v2_contract(manifest)
+    problems, trajectories, problem_splits, _ = _load_shards(root, manifest)
+    _verify_v2_problems(
+        manifest,
+        generator,
+        declared_tiers,
+        split_sizes,
+        problems,
+        problem_splits,
+    )
+    _verify_v2_trajectories(manifest, trajectories, budgets)
     _verify_replay_all(problems, trajectories)
     _verify_experts(manifest["expertTrajectoryId"], problems, trajectories, require_solved=True)
     return {"problems": len(problems), "trajectories": len(trajectories), "version": 2}

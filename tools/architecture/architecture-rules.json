@@ -159,8 +159,9 @@
     ],
     "moduleGroups": {
       "dataset_common": [
-        "datasets.serialization",
-        "datasets.cache"
+      "datasets.serialization",
+      "datasets.cache",
+      "datasets.pipeline"
       ],
       "base": [
         "__init__",
