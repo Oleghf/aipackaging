@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include "searchalgorithms.h"
 #include "searchruntime.h"
 
 namespace
@@ -10,6 +11,76 @@ namespace
 using namespace std::chrono_literals;
 using namespace aipackaging::solver;
 using namespace aipackaging::solver::detail;
+
+/// Хранит минимальное состояние для проверки общего лучевого механизма.
+struct BeamTestState
+{
+  std::vector<unsigned char> placed{0, 0};
+  int identity = 0;
+};
+
+/// Описывает одно имитационное действие лучевого поиска.
+struct BeamTestAction
+{
+  std::size_t instance = 0;
+  int identity = 0;
+  bool applicable = true;
+};
+
+/// Предоставляет управляемые каталоги и границу бюджета для тестов `runBeam`.
+class BeamTestAdapter
+{
+public:
+  using State = BeamTestState;
+  using Action = BeamTestAction;
+
+  /// Выбирает проверку бюджета до либо после валидации действия.
+  explicit BeamTestAdapter(bool budgetBeforeValidation, bool equivalent = false)
+    : budgetBeforeValidation_(budgetBeforeValidation)
+    , equivalent_(equivalent)
+  {
+  }
+
+  /// Возвращает пустое двухэлементное состояние.
+  State initialState() const { return {}; }
+  /// Возвращает число имитационных экземпляров.
+  std::size_t instanceCount() const { return 2; }
+  /// Сообщает, размещён ли выбранный экземпляр.
+  bool isPlaced(const State & state, std::size_t index) const { return state.placed[index] != 0; }
+  /// Управляемо считает экземпляры взаимозаменяемыми.
+  bool samePart(std::size_t, std::size_t) const { return equivalent_; }
+  /// Возвращает число размещённых экземпляров.
+  std::size_t placedCount(const State & state) const
+  {
+    return static_cast<std::size_t>(state.placed[0]) + static_cast<std::size_t>(state.placed[1]);
+  }
+  /// Сообщает о полном состоянии.
+  bool complete(const State & state) const { return placedCount(state) == instanceCount(); }
+  /// Возвращает два допустимых действия и учитывает запрос экземпляра.
+  std::vector<Action> candidates(const State &, std::size_t instance) const
+  {
+    requestedInstances.push_back(instance);
+    return {{instance, static_cast<int>(instance * 10U + 1U), true}, {instance, static_cast<int>(instance * 10U + 2U), true}};
+  }
+  /// Возвращает управляемую допустимость действия.
+  bool valid(const State &, const Action & action) const { return action.applicable; }
+  /// Применяет действие к независимой копии состояния.
+  void apply(State & state, const Action & action) const
+  {
+    state.placed[action.instance] = 1;
+    state.identity = action.identity;
+  }
+  /// Сравнивает состояния только по количеству размещённых экземпляров.
+  bool better(const State & candidate, const State & reference) const { return placedCount(candidate) > placedCount(reference); }
+  /// Возвращает выбранную предметную границу бюджета.
+  bool budgetBeforeValidation() const { return budgetBeforeValidation_; }
+
+  mutable std::vector<std::size_t> requestedInstances;
+
+private:
+  bool budgetBeforeValidation_ = false;
+  bool equivalent_ = false;
+};
 } // namespace
 
 /// Проверяет ограничение времени общего механизма без реального ожидания.
@@ -85,4 +156,46 @@ TEST(SearchRuntime, AccumulatesMetricsAndReportsProgress)
   EXPECT_EQ(progress.front().bestPlacedParts, 1);
   EXPECT_EQ(progress.front().totalParts, 4);
   EXPECT_EQ(progress.front().expandedStates, 1);
+}
+
+/// Проверяет прежнее различие проверки бюджета до и после точной валидации.
+TEST(SearchRuntime, PreservesBeamBudgetValidationBoundary)
+{
+  for (bool beforeValidation : {false, true})
+  {
+    SolverConfig config;
+    config.maxExpandedStates = 1;
+    config.beamWidth = 2;
+    config.timeoutMs = 0;
+    SearchRuntime runtime(config, {});
+    BeamTestAdapter adapter(beforeValidation);
+    SolveStatus status = SolveStatus::NoSolutionFound;
+
+    const BeamTestState best = runBeam(runtime, adapter, status);
+
+    EXPECT_EQ(status, SolveStatus::BudgetExhausted);
+    EXPECT_EQ(adapter.placedCount(best), 1U);
+    EXPECT_EQ(runtime.expandedStates(), 1U);
+    EXPECT_EQ(runtime.finalizedMetrics().candidatesValidated, beforeValidation ? 1U : 2U);
+  }
+}
+
+/// Проверяет устранение перестановочного дубля меньшим неразмещённым индексом.
+TEST(SearchRuntime, DetectsEarlierEquivalentBeamInstance)
+{
+  const BeamTestAdapter adapter(false, true);
+  const BeamTestState state = adapter.initialState();
+  EXPECT_FALSE(hasEarlierEquivalentUnplaced(adapter, state, 0));
+  EXPECT_TRUE(hasEarlierEquivalentUnplaced(adapter, state, 1));
+}
+
+/// Проверяет сохранение входного порядка при равном предметном качестве состояний.
+TEST(SearchRuntime, StablyTruncatesEquivalentBeamStates)
+{
+  const BeamTestAdapter adapter(false);
+  std::vector<BeamTestState> states{{{1, 0}, 3}, {{1, 0}, 1}, {{1, 0}, 2}};
+  truncateBeam(adapter, states, 2);
+  ASSERT_EQ(states.size(), 2U);
+  EXPECT_EQ(states[0].identity, 3);
+  EXPECT_EQ(states[1].identity, 1);
 }

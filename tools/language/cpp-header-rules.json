@@ -2,5 +2,16 @@
   "scanRoots": ["src", "tests"],
   "ignoredDirectories": ["build", "artifacts", "generated", "third_party", "_deps", ".git"],
   "excludedFiles": [],
-  "exceptions": []
+  "exceptions": [
+    {
+      "path": "src/solver/search/searchalgorithms.h",
+      "symbol": "recordSearchStopStatus",
+      "reason": "Средство проверки ложно воспринимает вызовы шаблонного помощника как объявления; само объявление имеет русскую шапку."
+    },
+    {
+      "path": "src/solver/search/searchalgorithms.h",
+      "symbol": "truncateBeam",
+      "reason": "Средство проверки ложно воспринимает вызов шаблонного помощника как объявление; само объявление имеет русскую шапку."
+    }
+  ]
 }

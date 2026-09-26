@@ -106,6 +106,130 @@ Adapter::State runRandom(SearchRuntime & runtime, const Adapter & adapter, Solve
   return best;
 }
 
+/// Классифицирует причину досрочного завершения расширения лучевого слоя.
+enum class BeamExpansionResult : std::uint8_t
+{
+  Continue,
+  SearchStopped,
+  BudgetExhausted
+};
+
+/// Сообщает, что меньший неразмещённый индекс уже представляет тот же тип детали.
+template<class Adapter>
+bool hasEarlierEquivalentUnplaced(const Adapter & adapter, const typename Adapter::State & state, std::size_t instance)
+{
+  for (std::size_t earlier = 0; earlier < instance; ++earlier)
+    if (!adapter.isPlaced(state, earlier) && adapter.samePart(earlier, instance))
+      return true;
+  return false;
+}
+
+/// Уточняет публичный статус только для наблюдённого ограничения времени.
+inline void recordSearchStopStatus(const SearchRuntime & runtime, SolveStatus & status)
+{
+  if (runtime.stopReason() == SearchStopReason::TimedOut)
+    status = SolveStatus::TimedOut;
+}
+
+/// Проверяет бюджет в предметно-зависимой границе до либо после точной валидации.
+template<class Adapter>
+bool beamBudgetReached(const SearchRuntime & runtime, const Adapter & adapter, bool beforeValidation)
+{
+  return adapter.budgetBeforeValidation() == beforeValidation && runtime.expandedStates() >= runtime.config().maxExpandedStates;
+}
+
+/// Проверяет и применяет одно действие, сохраняя прежние границы бюджета и остановки.
+template<class Adapter>
+BeamExpansionResult expandBeamAction(SearchRuntime & runtime, const Adapter & adapter, const typename Adapter::State & state,
+                                     const typename Adapter::Action & action, typename Adapter::State & best,
+                                     std::vector<typename Adapter::State> & children, SolveStatus & status)
+{
+  if (runtime.pollStop())
+  {
+    recordSearchStopStatus(runtime, status);
+    return BeamExpansionResult::SearchStopped;
+  }
+  if (beamBudgetReached(runtime, adapter, true))
+    return BeamExpansionResult::BudgetExhausted;
+
+  const auto validationStarted = runtime.now();
+  const bool valid = adapter.valid(state, action);
+  runtime.recordValidation(validationStarted);
+  if (!valid)
+    return BeamExpansionResult::Continue;
+  if (beamBudgetReached(runtime, adapter, false))
+    return BeamExpansionResult::BudgetExhausted;
+
+  typename Adapter::State child = state;
+  adapter.apply(child, action);
+  runtime.recordExpansion();
+  if (adapter.better(child, best))
+    best = child;
+  children.push_back(std::move(child));
+  runtime.report(SearchProgressStage::ExpandedStates, runtime.expandedStates(), runtime.config().maxExpandedStates,
+                 adapter.placedCount(best), adapter.instanceCount());
+  return BeamExpansionResult::Continue;
+}
+
+/// Расширяет одно состояние всеми допустимыми действиями в прежнем порядке экземпляров.
+template<class Adapter>
+BeamExpansionResult expandBeamState(SearchRuntime & runtime, const Adapter & adapter, const typename Adapter::State & state,
+                                    typename Adapter::State & best, std::vector<typename Adapter::State> & children,
+                                    SolveStatus & status)
+{
+  for (std::size_t instance = 0; instance < adapter.instanceCount(); ++instance)
+  {
+    if (adapter.isPlaced(state, instance) || hasEarlierEquivalentUnplaced(adapter, state, instance))
+      continue;
+
+    const auto generationStarted = runtime.now();
+    const auto candidates = adapter.candidates(state, instance);
+    runtime.recordCandidateGeneration(generationStarted, candidates.size());
+    for (const typename Adapter::Action & action : candidates)
+    {
+      const BeamExpansionResult result = expandBeamAction(runtime, adapter, state, action, best, children, status);
+      if (result != BeamExpansionResult::Continue)
+        return result;
+    }
+  }
+  return BeamExpansionResult::Continue;
+}
+
+/// Формирует полный следующий слой либо возвращает первую причину остановки.
+template<class Adapter>
+BeamExpansionResult expandBeamLayer(SearchRuntime & runtime, const Adapter & adapter,
+                                    const std::vector<typename Adapter::State> & beam, typename Adapter::State & best,
+                                    std::vector<typename Adapter::State> & children, SolveStatus & status)
+{
+  for (const typename Adapter::State & state : beam)
+  {
+    const BeamExpansionResult result = expandBeamState(runtime, adapter, state, best, children, status);
+    if (result != BeamExpansionResult::Continue)
+      return result;
+  }
+  return BeamExpansionResult::Continue;
+}
+
+/// Стабильно оставляет в слое не более заданной ширины лучших состояний.
+template<class Adapter>
+void truncateBeam(const Adapter & adapter, std::vector<typename Adapter::State> & children, std::size_t beamWidth)
+{
+  std::stable_sort(children.begin(), children.end(),
+                   [&adapter](const auto & lhs, const auto & rhs) { return adapter.better(lhs, rhs); });
+  if (children.size() > beamWidth)
+    children.resize(beamWidth);
+}
+
+/// Определяет итоговый статус после естественного завершения лучевого поиска.
+template<class Adapter>
+SolveStatus finalBeamStatus(const SearchRuntime & runtime, const Adapter & adapter, const typename Adapter::State & best)
+{
+  if (adapter.complete(best))
+    return SolveStatus::Solved;
+  return runtime.expandedStates() >= runtime.config().maxExpandedStates ? SolveStatus::BudgetExhausted
+                                                                        : SolveStatus::NoSolutionFound;
+}
+
 /// Расширяет общее пространство действий слоями и сохраняет до beamWidth лучших состояний.
 template<class Adapter>
 Adapter::State runBeam(SearchRuntime & runtime, const Adapter & adapter, SolveStatus & status)
@@ -117,93 +241,26 @@ Adapter::State runBeam(SearchRuntime & runtime, const Adapter & adapter, SolveSt
   {
     if (runtime.pollStop())
     {
-      if (runtime.stopReason() == SearchStopReason::TimedOut)
-        status = SolveStatus::TimedOut;
+      recordSearchStopStatus(runtime, status);
       return best;
     }
     std::vector<typename Adapter::State> children;
-    bool stoppedByBudget = false;
-    for (const typename Adapter::State & state : beam)
-    {
-      for (std::size_t instance = 0; instance < adapter.instanceCount(); ++instance)
-      {
-        if (adapter.isPlaced(state, instance))
-          continue;
-
-        // Экземпляры одного типа взаимозаменяемы. Минимальный ещё не
-        // размещённый индекс устраняет перестановочные дубли в лучевом поиске.
-        bool earlierEquivalentUnplaced = false;
-        for (std::size_t earlier = 0; earlier < instance; ++earlier)
-          if (!adapter.isPlaced(state, earlier) && adapter.samePart(earlier, instance))
-          {
-            earlierEquivalentUnplaced = true;
-            break;
-          }
-        if (earlierEquivalentUnplaced)
-          continue;
-
-        const auto generationStarted = runtime.now();
-        const auto candidates = adapter.candidates(state, instance);
-        runtime.recordCandidateGeneration(generationStarted, candidates.size());
-        for (const typename Adapter::Action & action : candidates)
-        {
-          if (runtime.pollStop())
-          {
-            if (runtime.stopReason() == SearchStopReason::TimedOut)
-              status = SolveStatus::TimedOut;
-            return best;
-          }
-          if (adapter.budgetBeforeValidation() && runtime.expandedStates() >= runtime.config().maxExpandedStates)
-          {
-            stoppedByBudget = true;
-            break;
-          }
-          const auto validationStarted = runtime.now();
-          const bool valid = adapter.valid(state, action);
-          runtime.recordValidation(validationStarted);
-          if (!valid)
-            continue;
-          if (!adapter.budgetBeforeValidation() && runtime.expandedStates() >= runtime.config().maxExpandedStates)
-          {
-            stoppedByBudget = true;
-            break;
-          }
-          typename Adapter::State child = state;
-          adapter.apply(child, action);
-          runtime.recordExpansion();
-          if (adapter.better(child, best))
-            best = child;
-          children.push_back(std::move(child));
-          runtime.report(SearchProgressStage::ExpandedStates, runtime.expandedStates(), runtime.config().maxExpandedStates,
-                         adapter.placedCount(best), adapter.instanceCount());
-        }
-        if (stoppedByBudget)
-          break;
-      }
-      if (stoppedByBudget)
-        break;
-    }
-
-    if (stoppedByBudget)
+    const BeamExpansionResult expansion = expandBeamLayer(runtime, adapter, beam, best, children, status);
+    if (expansion == BeamExpansionResult::SearchStopped)
+      return best;
+    if (expansion == BeamExpansionResult::BudgetExhausted)
     {
       status = adapter.complete(best) ? SolveStatus::Solved : SolveStatus::BudgetExhausted;
       return best;
     }
     if (children.empty())
       break;
-    // Стабильная сортировка вместе с предметным разрешением равенства сохраняет одинаковое
-    // усечение луча на разных запусках и реализациях стандартной библиотеки.
-    std::stable_sort(children.begin(), children.end(),
-                     [&adapter](const auto & lhs, const auto & rhs) { return adapter.better(lhs, rhs); });
-    if (children.size() > runtime.config().beamWidth)
-      children.resize(runtime.config().beamWidth);
+    // Стабильное предметное разрешение равенства сохраняет одинаковое усечение.
+    truncateBeam(adapter, children, runtime.config().beamWidth);
     beam = std::move(children);
   }
 
-  status = adapter.complete(best)
-           ? SolveStatus::Solved
-           : (runtime.expandedStates() >= runtime.config().maxExpandedStates ? SolveStatus::BudgetExhausted
-                                                                             : SolveStatus::NoSolutionFound);
+  status = finalBeamStatus(runtime, adapter, best);
   return best;
 }
 } // namespace aipackaging::solver::detail

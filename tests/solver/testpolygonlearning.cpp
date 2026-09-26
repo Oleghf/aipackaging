@@ -110,7 +110,8 @@ TEST(PolygonLearning, SelectsCompatibleRewardVersion)
   ASSERT_EQ(step.componentDeltas.size(), 5U);
   const double secondary = step.componentDeltas[1] + step.componentDeltas[2] / 1024.0 +
                            step.componentDeltas[3] / (1024.0 * 1024.0) + step.componentDeltas[4] / (1024.0 * 1024.0 * 1024.0);
-  const double expected = (step.componentDeltas[0] + 0.5 * secondary) / current->solution().objective.totalParts;
+  const double expected =
+    (step.componentDeltas[0] + 0.5 * secondary) / static_cast<double>(current->solution().objective.totalParts);
   EXPECT_EQ(step.rewardVersion, 2);
   EXPECT_NEAR(step.reward, expected, 1e-15);
   EXPECT_DOUBLE_EQ(step.reward, step.potentialAfter - step.potentialBefore);
@@ -177,4 +178,33 @@ TEST(PolygonLearning, RollsBackObservationFailure)
     EXPECT_EQ(environment->actions(), initialActions);
     EXPECT_EQ(environment->solution().placements, initialPlacements);
   }
+}
+
+/// Проверяет крайние индексы растра и конечность нормализованных признаков на максимальном листе.
+TEST(PolygonLearning, MapsMaximumSheetBoundaryToLastRasterCell)
+{
+  PolygonProblem value = problem();
+  value.sheet = {10000.0, 10000.0, "mm"};
+  value.manufacturing.sheetMargin = 0.0;
+  value.manufacturing.partSpacing = 0.0;
+  value.parts[0].quantity = 1;
+  value.parts[0].allowedRotations = {0};
+  std::string error;
+  std::unique_ptr<PolygonLearningEnvironment> environment = PolygonLearningEnvironment::Create(value, error);
+  ASSERT_NE(environment, nullptr) << error;
+
+  const PolygonStaticObservation fixed = environment->staticObservation();
+  EXPECT_TRUE(std::all_of(fixed.partFeatures.begin(), fixed.partFeatures.end(), [](float item) { return std::isfinite(item); }));
+  const PolygonPlacementObservation placement = environment->placementObservation(0, 0);
+  EXPECT_TRUE(std::all_of(placement.candidateFeatures.begin(), placement.candidateFeatures.end(),
+                          [](float item) { return std::isfinite(item); }));
+  const auto boundary =
+    std::find(placement.actions.begin(), placement.actions.end(), PolygonAction{"rectangle", 0, 9970000, 9980000, 0});
+  ASSERT_NE(boundary, placement.actions.end());
+  const std::size_t boundaryIndex = static_cast<std::size_t>(std::distance(placement.actions.begin(), boundary));
+  EXPECT_FLOAT_EQ(placement.candidateFeatures[boundaryIndex * 7U + 5U], 1.0F);
+  EXPECT_FLOAT_EQ(placement.candidateFeatures[boundaryIndex * 7U + 6U], 1.0F);
+  const std::size_t finalCell = 3U * 128U * 128U + 127U * 128U + 127U;
+  ASSERT_LT(finalCell, placement.channels.size());
+  EXPECT_FLOAT_EQ(placement.channels[finalCell], 1.0F);
 }
