@@ -1,39 +1,30 @@
 #ifndef AIPACKAGING_GUI_POLYGONWORKSPACEWIDGET_H
 #define AIPACKAGING_GUI_POLYGONWORKSPACEWIDGET_H
 
-#include <cstdint>
 #include <QByteArray>
 #include <QWidget>
 
 #include <polygonworkspaceview.h>
 
-class QComboBox;
 class QAction;
-class QGroupBox;
-class QLabel;
-class QLineEdit;
-class QListWidget;
-class QTreeWidget;
-class QSplitter;
-class QProgressBar;
-class QPushButton;
-class QSpinBox;
-class QTextEdit;
-class QToolButton;
 class PolygonCanvasWidget;
+class PolygonDocumentPanel;
+class PolygonRunPanel;
+class PolygonStatusPanel;
+class QSplitter;
 
-/// Вкладка просмотра полигональной задачи и запуска базового поиска.
+/// Совместимый фасад рабочей области, объединяющий документ, полотно, запуск и состояние.
 class PolygonWorkspaceWidget : public QWidget
 {
   Q_OBJECT
 public:
-  /// Создаёт полотно, панель файлов, настройки решателя, ход выполнения и метрики.
+  /// Создаёт профильные панели, полотно и прежнюю компоновку рабочей области.
   explicit PolygonWorkspaceWidget(QWidget * parent = nullptr);
   /// Возвращает проверяемые числовые настройки, выбранные пользователем.
   NestingRunRequest solverConfig() const;
   /// Сообщает, можно ли безопасно сформировать запрос из текущих полей.
   bool settingsValid() const;
-  /// Применяет снимок модели представления и согласованно переключает доступность элементов управления.
+  /// Передаёт согласованный снимок профильным панелям и полотну.
   void present(const PolygonWorkspaceSnapshot & snapshot);
   /// Возвращает команду запуска для размещения на панели главного окна.
   QAction * startAction() const;
@@ -73,63 +64,11 @@ signals:
   void cursorPositionChanged(double x, double y, bool inside);
 
 private:
-  /// Настраивает имена, доступность, режимы и числовые ограничения элементов управления.
-  void configureControls();
-  /// Собирает панели документа, полотна, запуска и сообщений.
-  void buildLayout();
-  /// Связывает действия пользователя с сигналами и обновлением настроек.
-  void connectControls();
-  /// Публикует сведения о текущем документе.
-  void presentDocument(const PolygonWorkspaceSnapshot & snapshot);
-  /// Публикует состояние проверяемой или готовой модели.
-  void presentModelState(const PolygonWorkspaceSnapshot & snapshot);
-  /// Согласует доступность команд с состоянием фоновой работы.
-  void presentRunState(const PolygonWorkspaceSnapshot & snapshot);
-  /// Публикует этап и долю выполнения без искажения частичного результата.
-  void presentProgress(const PolygonWorkspaceSnapshot & snapshot);
-  /// Публикует метрики, сцену и перечни экземпляров результата.
-  void presentResult(const PolygonWorkspaceSnapshot & snapshot);
-  /// Пересчитывает доступность запуска по снимку, модели и корректности настроек.
-  void updateStartAvailability();
-  /// Применяет значения выбранного понятного режима к запросу запуска.
-  void applyPreset(int preset);
-  /// Показывает сведения о выбранном экземпляре детали.
-  void showSelectedPart(const QString & partId, std::uint32_t instanceIndex);
-
+  PolygonDocumentPanel * documentPanel_;
   PolygonCanvasWidget * canvas_;
-  QPushButton * openButton_;
-  QPushButton * saveButton_;
-  QPushButton * startButton_;
-  QPushButton * cancelButton_;
-  QPushButton * fitButton_;
-  QPushButton * modelButton_;
-  QPushButton * cancelModelButton_;
-  QComboBox * solverBox_;
-  QComboBox * expertSolverBox_;
-  QToolButton * advancedToggle_;
-  QGroupBox * advancedGroup_;
-  QLineEdit * seedEdit_;
-  QLabel * seedValidationLabel_;
-  QSpinBox * randomIterationsSpin_;
-  QSpinBox * beamWidthSpin_;
-  QSpinBox * maxExpandedSpin_;
-  QSpinBox * timeoutSpin_;
-  QSpinBox * neuralRolloutsSpin_;
-  QLabel * problemLabel_;
-  QLabel * modelLabel_;
-  QLabel * statusLabel_;
-  QProgressBar * progressBar_;
-  QTextEdit * metricsText_;
-  QListWidget * unplacedList_;
-  QTreeWidget * partTree_;
-  QLabel * partDetailsLabel_;
-  QLabel * stageLabel_;
+  PolygonRunPanel * runPanel_;
+  PolygonStatusPanel * statusPanel_;
   QSplitter * splitter_;
-  QAction * startAction_;
-  QAction * cancelAction_;
-  QAction * fitAction_;
-  PolygonWorkspaceSnapshot snapshot_;
-  bool applyingPreset_ = false;
 };
 
 #endif

@@ -96,77 +96,93 @@ void PolygonMainWindow::connectActions()
 {
   connect(homeAction_, &QAction::triggered, this, [this]() { pages_->setCurrentWidget(startPage_); });
   connect(openProblemAction_, &QAction::triggered, this, &PolygonMainWindow::chooseProblem);
-  connect(saveSolutionAction_, &QAction::triggered, this,
-          [this]()
-          {
-            if (!actions_.saveSolution)
-              return;
-            QSettings settings;
-            const QString directory = settings.value(QStringLiteral("files/lastDirectory")).toString();
-            const QString path = QFileDialog::getSaveFileName(this, tr("Сохраните полигональное решение"),
-                                                              QDir(directory).filePath(QStringLiteral("polygon-solution.json")),
-                                                              tr("JSON (*.json);;Все файлы (*)"));
-            if (!path.isEmpty())
-            {
-              settings.setValue(QStringLiteral("files/lastDirectory"), QFileInfo(path).absolutePath());
-              actions_.saveSolution(path.toStdString());
-            }
-          });
-  connect(openModelAction_, &QAction::triggered, this,
-          [this]()
-          {
-            if (!actions_.openModel)
-              return;
-            QSettings settings;
-            const QString initial = settings.value(QStringLiteral("model/lastDirectory")).toString();
-            const QString path = QFileDialog::getExistingDirectory(this, tr("Выберите каталог модели ONNX"), initial);
-            if (!path.isEmpty())
-            {
-              pendingModelPath_ = path;
-              modelLoadTimer_.start();
-              actions_.openModel(path.toStdString());
-            }
-          });
-  connect(forgetModelAction_, &QAction::triggered, this,
-          [this]()
-          {
-            if (actions_.forgetModel)
-              actions_.forgetModel();
-            QSettings().remove(QStringLiteral("polygon/modelDirectory"));
-          });
+  connect(saveSolutionAction_, &QAction::triggered, this, &PolygonMainWindow::saveSolution);
+  connect(openModelAction_, &QAction::triggered, this, &PolygonMainWindow::chooseModel);
+  connect(forgetModelAction_, &QAction::triggered, this, &PolygonMainWindow::forgetModel);
   connect(startPage_, &PolygonStartPage::requestOpenProblem, this, &PolygonMainWindow::chooseProblem);
   connect(startPage_, &PolygonStartPage::requestOpenPath, this, &PolygonMainWindow::openPath);
-  connect(startPage_, &PolygonStartPage::requestRemoveRecent, this,
-          [this](const QString & path)
-          {
-            recentProblems_.removeAll(path);
-            QSettings().setValue(QStringLiteral("files/recentProblems"), recentProblems_);
-            startPage_->setRecentFiles(recentProblems_);
-          });
+  connect(startPage_, &PolygonStartPage::requestRemoveRecent, this, &PolygonMainWindow::removeRecentProblem);
   connect(workspace_, &PolygonWorkspaceWidget::requestOpenProblem, this, &PolygonMainWindow::chooseProblem);
   connect(workspace_, &PolygonWorkspaceWidget::requestSaveSolution, saveSolutionAction_, &QAction::trigger);
   connect(workspace_, &PolygonWorkspaceWidget::requestOpenModel, openModelAction_, &QAction::trigger);
-  connect(workspace_, &PolygonWorkspaceWidget::requestCancelModelLoad, this,
-          [this]()
-          {
-            if (actions_.cancelModelLoad)
-              actions_.cancelModelLoad();
-          });
-  connect(workspace_, &PolygonWorkspaceWidget::requestStart, this,
-          [this]()
-          {
-            if (actions_.start)
-              actions_.start(workspace_->solverConfig());
-          });
-  connect(workspace_, &PolygonWorkspaceWidget::requestCancel, this,
-          [this]()
-          {
-            if (actions_.cancel)
-              actions_.cancel();
-          });
-  connect(
-    workspace_, &PolygonWorkspaceWidget::cursorPositionChanged, this, [this](double x, double y, bool inside)
-    { coordinatesLabel_->setText(inside ? tr("X: %1 мм; Y: %2 мм").arg(x, 0, 'f', 2).arg(y, 0, 'f', 2) : tr("Координаты: —")); });
+  connect(workspace_, &PolygonWorkspaceWidget::requestCancelModelLoad, this, &PolygonMainWindow::cancelModelLoad);
+  connect(workspace_, &PolygonWorkspaceWidget::requestStart, this, &PolygonMainWindow::startRun);
+  connect(workspace_, &PolygonWorkspaceWidget::requestCancel, this, &PolygonMainWindow::cancelRun);
+  connect(workspace_, &PolygonWorkspaceWidget::cursorPositionChanged, this, &PolygonMainWindow::showCursorPosition);
+}
+
+/// Выбирает путь рядом с последним каталогом и сохраняет только при наличии прикладного действия.
+void PolygonMainWindow::saveSolution()
+{
+  if (!actions_.saveSolution)
+    return;
+  QSettings settings;
+  const QString directory = settings.value(QStringLiteral("files/lastDirectory")).toString();
+  const QString path = QFileDialog::getSaveFileName(this, tr("Сохраните полигональное решение"),
+                                                    QDir(directory).filePath(QStringLiteral("polygon-solution.json")),
+                                                    tr("JSON (*.json);;Все файлы (*)"));
+  if (path.isEmpty())
+    return;
+  settings.setValue(QStringLiteral("files/lastDirectory"), QFileInfo(path).absolutePath());
+  actions_.saveSolution(path.toStdString());
+}
+
+/// Запоминает выбранный каталог как ожидающий проверки и запускает прикладное действие модели.
+void PolygonMainWindow::chooseModel()
+{
+  if (!actions_.openModel)
+    return;
+  QSettings settings;
+  const QString initial = settings.value(QStringLiteral("model/lastDirectory")).toString();
+  const QString path = QFileDialog::getExistingDirectory(this, tr("Выберите каталог модели ONNX"), initial);
+  if (path.isEmpty())
+    return;
+  pendingModelPath_ = path;
+  modelLoadTimer_.start();
+  actions_.openModel(path.toStdString());
+}
+
+/// Освобождает модель через прикладное действие и очищает только постоянный путь Qt.
+void PolygonMainWindow::forgetModel()
+{
+  if (actions_.forgetModel)
+    actions_.forgetModel();
+  QSettings().remove(QStringLiteral("polygon/modelDirectory"));
+}
+
+/// Удаляет все совпадения пути, сохраняет список и немедленно обновляет стартовую страницу.
+void PolygonMainWindow::removeRecentProblem(const QString & path)
+{
+  recentProblems_.removeAll(path);
+  QSettings().setValue(QStringLiteral("files/recentProblems"), recentProblems_);
+  startPage_->setRecentFiles(recentProblems_);
+}
+
+/// Передаёт прикладному слою проверенный панелью запрос текущего режима.
+void PolygonMainWindow::startRun()
+{
+  if (actions_.start)
+    actions_.start(workspace_->solverConfig());
+}
+
+/// Вызывает прикладную отмену только при настроенном действии.
+void PolygonMainWindow::cancelRun()
+{
+  if (actions_.cancel)
+    actions_.cancel();
+}
+
+/// Вызывает прикладную отмену проверки модели только при настроенном действии.
+void PolygonMainWindow::cancelModelLoad()
+{
+  if (actions_.cancelModelLoad)
+    actions_.cancelModelLoad();
+}
+
+/// Форматирует миллиметры с двумя знаками либо показывает отсутствие координат.
+void PolygonMainWindow::showCursorPosition(double x, double y, bool inside)
+{
+  coordinatesLabel_->setText(inside ? tr("X: %1 мм; Y: %2 мм").arg(x, 0, 'f', 2).arg(y, 0, 'f', 2) : tr("Координаты: —"));
 }
 
 /// Сохраняет функции действий и запускает фоновую проверку ранее выбранной модели.

@@ -74,46 +74,67 @@ void PolygonCanvasWidget::paintEvent(QPaintEvent * event)
     return;
   }
 
+  applySceneTransform(painter, scene);
+  drawSheet(painter, scene);
+  drawRemnant(painter, scene);
+  drawMargin(painter, scene);
+  drawPlacements(painter, scene);
+}
+
+/// Вычисляет масштаб вписывания, применяет масштаб пользователя и инвертирует экранную ось Y.
+void PolygonCanvasWidget::applySceneTransform(QPainter & painter, const PolygonSceneView & scene) const
+{
   const double availableWidth = std::max(1.0, width() - 2.0 * VIEW_PADDING);
   const double availableHeight = std::max(1.0, height() - 2.0 * VIEW_PADDING);
   const double fitScale = std::min(availableWidth / scene.sheetWidth, availableHeight / scene.sheetHeight);
   const double scale = fitScale * zoom_;
-
-  // Центрируем лист, инвертируем экранную ось Y и затем применяем пользовательское смещение.
   painter.translate(width() / 2.0 + pan_.x(), height() / 2.0 + pan_.y());
   painter.scale(scale, -scale);
   painter.translate(-scene.sheetWidth / 2.0, -scene.sheetHeight / 2.0);
+}
 
+/// Заполняет лист белым материалом и обводит его пером постоянной экранной толщины.
+void PolygonCanvasWidget::drawSheet(QPainter & painter, const PolygonSceneView & scene) const
+{
   QPen sheetPen(QColor("#334155"));
   sheetPen.setCosmetic(true);
   sheetPen.setWidthF(2.0);
   painter.setPen(sheetPen);
   painter.setBrush(Qt::white);
   painter.drawRect(QRectF(0.0, 0.0, scene.sheetWidth, scene.sheetHeight));
+}
 
-  if (snapshot_.state == PolygonWorkspaceState::Completed || snapshot_.state == PolygonWorkspaceState::Cancelled)
-  {
-    const double remnantX = scene.sheetMargin + scene.usedLength;
-    const double remnantRight = scene.sheetWidth - scene.sheetMargin;
-    if (remnantRight > remnantX)
-    {
-      painter.setPen(Qt::NoPen);
-      painter.setBrush(QColor(72, 187, 120, 44));
-      painter.drawRect(QRectF(remnantX, scene.sheetMargin, remnantRight - remnantX, scene.sheetHeight - 2.0 * scene.sheetMargin));
-    }
-  }
+/// Вычисляет начало правой полосы по занятой длине и заполняет только положительный остаток.
+void PolygonCanvasWidget::drawRemnant(QPainter & painter, const PolygonSceneView & scene) const
+{
+  if (snapshot_.state != PolygonWorkspaceState::Completed && snapshot_.state != PolygonWorkspaceState::Cancelled)
+    return;
+  const double remnantX = scene.sheetMargin + scene.usedLength;
+  const double remnantRight = scene.sheetWidth - scene.sheetMargin;
+  if (remnantRight <= remnantX)
+    return;
+  painter.setPen(Qt::NoPen);
+  painter.setBrush(QColor(72, 187, 120, 44));
+  painter.drawRect(QRectF(remnantX, scene.sheetMargin, remnantRight - remnantX, scene.sheetHeight - 2.0 * scene.sheetMargin));
+}
 
-  if (scene.sheetMargin > 0.0)
-  {
-    QPen marginPen(QColor("#94A3B8"));
-    marginPen.setCosmetic(true);
-    marginPen.setStyle(Qt::DashLine);
-    painter.setPen(marginPen);
-    painter.setBrush(Qt::NoBrush);
-    painter.drawRect(QRectF(scene.sheetMargin, scene.sheetMargin, scene.sheetWidth - 2.0 * scene.sheetMargin,
-                            scene.sheetHeight - 2.0 * scene.sheetMargin));
-  }
+/// Строит внутренний прямоугольник допустимой области, если задан положительный отступ.
+void PolygonCanvasWidget::drawMargin(QPainter & painter, const PolygonSceneView & scene) const
+{
+  if (scene.sheetMargin <= 0.0)
+    return;
+  QPen marginPen(QColor("#94A3B8"));
+  marginPen.setCosmetic(true);
+  marginPen.setStyle(Qt::DashLine);
+  painter.setPen(marginPen);
+  painter.setBrush(Qt::NoBrush);
+  painter.drawRect(QRectF(scene.sheetMargin, scene.sheetMargin, scene.sheetWidth - 2.0 * scene.sheetMargin,
+                          scene.sheetHeight - 2.0 * scene.sheetMargin));
+}
 
+/// Формирует для каждой детали путь с правилом нечётности, сохраняя прозрачность отверстий и порядок сцены.
+void PolygonCanvasWidget::drawPlacements(QPainter & painter, const PolygonSceneView & scene) const
+{
   for (const PolygonPlacedPartView & part : scene.placements)
   {
     QPainterPath path;

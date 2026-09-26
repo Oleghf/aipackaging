@@ -10,6 +10,7 @@
 #include <polygonworkspaceview.h>
 
 class QMouseEvent;
+class QPainter;
 class QPaintEvent;
 class QWheelEvent;
 
@@ -45,6 +46,16 @@ protected:
   void wheelEvent(QWheelEvent * event) override;
 
 private:
+  /// Настраивает преобразование миллиметровых координат листа в экранные координаты.
+  void applySceneTransform(QPainter & painter, const PolygonSceneView & scene) const;
+  /// Рисует границу и материал листа.
+  void drawSheet(QPainter & painter, const PolygonSceneView & scene) const;
+  /// Рисует полезный правый остаток только для завершённого или отменённого результата.
+  void drawRemnant(QPainter & painter, const PolygonSceneView & scene) const;
+  /// Рисует производственный отступ листа пунктирной линией.
+  void drawMargin(QPainter & painter, const PolygonSceneView & scene) const;
+  /// Рисует размещения, отверстия и выделение выбранной детали.
+  void drawPlacements(QPainter & painter, const PolygonSceneView & scene) const;
   /// Переводит экранную точку в миллиметровые координаты листа.
   QPointF mapToSheet(const QPointF & position) const;
   /// Находит верхнюю деталь под точкой с учётом отверстий.

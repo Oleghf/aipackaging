@@ -128,7 +128,7 @@ endif()
 
 if (BUILD_DESKTOP)
   aipackaging_add_test_executable(AIPackaging_GuiTests
-    "gui/testpolygonworkspacewidget.cpp" "gui/testpolygonmainwindow.cpp"
+    "gui/testpolygonworkspacewidget.cpp" "gui/testpolygonworkspacepanels.cpp" "gui/testpolygonmainwindow.cpp"
   )
   target_include_directories(AIPackaging_GuiTests PRIVATE "${CMAKE_SOURCE_DIR}/src/gui")
   target_link_libraries(AIPackaging_GuiTests PRIVATE AIPackaging_GUI AIPackaging_Application)
