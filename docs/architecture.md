@@ -26,6 +26,16 @@ AIPackaging_Json
   └─ SearchContracts + GridCore + PolygonCore
      └─ private: nlohmann/json
 
+AIPackaging_StrictJsonSupport
+  └─ private: nlohmann/json
+
+AIPackaging_Editor
+  └─ самостоятельная редактируемая модель
+
+AIPackaging_EditorPersistence
+  └─ Editor
+     └─ private: StrictJsonSupport
+
 AIPackaging_Learning
   └─ GridCore + PolygonCore
 
@@ -33,10 +43,10 @@ AIPackaging_OnnxInference
   └─ Learning + Search + ONNX Runtime
 
 AIPackaging_Application
-  └─ нейтральные прикладные контракты
+  └─ Editor + нейтральные прикладные контракты
 
 AIPackaging_DesktopInfrastructure
-  └─ Application + Search + Json + PolygonCore
+  └─ Application + EditorPersistence + Search + Json + PolygonCore
      └─ optional: OnnxInference
 
 AIPackaging_GUI
@@ -56,6 +66,8 @@ AIPackaging_Cli
 
 - `PolygonArtifactStore` хранит неизменяемые задачи, решения и модели;
 - `LocalPolygonDocumentGateway` загружает и атомарно сохраняет документы;
+- `LocalPolygonEditableDocumentGateway` преобразует задачи и черновики,
+  выполняет локальную и точную проверки и регистрирует снимки;
 - шлюз и средство фоновой загрузки модели проверяют комплект ONNX;
 - базовая, ONNX- и маршрутизирующая внутренние реализации выполняют раскрой;
 - `StdThreadNestingJobRunner` управляет потоком, отменой и уведомлениями;
@@ -90,6 +102,10 @@ AIPackaging_Cli
 - `GridProblem` и связанные типы принадлежат клеточному ядру.
 - `PolygonProblem`, нормализованная геометрия, состояние размещения и точный
   валидатор принадлежат полигональному ядру.
+- Редактируемая модель, стабильные идентификаторы и локальные диагностики
+  принадлежат `AIPackaging_Editor`.
+- Строгий формат черновика и его атомарная запись принадлежат
+  `AIPackaging_EditorPersistence`.
 - `SolverConfig`, ход выполнения, отмена и общие метаданные принадлежат
   контрактам поиска.
 - Разбор и запись JSON принадлежат `AIPackaging_Json`; типы JSON не входят в
@@ -103,14 +119,17 @@ AIPackaging_Cli
   и выдаются прикладному слою как непрозрачные идентификаторы.
 - Qt владеет только виджетами, настройками окна и структурами представления.
 
-## Открытие и отображение задачи
+## Открытие и отображение документа
 
 ```text
 PolygonMainWindow
-  -> IPolygonDocumentGateway
-  -> строгий разбор polygon_problem v1
-  -> нормализация PolygonProblem
-  -> PolygonArtifactStore
+  -> PolygonDocumentController
+  -> IPolygonEditableDocumentGateway
+  -> polygon_problem v1 или polygon_draft v1
+  -> EditablePolygonDocument
+  -> локальная проверка
+  -> преобразование в PolygonProblem и точная нормализация
+  -> PolygonArtifactStore, только при полной корректности
   -> PolygonWorkspaceController
   -> PolygonWorkspaceSnapshot
   -> PolygonWorkspaceWidget
@@ -119,6 +138,31 @@ PolygonMainWindow
 Ошибка нового файла не уничтожает предыдущий корректный документ или решение.
 `ActivePolygonDocument` хранит источник, признаки `dirty`, `valid`, `running` и
 устаревание решения, но не зависит от Qt, JSON, файловой системы или поиска.
+`PolygonDocumentController` владеет редактируемой моделью, поколением
+автосохранения и отпечатком источника. Контроллер рабочей области по-прежнему
+управляет только моделью ONNX, запуском, отменой и решением.
+
+Некорректный черновик остаётся доступным для последующего редактирования и
+сохранения, но не получает `PolygonDocumentHandle`. Строгая задача записывается
+только после локальной и точной проверок. Внутренние `EntityId` при этом не
+попадают в `polygon_problem` v1.
+
+## Черновик и восстановление
+
+`aipackaging.polygon_draft` v1 хранит только редактируемый документ, стабильные
+идентификаторы и метаданные источника. Неизвестные поля, нулевые или
+повторяющиеся идентификаторы и неверный `nextEntityId` отклоняются.
+
+Qt задерживает автосохранение на две секунды после изменения, а прикладной
+контроллер назначает монотонное поколение. Инфраструктура атомарно заменяет
+единственный файл в `QStandardPaths::AppLocalDataLocation/autosave`. На старте
+читаются только сведения карточки; документ загружается после явной команды
+«Восстановить». Повреждённый файл можно удалить, но нельзя восстановить.
+
+Восстановленный документ получает источник `RecoveredDraft`, остаётся грязным
+и требует нового пути сохранения. Изменившийся исходный файл не блокирует
+восстановление, но вызывает явное предупреждение. Успешное пользовательское
+сохранение или подтверждённый отказ от изменений удаляет автоматический файл.
 
 ## Выполнение раскроя
 
@@ -220,6 +264,7 @@ BC или обновление PPO откатывается к последне�
 - `aipackaging.grid_problem` v1;
 - `aipackaging.grid_solution` v1/v2;
 - `aipackaging.polygon_problem` v1;
+- `aipackaging.polygon_draft` v1;
 - `aipackaging.polygon_solution` v1/v2;
 - `aipackaging.polygon_dataset` v1/v2;
 - `aipackaging.polygon_trajectory` v1;
@@ -229,17 +274,18 @@ BC или обновление PPO откатывается к последне�
 Неизвестные поля и неподдерживаемые версии отклоняются. Схемы находятся в
 `schemas/`, а общий набор контрактных примеров проверяется C++ и Python.
 
-## Границы M7–M8
+## Границы M7.2–M8
 
 Будущее редактирование использует следующие направления зависимостей:
 
 ```text
-GUI -> Application -> Editor commands
+GUI -> Application -> Editor model
 DxfImport -> Editor model
-DesktopInfrastructure -> Application + Search + Json + OnnxInference
+EditorPersistence -> Editor + StrictJsonSupport
+DesktopInfrastructure -> Application + EditorPersistence + Search + Json + OnnxInference
 ```
 
-`Editor` не зависит от Qt, JSON, DXF, поиска или ONNX. Адаптер DXF зависит
+`Editor` уже не зависит от Qt, JSON, DXF, поиска или ONNX. Адаптер DXF зависит
 только от нейтральной редактируемой модели; его внутренние типы не выходят в
 прикладные порты. Решатель получает неизменяемый снимок только полностью
 проверенного документа.
@@ -259,3 +305,5 @@ DesktopInfrastructure -> Application + Search + Json + OnnxInference
 - Ошибка загрузки, поиска или модели не уничтожает последний корректный объект.
 - Замена документа или закрытие приложения сначала отменяет и завершает
   активную фоновую работу.
+- Некорректный черновик не получает снимок решателя, но остаётся сохраняемым.
+- Автоматический черновик не заменяет пользовательский файл.
