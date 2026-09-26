@@ -84,6 +84,12 @@ if (BUILD_ONNX_BACKEND)
 endif()
 
 if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
+  aipackaging_add_test_executable(AIPackaging_EditorTests
+    "editor/testpolygondocument.cpp"
+  )
+  target_link_libraries(AIPackaging_EditorTests PRIVATE AIPackaging_Editor)
+  set_tests_properties(AIPackaging_EditorTests PROPERTIES LABELS "app;editor")
+
   aipackaging_add_test_executable(AIPackaging_ApplicationTests
     "core/app/testpolygonworkspacecontroller.cpp"
   )
@@ -311,6 +317,10 @@ aipackaging_assert_target_dependencies(
   ALLOWED_DIRECT AIPackaging_SolverImpl AIPackaging_Solver
 )
 if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
+  aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_EditorTests
+    ALLOWED_DIRECT AIPackaging_Editor
+  )
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_ApplicationTests
     ALLOWED_DIRECT AIPackaging_Application

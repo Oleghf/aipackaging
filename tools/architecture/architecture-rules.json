@@ -34,7 +34,8 @@
   },
   "allowedInternalDependencies": {
     "app": [
-      "app"
+      "app",
+      "editor"
     ],
     "editor": [
       "editor"

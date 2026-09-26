@@ -7,6 +7,7 @@ if (BUILD_ONNX_BACKEND)
 endif()
 
 if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
+  add_subdirectory("editor/")
   add_subdirectory("core/app/")
   add_subdirectory("infrastructure/")
 endif()

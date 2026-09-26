@@ -124,12 +124,17 @@ function(aipackaging_check_production_target_graph)
 
   if (TARGET AIPackaging_Application)
     aipackaging_assert_target_dependencies(
+      TARGET AIPackaging_Editor
+    )
+    aipackaging_assert_target_dependencies(
       TARGET AIPackaging_Application
+      ALLOWED_DIRECT AIPackaging_Editor
+      ALLOWED_PUBLIC AIPackaging_Editor
     )
     aipackaging_assert_target_dependencies(
       TARGET AIPackaging_DesktopInfrastructure
       ALLOWED_DIRECT AIPackaging_Application AIPackaging_Search AIPackaging_Json AIPackaging_PolygonCore AIPackaging_OnnxInference
-      ALLOWED_PUBLIC AIPackaging_Application AIPackaging_OnnxInference ${aipackaging_nesting_modules}
+      ALLOWED_PUBLIC AIPackaging_Application AIPackaging_Editor AIPackaging_OnnxInference ${aipackaging_nesting_modules}
     )
   endif()
 
@@ -159,7 +164,7 @@ function(aipackaging_check_production_target_graph)
       TARGET AIPackaging_GUI
       ALLOW_QT
       ALLOWED_DIRECT AIPackaging_Application
-      ALLOWED_PUBLIC AIPackaging_Application
+      ALLOWED_PUBLIC AIPackaging_Application AIPackaging_Editor
     )
   endif()
   if (TARGET AIPackaging)
