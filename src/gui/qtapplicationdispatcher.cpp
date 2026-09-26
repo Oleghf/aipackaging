@@ -9,8 +9,31 @@ QtApplicationDispatcher::QtApplicationDispatcher(QObject * target)
 {
 }
 
-/// Использует принудительно поставленное в очередь соединение для межпоточной доставки.
-void QtApplicationDispatcher::post(std::function<void()> callback)
+/// Проверяет время жизни получателя и преобразует любой отказ Qt в `false`.
+bool QtApplicationDispatcher::post(std::function<void()> callback) noexcept
 {
-  QMetaObject::invokeMethod(target_, std::move(callback), Qt::QueuedConnection);
+  try
+  {
+    if (!target_ || !callback)
+      return false;
+    return QMetaObject::invokeMethod(
+      target_.data(),
+      [callback = std::move(callback)]() noexcept
+      {
+        try
+        {
+          callback();
+        }
+        catch (...)
+        {
+          // Исключение обработчика не должно покидать цикл событий Qt.
+          return;
+        }
+      },
+      Qt::QueuedConnection);
+  }
+  catch (...)
+  {
+    return false;
+  }
 }

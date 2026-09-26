@@ -44,16 +44,37 @@ TEST(PolygonWorkspaceWidget, DispatcherQueuesCallbackToQtThread)
   QtApplicationDispatcher dispatcher(application);
   bool called = false;
   QThread * deliveredThread = nullptr;
-  dispatcher.post(
+  EXPECT_TRUE(dispatcher.post(
     [&]()
     {
       called = true;
       deliveredThread = QThread::currentThread();
-    });
+    }));
   EXPECT_FALSE(called);
   application->processEvents();
   EXPECT_TRUE(called);
   EXPECT_EQ(deliveredThread, application->thread());
+}
+
+/// Проверяет отказ без синхронного вызова после уничтожения получателя Qt.
+TEST(PolygonWorkspaceWidget, DispatcherRejectsCallbackAfterTargetDestruction)
+{
+  ensureApplication();
+  auto target = std::make_unique<QObject>();
+  QtApplicationDispatcher dispatcher(target.get());
+  target.reset();
+  bool called = false;
+  EXPECT_FALSE(dispatcher.post([&called]() { called = true; }));
+  EXPECT_FALSE(called);
+}
+
+/// Проверяет, что исключение поставленной функции не покидает цикл событий Qt.
+TEST(PolygonWorkspaceWidget, DispatcherContainsCallbackException)
+{
+  QApplication * application = ensureApplication();
+  QtApplicationDispatcher dispatcher(application);
+  EXPECT_TRUE(dispatcher.post([]() { throw std::runtime_error("искусственная ошибка события"); }));
+  EXPECT_NO_THROW(application->processEvents());
 }
 
 /// Проверяет базовый алгоритм по умолчанию, сигналы и блокировку элементов управления.

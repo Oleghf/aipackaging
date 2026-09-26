@@ -39,6 +39,101 @@ namespace
 {
 using namespace aipackaging::solver;
 
+/// Создаёт функцию события внутри защищённой области и без исключений передаёт её диспетчеру.
+template<typename Factory>
+bool postSafely(const std::shared_ptr<IApplicationDispatcher> & dispatcher, Factory && factory) noexcept
+{
+  try
+  {
+    if (!dispatcher)
+      return false;
+    std::function<void()> callback = std::forward<Factory>(factory)();
+    return dispatcher->post(std::move(callback));
+  }
+  catch (...)
+  {
+    return false;
+  }
+}
+
+/// Без исключений освобождает идентификатор завершённой работы перед публикацией результата.
+template<typename Handle>
+void clearActiveJob(std::mutex & mutex, std::optional<Handle> & activeJob, Handle job) noexcept
+{
+  try
+  {
+    std::lock_guard lock(mutex);
+    if (activeJob == job)
+      activeJob.reset();
+  }
+  catch (...)
+  {
+    return;
+  }
+}
+
+/// Удерживает проверенное решение до подтверждённой передачи прикладному контроллеру.
+class PendingNestingDelivery
+{
+public:
+  /// Копирует прикладной результат и запоминает порт освобождения его процессного идентификатора.
+  PendingNestingDelivery(std::shared_ptr<IPolygonDocumentGateway> documents, const NestingRunResult & result)
+    : documents_(std::move(documents))
+    , result_(result)
+  {
+  }
+
+  /// Освобождает решение, если получатель не подтвердил принятие владения.
+  ~PendingNestingDelivery()
+  {
+    if (ownsResult_ && result_.solution && documents_)
+      documents_->release(*result_.solution);
+  }
+
+  /// Возвращает неизменяемый результат для безопасного копирования в функцию завершения.
+  const NestingRunResult & result() const noexcept { return result_; }
+
+  /// Передаёт ответственность за идентификатор получателю успешно завершившегося события.
+  void commit() noexcept { ownsResult_ = false; }
+
+private:
+  std::shared_ptr<IPolygonDocumentGateway> documents_;
+  NestingRunResult result_;
+  bool ownsResult_ = true;
+};
+
+#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+/// Удерживает загруженную модель до подтверждённой передачи прикладному контроллеру.
+class PendingModelDelivery
+{
+public:
+  /// Копирует результат загрузки и запоминает шлюз освобождения модели.
+  PendingModelDelivery(std::shared_ptr<IPolygonModelGateway> gateway, const PolygonModelLoadResult & result)
+    : gateway_(std::move(gateway))
+    , result_(result)
+  {
+  }
+
+  /// Освобождает модель, если получатель не подтвердил принятие владения.
+  ~PendingModelDelivery()
+  {
+    if (ownsResult_ && result_.success && result_.model && gateway_)
+      gateway_->release(result_.model);
+  }
+
+  /// Возвращает неизменяемый результат для безопасного копирования в функцию завершения.
+  const PolygonModelLoadResult & result() const noexcept { return result_; }
+
+  /// Передаёт ответственность за идентификатор получателю успешно завершившегося события.
+  void commit() noexcept { ownsResult_ = false; }
+
+private:
+  std::shared_ptr<IPolygonModelGateway> gateway_;
+  PolygonModelLoadResult result_;
+  bool ownsResult_ = true;
+};
+#endif
+
 /// Переводит микронную точку кольца в миллиметровую точку представления.
 PolygonViewPoint toViewPoint(const PolygonPoint64 & point, std::int64_t offsetX, std::int64_t offsetY)
 {
@@ -368,48 +463,134 @@ StdThreadPolygonModelJobRunner::start(const std::string & directory, PolygonMode
   }
   if (worker_.joinable())
     worker_.join();
+  std::string directoryCopy = directory;
   const PolygonModelJobHandle job{nextJob_++};
   activeJob_ = job;
   const auto gateway = gateway_;
   const auto dispatcher = dispatcher_;
-  worker_ = std::jthread(
-    [this, gateway, dispatcher, directory, callbacks = std::move(callbacks), job](const std::stop_token & stopToken) mutable
-    {
-      PolygonModelLoadResult result;
-      std::string failure;
-      try
+  try
+  {
+    worker_ = std::jthread(
+      [this, gateway, dispatcher, directory = std::move(directoryCopy), callbacks = std::move(callbacks),
+       job](const std::stop_token & stopToken) mutable noexcept
       {
-        result = gateway->load(directory);
-        if (!result.success)
-          failure = result.error;
-      }
-      catch (const std::exception & exception)
-      {
-        failure = exception.what();
-      }
-      catch (...)
-      {
-        failure = "Проверка модели завершилась неизвестной ошибкой";
-      }
-      const bool cancelled = stopToken.stop_requested();
-      if (cancelled && result.success && result.model)
-      {
-        gateway->release(result.model);
-        result = {};
-      }
-      {
-        std::lock_guard finishLock(mutex_);
-        if (activeJob_ == job)
-          activeJob_.reset();
-      }
-      if (cancelled && callbacks.cancelled)
-        dispatcher->post([callback = callbacks.cancelled, job]() { callback(job); });
-      else if (result.success && callbacks.completed)
-        dispatcher->post([callback = callbacks.completed, job, value = std::move(result)]() mutable
-                         { callback(job, std::move(value)); });
-      else if (callbacks.failed)
-        dispatcher->post([callback = callbacks.failed, job, failure]() { callback(job, failure); });
-    });
+        PolygonModelLoadResult result;
+        try
+        {
+          std::string failure;
+          try
+          {
+            result = gateway->load(directory);
+            if (!result.success)
+              failure = result.error;
+          }
+          catch (const std::exception & exception)
+          {
+            failure = exception.what();
+          }
+          catch (...)
+          {
+            failure = "Проверка модели завершилась неизвестной ошибкой";
+          }
+          const bool cancelled = stopToken.stop_requested();
+          if (cancelled && result.success && result.model)
+          {
+            gateway->release(result.model);
+            result = {};
+          }
+          clearActiveJob(mutex_, activeJob_, job);
+          if (cancelled && callbacks.cancelled)
+          {
+            postSafely(dispatcher,
+                       [&callbacks, job]()
+                       {
+                         return [callback = std::move(callbacks.cancelled), job]() noexcept
+                         {
+                           try
+                           {
+                             callback(job);
+                           }
+                           catch (...)
+                           {
+                             // Ошибка пользовательского обработчика не должна завершать цикл доставки.
+                             return;
+                           }
+                         };
+                       });
+          }
+          else if (result.success)
+          {
+            try
+            {
+              auto pending = std::make_shared<PendingModelDelivery>(gateway, result);
+              result = {};
+              if (callbacks.completed)
+              {
+                postSafely(dispatcher,
+                           [&callbacks, pending, job]()
+                           {
+                             return [callback = std::move(callbacks.completed), pending, job]() noexcept
+                             {
+                               try
+                               {
+                                 if (callback(job, pending->result()))
+                                   pending->commit();
+                               }
+                               catch (...)
+                               {
+                                 // RAII-оболочка освободит модель после ошибки обработчика.
+                                 return;
+                               }
+                             };
+                           });
+              }
+            }
+            catch (...)
+            {
+              if (result.success && result.model)
+                gateway->release(result.model);
+            }
+          }
+          else if (callbacks.failed)
+          {
+            postSafely(dispatcher,
+                       [&callbacks, &failure, job]()
+                       {
+                         return [callback = std::move(callbacks.failed), job, failure]() noexcept
+                         {
+                           try
+                           {
+                             callback(job, failure);
+                           }
+                           catch (...)
+                           {
+                             // Повторная доставка ошибки могла бы создать бесконечный цикл отказов.
+                             return;
+                           }
+                         };
+                       });
+          }
+        }
+        catch (...)
+        {
+          if (result.success && result.model)
+            gateway->release(result.model);
+          clearActiveJob(mutex_, activeJob_, job);
+        }
+      });
+  }
+  catch (const std::exception & exception)
+  {
+    activeJob_.reset();
+    error = exception.what();
+    return std::nullopt;
+  }
+  catch (...)
+  {
+    activeJob_.reset();
+    error = "Не удалось создать рабочий поток проверки модели";
+    return std::nullopt;
+  }
   return job;
 }
 
@@ -595,9 +776,11 @@ NestingRunResult PolygonBackendRouter::run(PolygonDocumentHandle document, const
 
 /// Сохраняет зависимости; поток создаётся только при первом запуске.
 StdThreadNestingJobRunner::StdThreadNestingJobRunner(std::shared_ptr<IPolygonNestingBackend> backend,
-                                                     std::shared_ptr<IApplicationDispatcher> dispatcher)
+                                                     std::shared_ptr<IApplicationDispatcher> dispatcher,
+                                                     std::shared_ptr<IPolygonDocumentGateway> documents)
   : backend_(std::move(backend))
   , dispatcher_(std::move(dispatcher))
+  , documents_(std::move(documents))
 {
 }
 
@@ -624,58 +807,144 @@ std::optional<NestingJobHandle> StdThreadNestingJobRunner::start(PolygonDocument
   }
   if (worker_.joinable())
     worker_.join();
+  NestingRunRequest requestCopy = request;
   const NestingJobHandle job{nextJob_++};
   activeJob_ = job;
   const auto backend = backend_;
   const auto dispatcher = dispatcher_;
-  worker_ = std::jthread(
-    [this, backend, dispatcher, document, request, callbacks = std::move(callbacks),
-     job](const std::stop_token & stopToken) mutable
-    {
-      auto lastProgress = std::chrono::steady_clock::time_point::min();
-      IPolygonNestingBackend::Control control;
-      control.cancellationRequested = [stopToken]()
+  const auto documents = documents_;
+  try
+  {
+    worker_ = std::jthread(
+      [this, backend, dispatcher, documents, document, request = requestCopy, callbacks = std::move(callbacks),
+       job](const std::stop_token & stopToken) mutable noexcept
       {
-        return stopToken.stop_requested();
-      };
-      control.progress = [dispatcher, callbacks, job, &lastProgress](const NestingProgress & progress) mutable
-      {
-        const auto now = std::chrono::steady_clock::now();
-        const bool finalUpdate = progress.total > 0 && progress.completed >= progress.total;
-        if (!finalUpdate && lastProgress != std::chrono::steady_clock::time_point::min() &&
-            now - lastProgress < std::chrono::milliseconds(100))
-          return;
-        lastProgress = now;
-        if (callbacks.progress)
-          dispatcher->post([callback = callbacks.progress, job, progress]() { callback(job, progress); });
-      };
-      std::optional<NestingRunResult> result;
-      std::string failure;
-      try
-      {
-        result = backend->run(document, request, control);
-      }
-      catch (const std::exception & exception)
-      {
-        failure = exception.what();
-      }
-      catch (...)
-      {
-        failure = "Внутренняя реализация завершилась неизвестной ошибкой";
-      }
-      {
-        std::lock_guard finishLock(mutex_);
-        if (activeJob_ == job)
-          activeJob_.reset();
-      }
-      // Событие может быть доставлено сразу после постановки в очередь. К этому моменту
-      // новый запуск уже должен быть разрешён, иначе интерфейс получит ложный отказ.
-      if (result && callbacks.completed)
-        dispatcher->post([callback = callbacks.completed, job, value = std::move(*result)]() mutable
-                         { callback(job, std::move(value)); });
-      else if (!result && callbacks.failed)
-        dispatcher->post([callback = callbacks.failed, job, failure]() { callback(job, failure); });
-    });
+        std::optional<NestingRunResult> result;
+        try
+        {
+          auto lastProgress = std::chrono::steady_clock::time_point::min();
+          IPolygonNestingBackend::Control control;
+          control.cancellationRequested = [stopToken]()
+          {
+            return stopToken.stop_requested();
+          };
+          control.progress = [dispatcher, callbacks, job, &lastProgress](const NestingProgress & progress) mutable
+          {
+            const auto now = std::chrono::steady_clock::now();
+            const bool finalUpdate = progress.total > 0 && progress.completed >= progress.total;
+            if (!finalUpdate && lastProgress != std::chrono::steady_clock::time_point::min() &&
+                now - lastProgress < std::chrono::milliseconds(100))
+              return;
+            lastProgress = now;
+            if (callbacks.progress)
+            {
+              postSafely(dispatcher,
+                         [&callbacks, job, progress]()
+                         {
+                           return [callback = callbacks.progress, job, progress]() noexcept
+                           {
+                             try
+                             {
+                               callback(job, progress);
+                             }
+                             catch (...)
+                             {
+                               // Отказ необязательного уведомления не влияет на вычисление результата.
+                               return;
+                             }
+                           };
+                         });
+            }
+          };
+          std::string failure;
+          try
+          {
+            result = backend->run(document, request, control);
+          }
+          catch (const std::exception & exception)
+          {
+            failure = exception.what();
+          }
+          catch (...)
+          {
+            failure = "Внутренняя реализация завершилась неизвестной ошибкой";
+          }
+          clearActiveJob(mutex_, activeJob_, job);
+          // Событие может быть доставлено сразу после постановки в очередь. К этому моменту
+          // новый запуск уже должен быть разрешён, иначе интерфейс получит ложный отказ.
+          if (result)
+          {
+            try
+            {
+              auto pending = std::make_shared<PendingNestingDelivery>(documents, *result);
+              result.reset();
+              if (callbacks.completed)
+              {
+                postSafely(dispatcher,
+                           [&callbacks, pending, job]()
+                           {
+                             return [callback = std::move(callbacks.completed), pending, job]() noexcept
+                             {
+                               try
+                               {
+                                 if (callback(job, pending->result()))
+                                   pending->commit();
+                               }
+                               catch (...)
+                               {
+                                 // RAII-оболочка освободит решение после ошибки обработчика.
+                                 return;
+                               }
+                             };
+                           });
+              }
+            }
+            catch (...)
+            {
+              if (result && result->solution && documents)
+                documents->release(*result->solution);
+            }
+          }
+          else if (callbacks.failed)
+          {
+            postSafely(dispatcher,
+                       [&callbacks, &failure, job]()
+                       {
+                         return [callback = std::move(callbacks.failed), job, failure]() noexcept
+                         {
+                           try
+                           {
+                             callback(job, failure);
+                           }
+                           catch (...)
+                           {
+                             // Повторная доставка ошибки могла бы создать бесконечный цикл отказов.
+                             return;
+                           }
+                         };
+                       });
+          }
+        }
+        catch (...)
+        {
+          if (result && result->solution && documents)
+            documents->release(*result->solution);
+          clearActiveJob(mutex_, activeJob_, job);
+        }
+      });
+  }
+  catch (const std::exception & exception)
+  {
+    activeJob_.reset();
+    error = exception.what();
+    return std::nullopt;
+  }
+  catch (...)
+  {
+    activeJob_.reset();
+    error = "Не удалось создать рабочий поток раскроя";
+    return std::nullopt;
+  }
   return job;
 }
 

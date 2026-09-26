@@ -92,7 +92,8 @@ struct NestingRunResult
 struct NestingJobCallbacks
 {
   std::function<void(NestingJobHandle, const NestingProgress &)> progress;
-  std::function<void(NestingJobHandle, NestingRunResult)> completed;
+  /// Возвращает `true`, если получатель принял владение проверенным решением.
+  std::function<bool(NestingJobHandle, NestingRunResult)> completed;
   std::function<void(NestingJobHandle, const std::string &)> failed;
 };
 

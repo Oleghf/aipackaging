@@ -30,7 +30,7 @@ int main(int argc, char * argv[])
   std::shared_ptr<IPolygonModelJobRunner> polygonModels;
   auto polygonBackend = std::make_shared<PolygonBackendRouter>(baselineBackend);
 #endif
-  auto polygonJobs = std::make_shared<StdThreadNestingJobRunner>(polygonBackend, polygonDispatcher);
+  auto polygonJobs = std::make_shared<StdThreadNestingJobRunner>(polygonBackend, polygonDispatcher, polygonDocuments);
   auto polygonController =
     std::make_shared<PolygonWorkspaceController>(polygonOutput, polygonDocuments, polygonJobs, polygonModels);
   mainWindow.setPolygonWorkspaceActions(polygonController->actions());

@@ -92,7 +92,11 @@ void PolygonWorkspaceController::openModel(const std::string & directory)
   callbacks.completed = [weak](PolygonModelJobHandle job, PolygonModelLoadResult result)
   {
     if (const auto self = weak.lock())
+    {
       self->acceptModel(job, std::move(result));
+      return true;
+    }
+    return false;
   };
   callbacks.failed = [weak](PolygonModelJobHandle job, const std::string & error)
   {
@@ -214,7 +218,11 @@ void PolygonWorkspaceController::start(const NestingRunRequest & request)
   callbacks.completed = [weak](NestingJobHandle job, NestingRunResult result)
   {
     if (const auto self = weak.lock())
+    {
       self->acceptResult(job, std::move(result));
+      return true;
+    }
+    return false;
   };
   callbacks.failed = [weak](NestingJobHandle job, const std::string & error)
   {

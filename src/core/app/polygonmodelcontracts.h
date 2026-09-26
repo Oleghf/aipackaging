@@ -32,7 +32,8 @@ public:
 /// Набор функций для завершения фоновой проверки комплекта модели.
 struct PolygonModelJobCallbacks
 {
-  std::function<void(PolygonModelJobHandle, PolygonModelLoadResult)> completed;
+  /// Возвращает `true`, если получатель принял владение переданной моделью.
+  std::function<bool(PolygonModelJobHandle, PolygonModelLoadResult)> completed;
   std::function<void(PolygonModelJobHandle, const std::string &)> failed;
   std::function<void(PolygonModelJobHandle)> cancelled;
 };

@@ -171,8 +171,9 @@ private:
 class StdThreadNestingJobRunner final : public INestingJobRunner
 {
 public:
-  /// Сохраняет внутреннюю реализацию и диспетчер потока приложения.
-  StdThreadNestingJobRunner(std::shared_ptr<IPolygonNestingBackend> backend, std::shared_ptr<IApplicationDispatcher> dispatcher);
+  /// Сохраняет внутреннюю реализацию, диспетчер и владельца публикуемых решений.
+  StdThreadNestingJobRunner(std::shared_ptr<IPolygonNestingBackend> backend, std::shared_ptr<IApplicationDispatcher> dispatcher,
+                            std::shared_ptr<IPolygonDocumentGateway> documents);
   /// Запрашивает остановку и дожидается завершения рабочего потока.
   ~StdThreadNestingJobRunner() override;
   /// Запускает работу, если другая работа не выполняется.
@@ -184,6 +185,7 @@ public:
 private:
   std::shared_ptr<IPolygonNestingBackend> backend_;
   std::shared_ptr<IApplicationDispatcher> dispatcher_;
+  std::shared_ptr<IPolygonDocumentGateway> documents_;
   std::mutex mutex_;
   std::jthread worker_;
   std::uint64_t nextJob_ = 1;

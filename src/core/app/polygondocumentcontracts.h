@@ -36,9 +36,9 @@ public:
   virtual PolygonDocumentLoadResult load(const std::string & filePath) = 0;
   /// Сохраняет ранее проверенное решение в указанный файл.
   virtual PolygonDocumentOperationResult save(const std::string & filePath, PolygonSolutionHandle solution) = 0;
-  /// Освобождает больше не используемую задачу текущего процесса.
+  /// Без исключений освобождает задачу; вызов разрешён из рабочего потока.
   virtual void release(PolygonDocumentHandle document) noexcept = 0;
-  /// Освобождает больше не используемое решение текущего процесса.
+  /// Без исключений освобождает решение; вызов разрешён из рабочего потока.
   virtual void release(PolygonSolutionHandle solution) noexcept = 0;
 };
 
