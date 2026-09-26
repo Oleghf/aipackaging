@@ -146,10 +146,14 @@ endif()
 
 if (BUILD_SOLVER_CLI)
   aipackaging_add_test_executable(AIPackaging_CliUnitTests
-    "cli/testcliboundary.cpp" "${CMAKE_SOURCE_DIR}/src/cli/cli_boundary.cpp"
+    "cli/testcliboundary.cpp"
+    "cli/testcliarguments.cpp"
   )
-  target_include_directories(AIPackaging_CliUnitTests PRIVATE "${CMAKE_SOURCE_DIR}/src/cli")
+  target_link_libraries(AIPackaging_CliUnitTests PRIVATE AIPackaging_CliSupport)
   set_tests_properties(AIPackaging_CliUnitTests PROPERTIES LABELS "cli")
+  if (BUILD_ONNX_BACKEND)
+    aipackaging_copy_onnxruntime(AIPackaging_CliUnitTests)
+  endif()
 
   foreach(solver_name IN ITEMS input-first-fit area-left-bottom max-side-left-bottom random-left-bottom beam)
     add_test(

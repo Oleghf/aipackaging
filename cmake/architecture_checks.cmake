@@ -133,11 +133,18 @@ function(aipackaging_check_production_target_graph)
     )
   endif()
 
+  if (TARGET AIPackaging_CliSupport)
+    aipackaging_assert_target_dependencies(
+      TARGET AIPackaging_CliSupport
+      ALLOWED_DIRECT AIPackaging_Search AIPackaging_Json AIPackaging_OnnxInference
+      ALLOWED_PUBLIC AIPackaging_OnnxInference ${aipackaging_nesting_modules}
+    )
+  endif()
   if (TARGET AIPackaging_Cli)
     aipackaging_assert_target_dependencies(
       TARGET AIPackaging_Cli
-      ALLOWED_DIRECT AIPackaging_Search AIPackaging_Json AIPackaging_OnnxInference
-      ALLOWED_PUBLIC AIPackaging_OnnxInference ${aipackaging_nesting_modules}
+      ALLOWED_DIRECT AIPackaging_CliSupport
+      ALLOWED_PUBLIC AIPackaging_CliSupport AIPackaging_OnnxInference ${aipackaging_nesting_modules}
     )
   endif()
   if (TARGET _aipackaging_solver)
