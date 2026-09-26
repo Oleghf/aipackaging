@@ -95,6 +95,24 @@ def documentation_checks() -> int:
     )
 
 
+def language_checks() -> int:
+    """Проверяет русскую прозу и наличие обязательных шапок C++."""
+
+    return run_sequence(
+        [
+            [sys.executable, "tools/language/check_russian_prose.py"],
+            [sys.executable, "tools/language/check_cpp_headers.py"],
+            [sys.executable, "-m", "unittest", "discover", "-s", "tools/language/tests", "-v"],
+        ]
+    )
+
+
+def format_checks() -> int:
+    """Проверяет форматирование всех отслеживаемых собственных файлов C++."""
+
+    return run([sys.executable, "tools/quality/check_cpp_format.py"])
+
+
 def headless_checks() -> int:
     """Проверяет предустановку сборки без графического интерфейса для текущей ОС."""
 
@@ -178,6 +196,7 @@ def main() -> int:
             "architecture",
             "documentation",
             "language",
+            "format",
             "nesting",
             "headless",
             "python",
@@ -192,12 +211,8 @@ def main() -> int:
     actions = {
         "architecture": architecture_checks,
         "documentation": documentation_checks,
-        "language": lambda: run_sequence(
-            [
-                [sys.executable, "tools/language/check_russian_prose.py"],
-                [sys.executable, "-m", "unittest", "discover", "-s", "tools/language/tests", "-v"],
-            ]
-        ),
+        "language": language_checks,
+        "format": format_checks,
         "nesting": nesting_checks,
         "headless": headless_checks,
         "python": python_checks,
@@ -209,6 +224,7 @@ def main() -> int:
     for name in (
         "documentation",
         "language",
+        "format",
         "architecture",
         "nesting",
         "headless",

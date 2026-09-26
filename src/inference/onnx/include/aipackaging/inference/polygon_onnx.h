@@ -77,7 +77,9 @@ public:
                                          const aipackaging::solver::SolverConfig & fallbackConfig,
                                          const PolygonPolicyControl & control = {}) const;
 
+  /// Запрещает копирование владельца сеансов ONNX Runtime.
   PolygonOnnxPolicy(const PolygonOnnxPolicy &) = delete;
+  /// Запрещает присваивание владельца сеансов ONNX Runtime.
   PolygonOnnxPolicy & operator=(const PolygonOnnxPolicy &) = delete;
 
 private:

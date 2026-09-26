@@ -1,0 +1,6 @@
+{
+  "scanRoots": ["src", "tests"],
+  "ignoredDirectories": ["build", "artifacts", "generated", "third_party", "_deps", ".git"],
+  "excludedFiles": [],
+  "exceptions": []
+}

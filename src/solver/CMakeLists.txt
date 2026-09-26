@@ -101,7 +101,7 @@ target_link_libraries(AIPackaging_SolverImpl INTERFACE
   AIPackaging_Search AIPackaging_Json AIPackaging_Learning
 )
 
-# Старое имя цели сборки и плоские заголовки сохраняются до миграции приложения и GUI в A6.
+# Совместимая цель сохраняет прежний интерфейс сборки для внешних потребителей плоских заголовков.
 add_library(AIPackaging_Solver INTERFACE)
 target_include_directories(AIPackaging_Solver INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(AIPackaging_Solver INTERFACE AIPackaging_SolverImpl)

@@ -276,7 +276,7 @@ def _collect_transitions(
                 else:
                     states[lane] = (fixed, next_dynamic, {})
 
-        # Программный интерфейс канала требует синхронной команды каждому процессу. Терминальные
+            # Программный интерфейс канала требует синхронной команды каждому процессу. Терминальные
             # каналы перезапускаются группой, а остальные сохраняют своё состояние.
             if reset_lanes and collected < count:
                 replacements = {lane: next_tasks(1)[0] for lane in reset_lanes}

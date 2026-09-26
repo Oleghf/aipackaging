@@ -574,7 +574,7 @@ std::string savePolygonSolutionToText(const PolygonSolution & solution)
   return root.dump(2) + '\n';
 }
 
-/// Открывает выходной файл в двоичном режиме с очисткой и проверяет завершение записи.
+/// Записывает готовый JSON во временный файл и атомарно заменяет назначение без потери прежнего содержимого при отказе.
 bool savePolygonSolutionToFile(const std::string & filePath, const PolygonSolution & solution, std::string & error)
 {
   return internal::writeFileAtomically(filePath, savePolygonSolutionToText(solution), error);

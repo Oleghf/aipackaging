@@ -501,7 +501,7 @@ std::string saveGridSolutionToText(const GridSolution & solution)
   return solutionJson(solution).dump(2) + '\n';
 }
 
-/// Открывает файл, полностью записывает JSON и сообщает ошибки открытия или потока.
+/// Записывает готовый JSON во временный файл и атомарно заменяет назначение без потери прежнего содержимого при отказе.
 bool saveGridSolutionToFile(const std::string & filePath, const GridSolution & solution, std::string & error)
 {
   return internal::writeFileAtomically(filePath, saveGridSolutionToText(solution), error);
