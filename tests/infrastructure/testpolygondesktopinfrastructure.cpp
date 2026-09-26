@@ -16,6 +16,7 @@
 #include <polygon_artifact_store.h>
 #include <polygon_backends.h>
 #include <polygon_document_gateway.h>
+#include <polygon_editable_document_gateway.h>
 #include <polygon_model_jobs.h>
 
 namespace
@@ -396,6 +397,69 @@ TEST(PolygonDesktopInfrastructure, LoadsRunsValidatesAndSaves)
 #endif
 
 #ifdef AIPACKAGING_DESKTOP_GATEWAY_TESTS
+/// Проверяет детерминированное назначение идентификаторов и круговой проход через строгую задачу.
+TEST(PolygonDesktopInfrastructure, ConvertsProblemToEditableDocumentDeterministically)
+{
+  const auto path = writeProblem();
+  auto store = std::make_shared<PolygonArtifactStore>();
+  LocalPolygonEditableDocumentGateway gateway(store);
+  const PolygonEditableDocumentLoadResult first = gateway.load(path.string());
+  const PolygonEditableDocumentLoadResult second = gateway.load(path.string());
+  ASSERT_TRUE(first.success) << first.error;
+  ASSERT_TRUE(second.success) << second.error;
+  ASSERT_TRUE(first.compiled.has_value());
+  ASSERT_TRUE(second.compiled.has_value());
+  EXPECT_EQ(first.document.nextEntityId(), second.document.nextEntityId());
+  ASSERT_FALSE(first.document.parts.empty());
+  EXPECT_EQ(first.document.parts.front().id, second.document.parts.front().id);
+  const auto saved = path.parent_path() / "aipackaging-m7-saved-problem.json";
+  const PolygonDocumentOperationResult result = gateway.saveProblem(saved.string(), first.document);
+  EXPECT_TRUE(result.success) << result.error;
+  const PolygonProblemLoadResult roundTrip = loadPolygonProblemFromFile(saved.string());
+  ASSERT_TRUE(roundTrip.success) << roundTrip.error;
+  EXPECT_EQ(savePolygonProblemToText(testProblem()), savePolygonProblemToText(roundTrip.problem));
+  std::filesystem::remove(saved);
+  std::filesystem::remove(path);
+}
+
+/// Проверяет сохранение неполного документа как черновика и обнаружение изменившегося источника.
+TEST(PolygonDesktopInfrastructure, PreservesInvalidDraftAndDetectsChangedSource)
+{
+  const auto source = writeProblem();
+  const auto autosave = source.parent_path() / "aipackaging-m7-autosave.aipdraft.json";
+  auto store = std::make_shared<PolygonArtifactStore>();
+  LocalPolygonEditableDocumentGateway gateway(store);
+  PolygonEditableDocumentLoadResult loaded = gateway.load(source.string());
+  ASSERT_TRUE(loaded.success) << loaded.error;
+  loaded.document.parts.front().outer->closed = false;
+  loaded.document.parts.front().outer->segments.pop_back();
+  const PolygonDocumentOperationResult saved = gateway.saveDraft(
+    autosave.string(), loaded.document, PolygonDocumentSource::ProblemFile, source.string(), 3, loaded.baseFingerprint);
+  ASSERT_TRUE(saved.success) << saved.error;
+  const PolygonEditableDocumentLoadResult userDraft = gateway.load(autosave.string());
+  ASSERT_TRUE(userDraft.success) << userDraft.error;
+  EXPECT_EQ(userDraft.source, PolygonDocumentSource::Draft);
+  EXPECT_EQ(userDraft.baseFingerprint, gateway.sourceFingerprint(autosave.string()));
+  PolygonRecoveryCandidate candidate = gateway.inspectRecovery(autosave.string());
+  EXPECT_TRUE(candidate.present);
+  EXPECT_TRUE(candidate.restorable);
+  EXPECT_FALSE(candidate.sourceChanged);
+
+  std::ofstream changed(source, std::ios::binary | std::ios::app);
+  changed << ' ';
+  changed.close();
+  candidate = gateway.inspectRecovery(autosave.string());
+  EXPECT_TRUE(candidate.sourceChanged);
+  const PolygonEditableDocumentLoadResult recovered = gateway.loadRecovery(autosave.string());
+  EXPECT_TRUE(recovered.success) << recovered.error;
+  EXPECT_FALSE(recovered.compiled.has_value());
+  EXPECT_FALSE(recovered.diagnostics.empty());
+  EXPECT_FALSE(gateway.saveProblem(source.string(), recovered.document).success);
+  EXPECT_TRUE(gateway.removeRecovery(autosave.string()).success);
+  EXPECT_FALSE(gateway.inspectRecovery(autosave.string()).present);
+  std::filesystem::remove(source);
+}
+
 /// Проверяет, что повреждённое решение не получает сохраняемый идентификатор.
 TEST(PolygonDesktopInfrastructure, RejectsCorruptSolution)
 {

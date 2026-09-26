@@ -29,6 +29,8 @@ PolygonProblemLoadResult loadPolygonProblemFromText(const std::string & text);
 PolygonProblemLoadResult loadPolygonProblemFromFile(const std::string & filePath);
 /// Сериализует исходную полигональную задачу в канонический JSON.
 std::string savePolygonProblemToText(const PolygonProblem & problem);
+/// Атомарно записывает проверенную полигональную задачу в файл.
+bool savePolygonProblemToFile(const std::string & filePath, const PolygonProblem & problem, std::string & error);
 /// Загружает структуру полигонального решения из JSON-текста.
 PolygonSolutionLoadResult loadPolygonSolutionFromText(const std::string & text);
 /// Загружает структуру полигонального решения из файла.

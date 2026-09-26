@@ -12,10 +12,18 @@ const ActivePolygonDocumentState & ActivePolygonDocument::state() const noexcept
 bool ActivePolygonDocument::replace(PolygonDocumentHandle handle, PolygonDocumentSource source, std::string sourceIdentifier,
                                     bool valid)
 {
-  if (state_.running || !handle || source == PolygonDocumentSource::None)
+  return replaceEditable(std::optional<PolygonDocumentHandle>{handle}, source, std::move(sourceIdentifier), valid);
+}
+
+/// Публикует редактируемый документ и сохраняет отсутствие снимка у локально некорректного черновика.
+bool ActivePolygonDocument::replaceEditable(std::optional<PolygonDocumentHandle> handle, PolygonDocumentSource source,
+                                            std::string sourceIdentifier, bool valid)
+{
+  if (state_.running || source == PolygonDocumentSource::None || (valid && (!handle || !*handle)))
     return false;
 
   ActivePolygonDocumentState next;
+  next.present = true;
   next.handle = handle;
   next.source = source;
   next.sourceIdentifier = std::move(sourceIdentifier);
@@ -36,7 +44,7 @@ bool ActivePolygonDocument::clear() noexcept
 /// Фиксирует пользовательское изменение и сохраняет факт устаревшего результата.
 void ActivePolygonDocument::markChanged(bool valid) noexcept
 {
-  if (!state_.handle || state_.running)
+  if (!state_.present || state_.running)
     return;
   state_.dirty = true;
   state_.valid = valid;
@@ -47,7 +55,7 @@ void ActivePolygonDocument::markChanged(bool valid) noexcept
 /// Обновляет происхождение документа и устанавливает чистую точку сохранения.
 void ActivePolygonDocument::markSaved(PolygonDocumentSource source, std::string sourceIdentifier)
 {
-  if (!state_.handle || state_.running || source == PolygonDocumentSource::None)
+  if (!state_.present || state_.running || source == PolygonDocumentSource::None)
     return;
   state_.source = source;
   state_.sourceIdentifier = std::move(sourceIdentifier);
@@ -57,7 +65,7 @@ void ActivePolygonDocument::markSaved(PolygonDocumentSource source, std::string 
 /// Запоминает итог проверки, не изменяя содержимое и источник документа.
 void ActivePolygonDocument::setValid(bool valid) noexcept
 {
-  if (state_.handle && !state_.running)
+  if (state_.present && !state_.running)
     state_.valid = valid;
 }
 

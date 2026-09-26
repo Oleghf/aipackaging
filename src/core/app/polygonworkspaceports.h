@@ -13,6 +13,10 @@
 struct PolygonWorkspaceActions
 {
   std::function<void(const std::string &)> openProblem;
+  std::function<void(const std::string &, bool)> saveDocument;
+  std::function<void()> autosaveDocument;
+  std::function<void()> restoreRecovery;
+  std::function<void()> deleteRecovery;
   std::function<void(const std::string &)> saveSolution;
   std::function<void(const std::string &)> openModel;
   std::function<void()> cancelModelLoad;

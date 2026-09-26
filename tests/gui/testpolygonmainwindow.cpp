@@ -9,6 +9,7 @@
 #include <QStackedWidget>
 #include <QTabWidget>
 #include <QTemporaryDir>
+#include <QTimer>
 
 #include <gtest/gtest.h>
 #include <polygonmainwindow.h>
@@ -111,6 +112,65 @@ TEST(PolygonMainWindow, ShowsFriendlyStartPage)
   EXPECT_FALSE(create->isEnabled());
   EXPECT_FALSE(importDxf->isEnabled());
   EXPECT_EQ(examples->count(), 3);
+}
+
+/// Проверяет немодальную карточку читаемого и повреждённого автоматического черновика.
+TEST(PolygonMainWindow, PresentsRecoveryCardAndForwardsActions)
+{
+  application();
+  QSettings().clear();
+  PolygonMainWindow window;
+  int restored = 0;
+  int removed = 0;
+  PolygonWorkspaceActions actions;
+  actions.restoreRecovery = [&restored]()
+  {
+    ++restored;
+  };
+  actions.deleteRecovery = [&removed]()
+  {
+    ++removed;
+  };
+  window.setPolygonWorkspaceActions(std::move(actions));
+
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.recovery = {true, true, true, "autosave.aipdraft.json", "problem.json", "2026-09-26T12:00:00Z", {}};
+  window.presentPolygonWorkspace(snapshot);
+  auto * card = window.findChild<QWidget *>("polygonRecoveryCard");
+  auto * restore = window.findChild<QPushButton *>("restoreRecoveryButton");
+  auto * remove = window.findChild<QPushButton *>("deleteRecoveryButton");
+  ASSERT_NE(card, nullptr);
+  ASSERT_NE(restore, nullptr);
+  ASSERT_NE(remove, nullptr);
+  EXPECT_FALSE(card->isHidden());
+  EXPECT_TRUE(restore->isEnabled());
+  restore->click();
+  remove->click();
+  EXPECT_EQ(restored, 1);
+  EXPECT_EQ(removed, 1);
+
+  snapshot.recovery.restorable = false;
+  snapshot.recovery.error = "повреждён";
+  window.presentPolygonWorkspace(snapshot);
+  EXPECT_FALSE(restore->isEnabled());
+}
+
+/// Проверяет разделение сочетаний сохранения документа и решения и задержку автосохранения.
+TEST(PolygonMainWindow, UsesSeparateSaveShortcutsAndAutosaveDelay)
+{
+  application();
+  QSettings().clear();
+  PolygonMainWindow window;
+  auto * document = window.findChild<QAction *>("saveDocumentAction");
+  auto * solution = window.findChild<QAction *>("saveSolutionAction");
+  auto * timer = window.findChild<QTimer *>("polygonAutosaveTimer");
+  ASSERT_NE(document, nullptr);
+  ASSERT_NE(solution, nullptr);
+  ASSERT_NE(timer, nullptr);
+  EXPECT_EQ(document->shortcut(), QKeySequence::Save);
+  EXPECT_EQ(solution->shortcut(), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
+  EXPECT_TRUE(timer->isSingleShot());
+  EXPECT_EQ(timer->interval(), 2000);
 }
 
 /// Проверяет восстановление пользовательского режима и ограниченного списка недавних файлов.

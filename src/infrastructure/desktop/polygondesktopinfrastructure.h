@@ -6,6 +6,7 @@
 #include <polygon_artifact_store.h>
 #include <polygon_backends.h>
 #include <polygon_document_gateway.h>
+#include <polygon_editable_document_gateway.h>
 #include <polygon_model_jobs.h>
 
 #endif

@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <QLabel>
 #include <QProgressBar>
+#include <QStringList>
 #include <QTextEdit>
 #include <QVBoxLayout>
 
@@ -34,7 +35,13 @@ PolygonStatusPanel::PolygonStatusPanel(QWidget * parent)
 /// Формирует пользовательское состояние и не подменяет фактическую долю частичного результата значением 100 процентов.
 void PolygonStatusPanel::present(const PolygonWorkspaceSnapshot & snapshot)
 {
-  statusLabel_->setText(QString::fromStdString(snapshot.statusText));
+  QString status = QString::fromStdString(snapshot.statusText);
+  QStringList diagnostics;
+  for (const auto & diagnostic : snapshot.documentDiagnostics)
+    diagnostics.push_back(QString::fromStdString(diagnostic.message));
+  if (!diagnostics.isEmpty())
+    status += QStringLiteral("\n") + diagnostics.join(QStringLiteral("\n"));
+  statusLabel_->setText(status);
   statusLabel_->setStyleSheet(snapshot.partial ? QStringLiteral("color:#B45309;font-weight:600") : QString());
   switch (snapshot.progress.stage)
   {

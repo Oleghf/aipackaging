@@ -302,6 +302,12 @@ std::string savePolygonProblemToText(const PolygonProblem & problem)
   return root.dump(2) + '\n';
 }
 
+/// Передаёт канонические байты задачи общей атомарной замене файла назначения.
+bool savePolygonProblemToFile(const std::string & filePath, const PolygonProblem & problem, std::string & error)
+{
+  return internal::writeFileAtomically(filePath, savePolygonProblemToText(problem), error, {}, "задачи");
+}
+
 /// Разбирает `polygon_solution` v1/v2 без доверия к записанной целевой функции.
 PolygonSolutionLoadResult loadPolygonSolutionFromText(const std::string & text)
 {

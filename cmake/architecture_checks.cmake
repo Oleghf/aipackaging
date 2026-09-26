@@ -143,8 +143,10 @@ function(aipackaging_check_production_target_graph)
     )
     aipackaging_assert_target_dependencies(
       TARGET AIPackaging_DesktopInfrastructure
-      ALLOWED_DIRECT AIPackaging_Application AIPackaging_Search AIPackaging_Json AIPackaging_PolygonCore AIPackaging_OnnxInference
-      ALLOWED_PUBLIC AIPackaging_Application AIPackaging_Editor AIPackaging_OnnxInference ${aipackaging_nesting_modules}
+      ALLOWED_DIRECT AIPackaging_Application AIPackaging_Search AIPackaging_Json AIPackaging_PolygonCore
+        AIPackaging_EditorPersistence AIPackaging_OnnxInference
+      ALLOWED_PUBLIC AIPackaging_Application AIPackaging_Editor AIPackaging_EditorPersistence AIPackaging_OnnxInference
+        ${aipackaging_nesting_modules}
     )
   endif()
 

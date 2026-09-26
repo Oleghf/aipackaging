@@ -16,11 +16,13 @@ bool validRequest(const NestingRunRequest & request)
 PolygonWorkspaceController::PolygonWorkspaceController(std::shared_ptr<IPolygonWorkspaceOutput> output,
                                                        std::shared_ptr<IPolygonDocumentGateway> documents,
                                                        std::shared_ptr<INestingJobRunner> jobs,
-                                                       std::shared_ptr<IPolygonModelJobRunner> modelJobs)
+                                                       std::shared_ptr<IPolygonModelJobRunner> modelJobs,
+                                                       std::shared_ptr<ActivePolygonDocument> activeDocument)
   : output_(std::move(output))
   , documents_(std::move(documents))
   , jobs_(std::move(jobs))
   , modelJobs_(std::move(modelJobs))
+  , document_(activeDocument ? std::move(activeDocument) : std::make_shared<ActivePolygonDocument>())
 {
   snapshot_.statusText = "Откройте задачу `polygon_problem` v1";
   publish();
@@ -35,8 +37,8 @@ PolygonWorkspaceController::~PolygonWorkspaceController()
     modelJobs_->cancel(*activeModelJob_);
   releaseSolution();
   releaseModel();
-  if (document_.state().handle)
-    documents_->release(*document_.state().handle);
+  if (document_->state().handle)
+    documents_->release(*document_->state().handle);
 }
 
 /// Создаёт функции, которые удерживают контроллер только на время конкретного вызова.
@@ -149,7 +151,7 @@ void PolygonWorkspaceController::openProblem(const std::string & filePath)
   PolygonDocumentLoadResult loaded = documents_->load(filePath);
   if (!loaded.success)
   {
-    if (!document_.state().handle)
+    if (!document_->state().handle)
       snapshot_.state = PolygonWorkspaceState::Error;
     snapshot_.statusText = "Ошибка загрузки: " + loaded.error;
     publish();
@@ -157,13 +159,14 @@ void PolygonWorkspaceController::openProblem(const std::string & filePath)
   }
 
   releaseSolution();
-  if (document_.state().handle)
-    documents_->release(*document_.state().handle);
-  document_.replace(loaded.document, PolygonDocumentSource::ProblemFile, filePath, true);
+  if (document_->state().handle)
+    documents_->release(*document_->state().handle);
+  document_->replace(loaded.document, PolygonDocumentSource::ProblemFile, filePath, true);
   const std::string modelId = snapshot_.modelId;
   const std::string modelSha256 = snapshot_.modelSha256;
   const std::string modelStatus = snapshot_.modelStatusText;
   const PolygonModelState modelState = snapshot_.modelState;
+  const PolygonRecoveryCandidate recovery = snapshot_.recovery;
   snapshot_ = {};
   snapshot_.modelReady = model_.has_value();
   snapshot_.modelId = modelId;
@@ -193,7 +196,7 @@ void PolygonWorkspaceController::saveSolution(const std::string & filePath)
 /// Проверяет запрос, создаёт функции событий и передаёт выполнение средству запуска.
 void PolygonWorkspaceController::start(const NestingRunRequest & request)
 {
-  if (!document_.state().handle || activeJob_)
+  if (!document_->state().handle || activeJob_)
     return;
   if (!validRequest(request))
   {
@@ -234,7 +237,7 @@ void PolygonWorkspaceController::start(const NestingRunRequest & request)
   NestingRunRequest effectiveRequest = request;
   effectiveRequest.model = request.method == NestingMethod::Baseline ? std::nullopt : model_;
   const std::optional<NestingJobHandle> job =
-    jobs_->start(*document_.state().handle, effectiveRequest, std::move(callbacks), error);
+    jobs_->start(*document_->state().handle, effectiveRequest, std::move(callbacks), error);
   if (!job)
   {
     snapshot_.statusText = "Не удалось запустить поиск: " + error;
@@ -242,7 +245,7 @@ void PolygonWorkspaceController::start(const NestingRunRequest & request)
     return;
   }
   activeJob_ = job;
-  document_.beginRun();
+  document_->beginRun();
   snapshot_.state = PolygonWorkspaceState::Running;
   snapshot_.statusText = "Выполняется полигональный поиск";
   snapshot_.progress = {};
@@ -265,18 +268,103 @@ PolygonWorkspaceSnapshot PolygonWorkspaceController::snapshot() const
   return snapshot_;
 }
 
+/// Сохраняет только последнюю замену и при необходимости сначала запрашивает отмену текущей работы.
+void PolygonWorkspaceController::requestDocumentReplacement(std::function<void()> replacement)
+{
+  if (!replacement)
+    return;
+  if (!activeJob_)
+  {
+    replacement();
+    return;
+  }
+  pendingDocumentReplacement_ = std::move(replacement);
+  jobs_->cancel(*activeJob_);
+  snapshot_.statusText = "Текущий поиск отменяется перед заменой документа…";
+  publish();
+}
+
+/// Заменяет задачу и сцену одним согласованным обновлением после успешной загрузки редактируемой модели.
+void PolygonWorkspaceController::acceptEditableDocument(PolygonEditableDocumentLoadResult loaded, bool dirty)
+{
+  if (activeJob_ || !loaded.success)
+    return;
+  const std::optional<PolygonDocumentHandle> nextHandle =
+    loaded.compiled ? std::optional<PolygonDocumentHandle>{loaded.compiled->document} : std::nullopt;
+  const bool valid = loaded.compiled.has_value();
+  const std::optional<PolygonDocumentHandle> previousHandle = document_->state().handle;
+  if (!document_->replaceEditable(nextHandle, loaded.source, loaded.sourceIdentifier, valid))
+  {
+    if (nextHandle)
+      documents_->release(*nextHandle);
+    return;
+  }
+  if (dirty)
+    document_->markChanged(valid);
+
+  releaseSolution();
+  if (previousHandle)
+    documents_->release(*previousHandle);
+  const std::string modelId = snapshot_.modelId;
+  const std::string modelSha256 = snapshot_.modelSha256;
+  const std::string modelStatus = snapshot_.modelStatusText;
+  const PolygonModelState modelState = snapshot_.modelState;
+  const PolygonRecoveryCandidate recovery = snapshot_.recovery;
+  snapshot_ = {};
+  snapshot_.modelReady = model_.has_value();
+  snapshot_.modelId = modelId;
+  snapshot_.modelSha256 = modelSha256;
+  snapshot_.modelStatusText = modelStatus;
+  snapshot_.modelState = modelState;
+  snapshot_.recovery = recovery;
+  snapshot_.state = PolygonWorkspaceState::Ready;
+  snapshot_.problemId = std::move(loaded.problemId);
+  snapshot_.document = std::move(loaded.summary);
+  snapshot_.document.sourceIdentifier = loaded.sourceIdentifier;
+  snapshot_.documentDiagnostics = std::move(loaded.diagnostics);
+  snapshot_.scene = std::move(loaded.scene);
+  snapshot_.unplacedInstances = std::move(loaded.unplacedInstances);
+  snapshot_.statusText =
+    valid ? (dirty ? "Черновик восстановлен" : "Документ загружен") : "Черновик загружен; исправьте ошибки перед запуском";
+  publish();
+}
+
+/// Заменяет только сведения карточки восстановления и сохраняет текущее рабочее состояние.
+void PolygonWorkspaceController::presentRecovery(PolygonRecoveryCandidate recovery)
+{
+  snapshot_.recovery = std::move(recovery);
+  publish();
+}
+
+/// Обновляет пользовательское сообщение, не очищая документ, сцену или решение.
+void PolygonWorkspaceController::reportDocumentOperation(std::string message)
+{
+  snapshot_.statusText = std::move(message);
+  publish();
+}
+
+/// Повторно вычисляет доступность действий из общего владельца состояния документа.
+void PolygonWorkspaceController::refreshDocumentState()
+{
+  publish();
+}
+
 /// Вычисляет доступность действий из состояния и передаёт снимок выходному порту.
 void PolygonWorkspaceController::publish()
 {
   const bool running = snapshot_.state == PolygonWorkspaceState::Running;
   snapshot_.canOpen = !running;
-  snapshot_.canRun = document_.state().handle.has_value() && document_.state().valid && !running && !activeModelJob_;
+  snapshot_.canRun = document_->state().handle.has_value() && document_->state().valid && !running && !activeModelJob_;
   snapshot_.canCancel = running;
   snapshot_.canSave = solution_.has_value() && !running;
   snapshot_.canLoadModel = !running && !activeModelJob_ && static_cast<bool>(modelJobs_);
   snapshot_.canCancelModelLoad = activeModelJob_.has_value();
   snapshot_.modelReady = model_.has_value();
-  const auto & document = document_.state();
+  const auto & document = document_->state();
+  snapshot_.hasDocument = document.present;
+  snapshot_.canSaveDocument = document.present && !running;
+  snapshot_.canSaveProblem = document.present && document.valid && !running;
+  snapshot_.documentSource = document.source;
   snapshot_.documentDirty = document.dirty;
   snapshot_.documentValid = document.valid;
   snapshot_.solutionStale = document.solutionStale;
@@ -321,13 +409,13 @@ void PolygonWorkspaceController::acceptResult(NestingJobHandle job, NestingRunRe
     snapshot_.statusText = "Поиск отменён; показано последнее частичное решение";
     if (result.solution)
       documents_->release(*result.solution);
-    document_.finishRun(false);
+    document_->finishRun(false);
   }
   else
   {
     snapshot_.state = PolygonWorkspaceState::Completed;
     solution_ = result.solution;
-    document_.finishRun(solution_.has_value());
+    document_->finishRun(solution_.has_value());
     switch (result.completion)
     {
       case NestingCompletion::TimedOut:
@@ -348,6 +436,7 @@ void PolygonWorkspaceController::acceptResult(NestingJobHandle job, NestingRunRe
     }
   }
   publish();
+  continueDocumentReplacement();
 }
 
 /// Сохраняет предыдущую сцену и переводит только актуальную работу в состояние ошибки.
@@ -356,10 +445,11 @@ void PolygonWorkspaceController::acceptFailure(NestingJobHandle job, const std::
   if (!activeJob_ || job != *activeJob_ || snapshot_.state != PolygonWorkspaceState::Running)
     return;
   activeJob_.reset();
-  document_.finishRun(solution_.has_value());
+  document_->finishRun(solution_.has_value());
   snapshot_.state = PolygonWorkspaceState::Error;
   snapshot_.statusText = "Ошибка внутренней реализации решателя: " + error;
   publish();
+  continueDocumentReplacement();
 }
 
 /// Заменяет модель только после полной успешной проверки актуальной работы.
@@ -417,7 +507,7 @@ void PolygonWorkspaceController::releaseSolution() noexcept
   if (solution_)
     documents_->release(*solution_);
   solution_.reset();
-  document_.clearSolution();
+  document_->clearSolution();
 }
 
 /// Передаёт освобождение модели фоновому средству и очищает опубликованную идентичность.
@@ -430,4 +520,14 @@ void PolygonWorkspaceController::releaseModel() noexcept
   snapshot_.modelId.clear();
   snapshot_.modelSha256.clear();
   snapshot_.modelStatusText.clear();
+}
+
+/// Извлекает отложенное действие перед вызовом, чтобы новый запуск не считался частью старой работы.
+void PolygonWorkspaceController::continueDocumentReplacement()
+{
+  if (activeJob_ || !pendingDocumentReplacement_)
+    return;
+  auto replacement = std::move(pendingDocumentReplacement_);
+  pendingDocumentReplacement_ = {};
+  replacement();
 }

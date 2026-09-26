@@ -19,6 +19,9 @@ PolygonStartPage::PolygonStartPage(QWidget * parent)
   , recentList_(new QListWidget(this))
   , exampleList_(new QListWidget(this))
   , removeRecentButton_(new QPushButton(tr("Убрать из списка"), this))
+  , recoveryCard_(new QWidget(this))
+  , recoveryText_(new QLabel(recoveryCard_))
+  , restoreRecoveryButton_(new QPushButton(tr("Восстановить"), recoveryCard_))
 {
   setObjectName(QStringLiteral("polygonStartPage"));
   auto * title = new QLabel(tr("Подготовьте задачу раскроя"), this);
@@ -46,6 +49,20 @@ PolygonStartPage::PolygonStartPage(QWidget * parent)
   exampleList_->setAccessibleName(tr("Примеры задач"));
   removeRecentButton_->setObjectName(QStringLiteral("removeRecentButton"));
 
+  recoveryCard_->setObjectName(QStringLiteral("polygonRecoveryCard"));
+  recoveryCard_->setAccessibleName(tr("Найден автоматический черновик"));
+  recoveryText_->setObjectName(QStringLiteral("polygonRecoveryText"));
+  recoveryText_->setWordWrap(true);
+  restoreRecoveryButton_->setObjectName(QStringLiteral("restoreRecoveryButton"));
+  auto * deleteRecovery = new QPushButton(tr("Удалить"), recoveryCard_);
+  deleteRecovery->setObjectName(QStringLiteral("deleteRecoveryButton"));
+  auto * recoveryLayout = new QHBoxLayout(recoveryCard_);
+  recoveryLayout->setContentsMargins(12, 8, 12, 8);
+  recoveryLayout->addWidget(recoveryText_, 1);
+  recoveryLayout->addWidget(restoreRecoveryButton_);
+  recoveryLayout->addWidget(deleteRecovery);
+  recoveryCard_->hide();
+
   auto * actions = new QHBoxLayout();
   actions->addWidget(open);
   actions->addWidget(create);
@@ -70,6 +87,7 @@ PolygonStartPage::PolygonStartPage(QWidget * parent)
   root->addStretch(1);
   root->addWidget(title);
   root->addWidget(description);
+  root->addWidget(recoveryCard_);
   root->addSpacing(12);
   root->addLayout(actions);
   root->addSpacing(24);
@@ -85,6 +103,25 @@ PolygonStartPage::PolygonStartPage(QWidget * parent)
             if (const auto * item = recentList_->currentItem())
               emit requestRemoveRecent(item->data(PATH_ROLE).toString());
           });
+  connect(restoreRecoveryButton_, &QPushButton::clicked, this, &PolygonStartPage::requestRestoreRecovery);
+  connect(deleteRecovery, &QPushButton::clicked, this, &PolygonStartPage::requestDeleteRecovery);
+}
+
+/// Формирует понятное описание источника, времени и доступности найденного черновика.
+void PolygonStartPage::setRecoveryCandidate(const PolygonRecoveryCandidate & recovery)
+{
+  recoveryCard_->setVisible(recovery.present);
+  if (!recovery.present)
+    return;
+  QString text = tr("Автоматический черновик от %1").arg(QString::fromStdString(recovery.savedAtUtc));
+  if (!recovery.sourceIdentifier.empty())
+    text += tr(". Источник: %1").arg(QString::fromStdString(recovery.sourceIdentifier));
+  if (recovery.sourceChanged)
+    text += tr(". Исходный файл был изменён; восстановленный документ потребуется сохранить по новому пути");
+  if (!recovery.error.empty())
+    text = tr("Автоматический черновик повреждён: %1").arg(QString::fromStdString(recovery.error));
+  recoveryText_->setText(text);
+  restoreRecoveryButton_->setEnabled(recovery.restorable);
 }
 
 /// Заполняет список в сохранённом порядке и не скрывает недоступные пути.

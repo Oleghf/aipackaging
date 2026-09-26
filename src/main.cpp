@@ -1,10 +1,14 @@
 #include <QApplication>
+#include <QDir>
+#include <QStandardPaths>
 
 #include <nesting_job_runner.h>
 #include <polygon_artifact_store.h>
 #include <polygon_backends.h>
 #include <polygon_document_gateway.h>
+#include <polygon_editable_document_gateway.h>
 #include <polygon_model_jobs.h>
+#include <polygondocumentcontroller.h>
 #include <polygonmainwindow.h>
 #include <polygonworkspacecontroller.h>
 #include <qtapplicationdispatcher.h>
@@ -23,6 +27,7 @@ int main(int argc, char * argv[])
   auto polygonOutput = std::shared_ptr<IPolygonWorkspaceOutput>(&mainWindow, [](IPolygonWorkspaceOutput *) {});
   auto polygonStore = std::make_shared<PolygonArtifactStore>();
   auto polygonDocuments = std::make_shared<LocalPolygonDocumentGateway>(polygonStore);
+  auto editableDocuments = std::make_shared<LocalPolygonEditableDocumentGateway>(polygonStore);
   auto baselineBackend = std::make_shared<BaselinePolygonBackend>(polygonStore);
   auto polygonDispatcher = std::make_shared<QtApplicationDispatcher>(&mainWindow);
 #ifdef AIPACKAGING_HAS_ONNX_BACKEND
@@ -35,9 +40,19 @@ int main(int argc, char * argv[])
   auto polygonBackend = std::make_shared<PolygonBackendRouter>(baselineBackend);
 #endif
   auto polygonJobs = std::make_shared<StdThreadNestingJobRunner>(polygonBackend, polygonDispatcher, polygonDocuments);
+  auto activeDocument = std::make_shared<ActivePolygonDocument>();
   auto polygonController =
-    std::make_shared<PolygonWorkspaceController>(polygonOutput, polygonDocuments, polygonJobs, polygonModels);
-  mainWindow.setPolygonWorkspaceActions(polygonController->actions());
+    std::make_shared<PolygonWorkspaceController>(polygonOutput, polygonDocuments, polygonJobs, polygonModels, activeDocument);
+  const QString autosaveDirectory =
+    QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)).filePath(QStringLiteral("autosave"));
+  QDir().mkpath(autosaveDirectory);
+  const std::string autosavePath = QDir(autosaveDirectory).filePath(QStringLiteral("active.aipdraft.json")).toStdString();
+  auto documentController =
+    std::make_shared<PolygonDocumentController>(editableDocuments, polygonController, activeDocument, autosavePath);
+  PolygonWorkspaceActions actions = polygonController->actions();
+  documentController->bindActions(actions);
+  mainWindow.setPolygonWorkspaceActions(std::move(actions));
+  documentController->inspectRecovery();
 
   return app.exec();
 }

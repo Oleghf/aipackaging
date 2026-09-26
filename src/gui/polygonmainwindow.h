@@ -12,6 +12,7 @@ class QAction;
 class QCloseEvent;
 class QLabel;
 class QStackedWidget;
+class QTimer;
 class PolygonStartPage;
 
 /// Показывает только полигональный раскрой и передаёт действия прикладному контроллеру.
@@ -40,6 +41,8 @@ private:
   void connectActions();
   /// Открывает диалог сохранения и передаёт выбранный путь прикладному действию.
   void saveSolution();
+  /// Сохраняет исходный документ в его формате либо предлагает путь для черновика.
+  void saveDocument();
   /// Открывает диалог каталога и запускает фоновую проверку модели.
   void chooseModel();
   /// Освобождает выбранную модель и удаляет сохранённый путь.
@@ -68,6 +71,8 @@ private:
   void rememberProblem(const QString & path);
   /// Восстанавливает пользовательское состояние окна.
   void restoreUiState();
+  /// Предлагает сохранить, отбросить либо отменить замену грязного документа.
+  bool confirmDocumentReplacement();
 
   PolygonWorkspaceWidget * workspace_;
   PolygonStartPage * startPage_;
@@ -76,9 +81,12 @@ private:
   QAction * homeAction_;
   QAction * openProblemAction_;
   QAction * saveSolutionAction_;
+  QAction * saveDocumentAction_;
   QAction * openModelAction_;
   QAction * forgetModelAction_;
   PolygonWorkspaceActions actions_;
+  PolygonWorkspaceSnapshot lastSnapshot_;
+  QTimer * autosaveTimer_;
   QString pendingProblemPath_;
   QString pendingModelPath_;
   QStringList recentProblems_;

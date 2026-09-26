@@ -146,3 +146,21 @@ TEST(PolygonStatusPanel, PreservesPartialProgressAndMetrics)
   EXPECT_TRUE(stage->text().contains(QStringLiteral("лучевой")));
   EXPECT_EQ(progress->value(), 250);
 }
+
+/// Проверяет показ предметных диагностик некорректного редактируемого документа.
+TEST(PolygonStatusPanel, ShowsEditableDocumentDiagnostics)
+{
+  ensurePanelApplication();
+  PolygonStatusPanel panel;
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.statusText = "Черновик загружен";
+  snapshot.documentDiagnostics.push_back({aipackaging::editor::DocumentDiagnosticCode::OpenPath,
+                                          aipackaging::editor::DiagnosticSeverity::Error,
+                                          {},
+                                          "Внешний контур детали открыт"});
+  panel.present(snapshot);
+
+  const auto * status = panel.findChild<QLabel *>(QStringLiteral("polygonStatus"));
+  ASSERT_NE(status, nullptr);
+  EXPECT_TRUE(status->text().contains(QStringLiteral("Внешний контур детали открыт")));
+}

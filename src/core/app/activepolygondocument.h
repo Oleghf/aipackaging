@@ -13,12 +13,15 @@ enum class PolygonDocumentSource : std::uint8_t
   None,
   ProblemFile,
   Draft,
-  Imported
+  Imported,
+  RecoveredDraft,
+  Untitled
 };
 
 /// Описывает согласованное состояние одного активного полигонального документа.
 struct ActivePolygonDocumentState
 {
+  bool present = false;
   std::optional<PolygonDocumentHandle> handle;
   PolygonDocumentSource source = PolygonDocumentSource::None;
   std::string sourceIdentifier;
@@ -37,6 +40,9 @@ public:
   const ActivePolygonDocumentState & state() const noexcept;
   /// Заменяет документ, если фоновая работа уже завершена.
   bool replace(PolygonDocumentHandle handle, PolygonDocumentSource source, std::string sourceIdentifier, bool valid);
+  /// Заменяет редактируемый документ с необязательным проверенным снимком решателя.
+  bool replaceEditable(std::optional<PolygonDocumentHandle> handle, PolygonDocumentSource source, std::string sourceIdentifier,
+                       bool valid);
   /// Удаляет активный документ, если фоновая работа уже завершена.
   bool clear() noexcept;
   /// Отмечает изменение документа и устаревание существующего решения.

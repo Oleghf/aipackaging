@@ -3,6 +3,7 @@
 
 #include <activepolygondocument.h>
 #include <gtest/gtest.h>
+#include <polygondocumentcontroller.h>
 #include <polygonworkspacecontroller.h>
 
 namespace
@@ -63,6 +64,110 @@ public:
   std::size_t releasedSolutionCount = 0;
   PolygonDocumentHandle lastReleasedDocument;
   PolygonSolutionHandle lastReleasedSolution;
+};
+
+/// Имитирует хранение редактируемого документа и автоматического черновика.
+class EditableDocumentGatewayStub final : public IPolygonEditableDocumentGateway
+{
+public:
+  /// Возвращает подготовленный документ либо управляемую ошибку.
+  PolygonEditableDocumentLoadResult load(const std::string & filePath) override
+  {
+    ++loadCount;
+    if (filePath == "bad")
+      return {false, "повреждённый документ"};
+    PolygonEditableDocumentLoadResult result;
+    result.success = true;
+    result.source = PolygonDocumentSource::ProblemFile;
+    result.sourceIdentifier = filePath;
+    result.problemId = filePath;
+    result.document.problemId = filePath;
+    result.document.sheet.width = 100.0;
+    result.document.sheet.height = 80.0;
+    PolygonDocumentLoadResult compiled;
+    compiled.success = true;
+    compiled.document = {nextDocument++};
+    compiled.problemId = filePath;
+    compiled.summary.sheetWidth = 100.0;
+    compiled.scene.sheetWidth = 100.0;
+    result.summary = compiled.summary;
+    result.scene = compiled.scene;
+    result.compiled = std::move(compiled);
+    return result;
+  }
+
+  /// Возвращает управляемый восстановленный документ.
+  PolygonEditableDocumentLoadResult loadRecovery(const std::string & filePath) override
+  {
+    PolygonEditableDocumentLoadResult result = load(filePath);
+    result.source = PolygonDocumentSource::RecoveredDraft;
+    result.sourceIdentifier = "original.json";
+    result.generation = 4;
+    if (invalidRecovery)
+    {
+      result.compiled.reset();
+      result.diagnostics.push_back({aipackaging::editor::DocumentDiagnosticCode::OpenPath,
+                                    aipackaging::editor::DiagnosticSeverity::Error,
+                                    {},
+                                    "Контур открыт"});
+    }
+    return result;
+  }
+
+  /// Запоминает сохранение строгой задачи.
+  PolygonDocumentOperationResult saveProblem(const std::string & filePath,
+                                             const aipackaging::editor::EditablePolygonDocument &) override
+  {
+    savedProblem = filePath;
+    return saveSucceeds ? PolygonDocumentOperationResult{true, {}} : PolygonDocumentOperationResult{false, "отказ"};
+  }
+
+  /// Запоминает поколение и путь сохранённого черновика.
+  PolygonDocumentOperationResult saveDraft(const std::string & filePath, const aipackaging::editor::EditablePolygonDocument &,
+                                           PolygonDocumentSource source, const std::string & sourceIdentifier,
+                                           std::uint64_t generation,
+                                           std::optional<PolygonSourceFingerprint> baseFingerprint) override
+  {
+    savedDraft = filePath;
+    savedSource = source;
+    savedSourceIdentifier = sourceIdentifier;
+    savedGeneration = generation;
+    savedBaseFingerprint = baseFingerprint;
+    return saveSucceeds ? PolygonDocumentOperationResult{true, {}} : PolygonDocumentOperationResult{false, "отказ"};
+  }
+
+  /// Возвращает управляемый отпечаток сохранённого источника.
+  std::optional<PolygonSourceFingerprint> sourceFingerprint(const std::string &) override { return savedFingerprint; }
+
+  /// Возвращает подготовленную карточку автоматического восстановления.
+  PolygonRecoveryCandidate inspectRecovery(const std::string & filePath) override
+  {
+    PolygonRecoveryCandidate result = recovery;
+    result.autosavePath = filePath;
+    return result;
+  }
+
+  /// Запоминает удаление автоматического файла.
+  PolygonDocumentOperationResult removeRecovery(const std::string &) override
+  {
+    ++removeCount;
+    recovery = {};
+    return {true, {}};
+  }
+
+  std::uint64_t nextDocument = 50;
+  int loadCount = 0;
+  int removeCount = 0;
+  bool invalidRecovery = false;
+  bool saveSucceeds = true;
+  std::string savedProblem;
+  std::string savedDraft;
+  PolygonDocumentSource savedSource = PolygonDocumentSource::None;
+  std::string savedSourceIdentifier;
+  std::uint64_t savedGeneration = 0;
+  std::optional<PolygonSourceFingerprint> savedBaseFingerprint;
+  std::optional<PolygonSourceFingerprint> savedFingerprint = PolygonSourceFingerprint{77, 88};
+  PolygonRecoveryCandidate recovery{true, true, false, {}, "original.json", "2026-09-26T12:00:00Z", {}};
 };
 
 /// Имитирует средство запуска с ручной доставкой событий.
@@ -183,6 +288,21 @@ NestingRunResult solvedResult(std::uint64_t handle = 7)
   result.objective.totalParts = 1;
   result.scene.placements.push_back({});
   return result;
+}
+
+/// Создаёт два согласованных контроллера поверх общих тестовых портов.
+std::pair<std::shared_ptr<PolygonWorkspaceController>, std::shared_ptr<PolygonDocumentController>>
+makeDocumentControllers(std::shared_ptr<OutputStub> & output, std::shared_ptr<DocumentGatewayStub> & documents,
+                        std::shared_ptr<EditableDocumentGatewayStub> & editable, std::shared_ptr<JobRunnerStub> & jobs)
+{
+  output = std::make_shared<OutputStub>();
+  documents = std::make_shared<DocumentGatewayStub>();
+  editable = std::make_shared<EditableDocumentGatewayStub>();
+  jobs = std::make_shared<JobRunnerStub>();
+  auto active = std::make_shared<ActivePolygonDocument>();
+  auto workspace = std::make_shared<PolygonWorkspaceController>(output, documents, jobs, nullptr, active);
+  auto document = std::make_shared<PolygonDocumentController>(editable, workspace, active, "autosave.aipdraft.json");
+  return {workspace, document};
 }
 } // namespace
 
@@ -454,4 +574,125 @@ TEST(PolygonWorkspaceController, PublishesNeutralDocumentSummary)
   ASSERT_EQ(output->snapshot.document.parts.size(), 1U);
   EXPECT_EQ(output->snapshot.document.parts.front().id, "part");
   EXPECT_TRUE(output->snapshot.documentValid);
+}
+
+/// Проверяет открытие и сохранение задачи через отдельный контроллер документа.
+TEST(PolygonDocumentController, OpensAndSavesWithoutFileSystemTypesInApplication)
+{
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<EditableDocumentGatewayStub> editable;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto [workspace, controller] = makeDocumentControllers(output, documents, editable, jobs);
+  PolygonWorkspaceActions actions = workspace->actions();
+  controller->bindActions(actions);
+  actions.openProblem("problem.json");
+  EXPECT_TRUE(output->snapshot.hasDocument);
+  EXPECT_TRUE(output->snapshot.documentValid);
+  EXPECT_EQ(output->snapshot.documentSource, PolygonDocumentSource::ProblemFile);
+  actions.saveDocument("saved.json", false);
+  EXPECT_EQ(editable->savedProblem, "saved.json");
+  EXPECT_FALSE(output->snapshot.documentDirty);
+}
+
+/// Проверяет отмену текущей работы до загрузки следующего документа.
+TEST(PolygonDocumentController, WaitsForRunCompletionBeforeReplacement)
+{
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<EditableDocumentGatewayStub> editable;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto [workspace, controller] = makeDocumentControllers(output, documents, editable, jobs);
+  PolygonWorkspaceActions actions = workspace->actions();
+  controller->bindActions(actions);
+  actions.openProblem("first.json");
+  actions.start({});
+  actions.openProblem("second.json");
+  EXPECT_EQ(editable->loadCount, 1);
+  ASSERT_TRUE(jobs->cancelled.has_value());
+  NestingRunResult cancelled;
+  cancelled.completion = NestingCompletion::Cancelled;
+  cancelled.partial = true;
+  jobs->complete(std::move(cancelled));
+  EXPECT_EQ(editable->loadCount, 2);
+  EXPECT_EQ(output->snapshot.problemId, "second.json");
+}
+
+/// Проверяет восстановление некорректного черновика и последовательные поколения автосохранения.
+TEST(PolygonDocumentController, RestoresInvalidDraftAndAutosavesDirtyState)
+{
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<EditableDocumentGatewayStub> editable;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto [workspace, controller] = makeDocumentControllers(output, documents, editable, jobs);
+  editable->invalidRecovery = true;
+  PolygonWorkspaceActions actions = workspace->actions();
+  controller->bindActions(actions);
+  controller->inspectRecovery();
+  EXPECT_TRUE(output->snapshot.recovery.present);
+  actions.restoreRecovery();
+  EXPECT_TRUE(output->snapshot.documentDirty);
+  EXPECT_FALSE(output->snapshot.documentValid);
+  EXPECT_FALSE(output->snapshot.canRun);
+  EXPECT_TRUE(output->snapshot.canSaveDocument);
+  actions.autosaveDocument();
+  EXPECT_EQ(editable->savedDraft, "autosave.aipdraft.json");
+  EXPECT_EQ(editable->savedGeneration, 5U);
+}
+
+/// Проверяет автосохранение неизменяемого снимка во время фонового расчёта.
+TEST(PolygonDocumentController, FlushesDirtyDraftWhileRunIsActive)
+{
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<EditableDocumentGatewayStub> editable;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto [workspace, controller] = makeDocumentControllers(output, documents, editable, jobs);
+  PolygonWorkspaceActions actions = workspace->actions();
+  controller->bindActions(actions);
+  actions.restoreRecovery();
+  ASSERT_TRUE(output->snapshot.documentDirty);
+  ASSERT_TRUE(output->snapshot.documentValid);
+  actions.start({});
+  ASSERT_TRUE(output->snapshot.canCancel);
+  actions.autosaveDocument();
+  EXPECT_EQ(editable->savedDraft, "autosave.aipdraft.json");
+  EXPECT_EQ(editable->savedSource, PolygonDocumentSource::RecoveredDraft);
+  EXPECT_EQ(editable->savedSourceIdentifier, "original.json");
+}
+
+/// Проверяет сохранение признака изменения при отказе автоматической записи.
+TEST(PolygonDocumentController, KeepsDirtyStateAfterAutosaveFailure)
+{
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<EditableDocumentGatewayStub> editable;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto [workspace, controller] = makeDocumentControllers(output, documents, editable, jobs);
+  PolygonWorkspaceActions actions = workspace->actions();
+  controller->bindActions(actions);
+  actions.restoreRecovery();
+  editable->saveSucceeds = false;
+  actions.autosaveDocument();
+  EXPECT_TRUE(output->snapshot.documentDirty);
+  EXPECT_NE(output->snapshot.statusText.find("Ошибка автосохранения"), std::string::npos);
+}
+
+/// Проверяет сохранение прежнего документа и сцены после ошибки следующего открытия.
+TEST(PolygonDocumentController, KeepsPreviousDocumentAfterLoadFailure)
+{
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<EditableDocumentGatewayStub> editable;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto [workspace, controller] = makeDocumentControllers(output, documents, editable, jobs);
+  PolygonWorkspaceActions actions = workspace->actions();
+  controller->bindActions(actions);
+  actions.openProblem("first.json");
+  const double sheetWidth = output->snapshot.scene.sheetWidth;
+  actions.openProblem("bad");
+  EXPECT_EQ(output->snapshot.problemId, "first.json");
+  EXPECT_DOUBLE_EQ(output->snapshot.scene.sheetWidth, sheetWidth);
+  EXPECT_NE(output->snapshot.statusText.find("Ошибка загрузки"), std::string::npos);
 }

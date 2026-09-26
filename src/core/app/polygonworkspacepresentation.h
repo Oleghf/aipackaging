@@ -6,6 +6,9 @@
 #include <string>
 #include <vector>
 
+#include <activepolygondocument.h>
+#include <aipackaging/editor/polygon_document_validation.h>
+
 /// Содержит компоненты целевой функции, необходимые интерфейсу.
 struct NestingObjectiveSummary
 {
@@ -117,9 +120,22 @@ enum class PolygonWorkspaceState : std::uint8_t
   Error
 };
 
+/// Описывает найденный файл автоматического восстановления без загрузки документа в сценарий.
+struct PolygonRecoveryCandidate
+{
+  bool present = false;
+  bool restorable = false;
+  bool sourceChanged = false;
+  std::string autosavePath;
+  std::string sourceIdentifier;
+  std::string savedAtUtc;
+  std::string error;
+};
+
 /// Данные одного обновления полигональной вкладки.
 struct PolygonWorkspaceSnapshot
 {
+  bool hasDocument = false;
   PolygonWorkspaceState state = PolygonWorkspaceState::Empty;
   std::string problemId;
   std::string statusText;
@@ -130,6 +146,8 @@ struct PolygonWorkspaceSnapshot
   bool canRun = false;
   bool canCancel = false;
   bool canSave = false;
+  bool canSaveDocument = false;
+  bool canSaveProblem = false;
   bool canLoadModel = true;
   bool canCancelModelLoad = false;
   bool modelReady = false;
@@ -141,6 +159,9 @@ struct PolygonWorkspaceSnapshot
   bool documentDirty = false;
   bool documentValid = false;
   bool solutionStale = false;
+  PolygonDocumentSource documentSource = PolygonDocumentSource::None;
+  std::vector<aipackaging::editor::DocumentDiagnostic> documentDiagnostics;
+  PolygonRecoveryCandidate recovery;
   NestingProgress progress;
   NestingObjectiveSummary objective;
   NestingMetricsSummary metrics;

@@ -1,11 +1,13 @@
 #ifndef AIPACKAGING_APPLICATION_POLYGONWORKSPACECONTROLLER_H
 #define AIPACKAGING_APPLICATION_POLYGONWORKSPACECONTROLLER_H
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 
 #include <activepolygondocument.h>
+#include <polygoneditablecontracts.h>
 #include <polygonworkspaceports.h>
 
 /// Управляет полигональным пользовательским сценарием как однопоточный автомат состояния.
@@ -14,7 +16,8 @@ class PolygonWorkspaceController : public std::enable_shared_from_this<PolygonWo
 public:
   /// Создаёт контроллер поверх прикладных портов документов, выполнения и вывода.
   PolygonWorkspaceController(std::shared_ptr<IPolygonWorkspaceOutput> output, std::shared_ptr<IPolygonDocumentGateway> documents,
-                             std::shared_ptr<INestingJobRunner> jobs, std::shared_ptr<IPolygonModelJobRunner> modelJobs = {});
+                             std::shared_ptr<INestingJobRunner> jobs, std::shared_ptr<IPolygonModelJobRunner> modelJobs = {},
+                             std::shared_ptr<ActivePolygonDocument> activeDocument = {});
   /// Освобождает документы и запрашивает отмену активной работы.
   ~PolygonWorkspaceController();
   /// Формирует безопасные слабые обработчики действий для интерфейса.
@@ -35,6 +38,16 @@ public:
   void cancel();
   /// Возвращает последний опубликованный снимок модели представления.
   PolygonWorkspaceSnapshot snapshot() const;
+  /// Отменяет текущий поиск и выполняет замену документа только после итогового события.
+  void requestDocumentReplacement(std::function<void()> replacement);
+  /// Публикует успешно загруженный редактируемый документ и его необязательный точный снимок.
+  void acceptEditableDocument(PolygonEditableDocumentLoadResult loaded, bool dirty);
+  /// Публикует состояние найденного автоматического черновика.
+  void presentRecovery(PolygonRecoveryCandidate recovery);
+  /// Показывает диагностируемый результат операции документа без потери прежней сцены.
+  void reportDocumentOperation(std::string message);
+  /// Публикует изменения признаков активного документа после сохранения.
+  void refreshDocumentState();
 
 private:
   /// Публикует состояние и вычисляет доступность действий.
@@ -55,16 +68,19 @@ private:
   void releaseSolution() noexcept;
   /// Освобождает текущий комплект модели.
   void releaseModel() noexcept;
+  /// Выполняет отложенную замену после полного завершения фонового поиска.
+  void continueDocumentReplacement();
 
   std::shared_ptr<IPolygonWorkspaceOutput> output_;
   std::shared_ptr<IPolygonDocumentGateway> documents_;
   std::shared_ptr<INestingJobRunner> jobs_;
   std::shared_ptr<IPolygonModelJobRunner> modelJobs_;
-  ActivePolygonDocument document_;
+  std::shared_ptr<ActivePolygonDocument> document_;
   std::optional<PolygonSolutionHandle> solution_;
   std::optional<PolygonModelHandle> model_;
   std::optional<PolygonModelJobHandle> activeModelJob_;
   std::optional<NestingJobHandle> activeJob_;
+  std::function<void()> pendingDocumentReplacement_;
   PolygonWorkspaceSnapshot snapshot_;
 };
 

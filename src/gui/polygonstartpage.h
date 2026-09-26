@@ -4,8 +4,11 @@
 #include <QStringList>
 #include <QWidget>
 
+#include <polygonworkspacepresentation.h>
+
 class QListWidget;
 class QPushButton;
+class QLabel;
 
 /// Показывает доступные способы начала работы без знания внутренних форматов.
 class PolygonStartPage final : public QWidget
@@ -18,6 +21,8 @@ public:
   void setRecentFiles(const QStringList & files);
   /// Заменяет список примеров парами «название, путь».
   void setExamples(const QList<QPair<QString, QString>> & examples);
+  /// Показывает либо скрывает немодальную карточку автоматического восстановления.
+  void setRecoveryCandidate(const PolygonRecoveryCandidate & recovery);
 
 signals:
   /// Запрашивает стандартный выбор задачи пользователем.
@@ -26,6 +31,10 @@ signals:
   void requestOpenPath(const QString & path);
   /// Запрашивает удаление выбранного пути из списка недавних файлов.
   void requestRemoveRecent(const QString & path);
+  /// Запрашивает восстановление читаемого автоматического черновика.
+  void requestRestoreRecovery();
+  /// Запрашивает удаление автоматического черновика после подтверждения пользователя.
+  void requestDeleteRecovery();
 
 private:
   /// Открывает выбранный доступный элемент указанного списка.
@@ -34,6 +43,9 @@ private:
   QListWidget * recentList_;
   QListWidget * exampleList_;
   QPushButton * removeRecentButton_;
+  QWidget * recoveryCard_;
+  QLabel * recoveryText_;
+  QPushButton * restoreRecoveryButton_;
 };
 
 #endif

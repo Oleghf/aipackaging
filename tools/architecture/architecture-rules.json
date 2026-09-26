@@ -107,6 +107,7 @@
     "desktop_infrastructure": [
       "desktop_infrastructure",
       "app",
+      "editor_persistence",
       "search",
       "search_contracts",
       "json",

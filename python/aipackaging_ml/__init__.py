@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 __all__ = ["GridNestingEnv", "PolygonNestingEnv"]
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 
 
 def __getattr__(name: str) -> Any:
