@@ -35,9 +35,21 @@ PolygonMainWindow::PolygonMainWindow(QWidget * parent)
   , startPage_(new PolygonStartPage(this))
   , pages_(new QStackedWidget(this))
   , coordinatesLabel_(new QLabel(tr("Координаты: —"), this))
+  , homeAction_(nullptr)
   , openProblemAction_(nullptr)
   , saveSolutionAction_(nullptr)
   , openModelAction_(nullptr)
+  , forgetModelAction_(nullptr)
+{
+  buildWindow();
+  connectActions();
+  restoreUiState();
+  firstWorkspaceDisplayTimer_.start();
+  presentPolygonWorkspace({});
+}
+
+/// Создаёт страницы, меню, основные действия и общую панель инструментов.
+void PolygonMainWindow::buildWindow()
 {
   setObjectName(QStringLiteral("polygonMainWindow"));
   setWindowTitle(tr("AIPackaging — полигональный раскрой"));
@@ -49,12 +61,12 @@ PolygonMainWindow::PolygonMainWindow(QWidget * parent)
   setCentralWidget(pages_);
 
   QMenu * fileMenu = menuBar()->addMenu(tr("&Файл"));
-  QAction * homeAction = fileMenu->addAction(tr("&Начальная страница"));
+  homeAction_ = fileMenu->addAction(tr("&Начальная страница"));
   openProblemAction_ = fileMenu->addAction(tr("&Открыть задачу…"));
   saveSolutionAction_ = fileMenu->addAction(tr("&Сохранить решение…"));
   fileMenu->addSeparator();
   openModelAction_ = fileMenu->addAction(tr("Подключить &модель…"));
-  QAction * forgetModelAction = fileMenu->addAction(tr("Забыть модель"));
+  forgetModelAction_ = fileMenu->addAction(tr("Забыть модель"));
   openProblemAction_->setShortcut(QKeySequence::Open);
   saveSolutionAction_->setShortcut(QKeySequence::Save);
   openProblemAction_->setObjectName(QStringLiteral("openProblemAction"));
@@ -64,7 +76,7 @@ PolygonMainWindow::PolygonMainWindow(QWidget * parent)
   auto * toolbar = addToolBar(tr("Основные команды"));
   toolbar->setObjectName(QStringLiteral("mainToolbar"));
   toolbar->setMovable(false);
-  toolbar->addAction(homeAction);
+  toolbar->addAction(homeAction_);
   toolbar->addAction(openProblemAction_);
   toolbar->addAction(saveSolutionAction_);
   toolbar->addSeparator();
@@ -77,8 +89,12 @@ PolygonMainWindow::PolygonMainWindow(QWidget * parent)
   statusBar()->addPermanentWidget(coordinatesLabel_);
   coordinatesLabel_->setObjectName(QStringLiteral("cursorCoordinates"));
   coordinatesLabel_->setAccessibleName(tr("Координаты курсора на листе"));
+}
 
-  connect(homeAction, &QAction::triggered, this, [this]() { pages_->setCurrentWidget(startPage_); });
+/// Соединяет действия окна с прикладными функциями и сигналами вложенных страниц.
+void PolygonMainWindow::connectActions()
+{
+  connect(homeAction_, &QAction::triggered, this, [this]() { pages_->setCurrentWidget(startPage_); });
   connect(openProblemAction_, &QAction::triggered, this, &PolygonMainWindow::chooseProblem);
   connect(saveSolutionAction_, &QAction::triggered, this,
           [this]()
@@ -111,7 +127,7 @@ PolygonMainWindow::PolygonMainWindow(QWidget * parent)
               actions_.openModel(path.toStdString());
             }
           });
-  connect(forgetModelAction, &QAction::triggered, this,
+  connect(forgetModelAction_, &QAction::triggered, this,
           [this]()
           {
             if (actions_.forgetModel)
@@ -151,10 +167,6 @@ PolygonMainWindow::PolygonMainWindow(QWidget * parent)
   connect(
     workspace_, &PolygonWorkspaceWidget::cursorPositionChanged, this, [this](double x, double y, bool inside)
     { coordinatesLabel_->setText(inside ? tr("X: %1 мм; Y: %2 мм").arg(x, 0, 'f', 2).arg(y, 0, 'f', 2) : tr("Координаты: —")); });
-
-  restoreUiState();
-  firstWorkspaceDisplayTimer_.start();
-  presentPolygonWorkspace({});
 }
 
 /// Сохраняет функции действий и запускает фоновую проверку ранее выбранной модели.
@@ -174,10 +186,23 @@ void PolygonMainWindow::setPolygonWorkspaceActions(PolygonWorkspaceActions actio
 void PolygonMainWindow::presentPolygonWorkspace(const PolygonWorkspaceSnapshot & snapshot)
 {
   workspace_->present(snapshot);
+  presentActions(snapshot);
+  presentDocumentNavigation(snapshot);
+  presentModelLoad(snapshot);
+}
+
+/// Обновляет доступность общих действий и строку состояния окна.
+void PolygonMainWindow::presentActions(const PolygonWorkspaceSnapshot & snapshot)
+{
   openProblemAction_->setEnabled(snapshot.canOpen);
   saveSolutionAction_->setEnabled(snapshot.canSave);
   openModelAction_->setEnabled(snapshot.canLoadModel);
   statusBar()->showMessage(QString::fromStdString(snapshot.statusText));
+}
+
+/// Переключает рабочую страницу и завершает учёт успешно открытого документа.
+void PolygonMainWindow::presentDocumentNavigation(const PolygonWorkspaceSnapshot & snapshot)
+{
   if (!snapshot.problemId.empty())
   {
     pages_->setCurrentWidget(workspace_);
@@ -204,7 +229,11 @@ void PolygonMainWindow::presentPolygonWorkspace(const PolygonWorkspaceSnapshot &
   }
   else if (snapshot.state == PolygonWorkspaceState::Empty || snapshot.state == PolygonWorkspaceState::Error)
     pages_->setCurrentWidget(startPage_);
+}
 
+/// Сохраняет только успешно проверенный путь модели и очищает состояние неудачной попытки.
+void PolygonMainWindow::presentModelLoad(const PolygonWorkspaceSnapshot & snapshot)
+{
   if (snapshot.modelState == PolygonModelState::Ready && !pendingModelPath_.isEmpty())
   {
     if (modelLoadTimer_.isValid())

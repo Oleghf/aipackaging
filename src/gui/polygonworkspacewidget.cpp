@@ -111,6 +111,15 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   , cancelAction_(new QAction(tr("Отменить расчёт"), this))
   , fitAction_(new QAction(tr("Вписать лист"), this))
 {
+  configureControls();
+  buildLayout();
+  connectControls();
+  present({});
+}
+
+/// Настраивает свойства созданных элементов без построения компоновки и соединений.
+void PolygonWorkspaceWidget::configureControls()
+{
   setObjectName("polygonWorkspace");
   canvas_->setObjectName("polygonCanvas");
   openButton_->setObjectName("polygonOpenButton");
@@ -201,7 +210,11 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   addAction(fitAction_);
   openButton_->hide();
   saveButton_->hide();
+}
 
+/// Собирает три основные панели и нижнюю область сообщений из настроенных элементов.
+void PolygonWorkspaceWidget::buildLayout()
+{
   QHBoxLayout * runLayout = new QHBoxLayout();
   runLayout->addWidget(solverBox_, 1);
   runLayout->addWidget(startButton_);
@@ -257,7 +270,11 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   root->setContentsMargins(8, 8, 8, 8);
   root->addWidget(splitter_, 1);
   root->addWidget(messages);
+}
 
+/// Подключает сигналы элементов и задаёт начальный порядок клавиатурного обхода.
+void PolygonWorkspaceWidget::connectControls()
+{
   connect(openButton_, &QPushButton::clicked, this, &PolygonWorkspaceWidget::requestOpenProblem);
   connect(saveButton_, &QPushButton::clicked, this, &PolygonWorkspaceWidget::requestSaveSolution);
   connect(modelButton_, &QPushButton::clicked, this, &PolygonWorkspaceWidget::requestOpenModel);
@@ -313,8 +330,6 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   setTabOrder(startButton_, cancelButton_);
   setTabOrder(cancelButton_, modelButton_);
   setTabOrder(modelButton_, advancedToggle_);
-
-  present({});
 }
 
 /// Разбирает имя решателя формата обмена и значения конфигурации из виджетов.
@@ -362,6 +377,16 @@ void PolygonWorkspaceWidget::updateStartAvailability()
 void PolygonWorkspaceWidget::present(const PolygonWorkspaceSnapshot & snapshot)
 {
   snapshot_ = snapshot;
+  presentDocument(snapshot);
+  presentModelState(snapshot);
+  presentRunState(snapshot);
+  presentProgress(snapshot);
+  presentResult(snapshot);
+}
+
+/// Обновляет подпись задачи и основное пользовательское сообщение.
+void PolygonWorkspaceWidget::presentDocument(const PolygonWorkspaceSnapshot & snapshot)
+{
   problemLabel_->setText(snapshot.problemId.empty() ? tr("Задача: —")
                                                     : tr("Задача: %1\nЛист: %2 × %3 мм\nОтступ: %4 мм; зазор: %5 мм; рез: %6 мм")
                                                         .arg(QString::fromStdString(snapshot.problemId))
@@ -371,6 +396,11 @@ void PolygonWorkspaceWidget::present(const PolygonWorkspaceSnapshot & snapshot)
                                                         .arg(snapshot.document.partSpacing, 0, 'f', 2)
                                                         .arg(snapshot.document.kerf, 0, 'f', 2));
   statusLabel_->setText(QString::fromStdString(snapshot.statusText));
+}
+
+/// Формирует краткую идентичность модели и состояние её фоновой проверки.
+void PolygonWorkspaceWidget::presentModelState(const PolygonWorkspaceSnapshot & snapshot)
+{
   const QString modelHash = snapshot.modelSha256.empty() ? QString() : QString::fromStdString(snapshot.modelSha256.substr(0, 12));
   modelLabel_->setText(
     snapshot.modelState == PolygonModelState::Loading ? tr("Модель: выполняется проверка…")
@@ -380,6 +410,11 @@ void PolygonWorkspaceWidget::present(const PolygonWorkspaceSnapshot & snapshot)
                snapshot.modelStatusText.empty() ? QString() : tr(" — %1").arg(QString::fromStdString(snapshot.modelStatusText)))
       : tr("Модель: не загружена%1")
           .arg(snapshot.modelStatusText.empty() ? QString() : tr(" — %1").arg(QString::fromStdString(snapshot.modelStatusText))));
+}
+
+/// Согласует команды открытия, запуска, отмены и настройки с одним снимком.
+void PolygonWorkspaceWidget::presentRunState(const PolygonWorkspaceSnapshot & snapshot)
+{
   statusLabel_->setStyleSheet(snapshot.partial ? QStringLiteral("color:#B45309;font-weight:600") : QString());
   openButton_->setEnabled(snapshot.canOpen);
   saveButton_->setEnabled(snapshot.canSave);
@@ -394,7 +429,11 @@ void PolygonWorkspaceWidget::present(const PolygonWorkspaceSnapshot & snapshot)
   modelButton_->setEnabled(snapshot.canLoadModel);
   cancelModelButton_->setVisible(snapshot.canCancelModelLoad);
   cancelModelButton_->setEnabled(snapshot.canCancelModelLoad);
+}
 
+/// Преобразует прикладной этап и счётчики в подпись и значение полосы хода выполнения.
+void PolygonWorkspaceWidget::presentProgress(const PolygonWorkspaceSnapshot & snapshot)
+{
   switch (snapshot.progress.stage)
   {
     case NestingProgressStage::Instances:
@@ -426,7 +465,11 @@ void PolygonWorkspaceWidget::present(const PolygonWorkspaceSnapshot & snapshot)
              : (total == 0 ? 0 : static_cast<int>(std::min<std::uint64_t>(1000, snapshot.progress.completed * 1000 / total)));
     progressBar_->setValue(value);
   }
+}
 
+/// Обновляет метрики, неразмещённые экземпляры, дерево деталей и полотно.
+void PolygonWorkspaceWidget::presentResult(const PolygonWorkspaceSnapshot & snapshot)
+{
   const auto & objective = snapshot.objective;
   const auto & metrics = snapshot.metrics;
   metricsText_->setPlainText(

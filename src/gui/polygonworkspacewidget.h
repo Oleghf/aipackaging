@@ -73,6 +73,22 @@ signals:
   void cursorPositionChanged(double x, double y, bool inside);
 
 private:
+  /// Настраивает имена, доступность, режимы и числовые ограничения элементов управления.
+  void configureControls();
+  /// Собирает панели документа, полотна, запуска и сообщений.
+  void buildLayout();
+  /// Связывает действия пользователя с сигналами и обновлением настроек.
+  void connectControls();
+  /// Публикует сведения о текущем документе.
+  void presentDocument(const PolygonWorkspaceSnapshot & snapshot);
+  /// Публикует состояние проверяемой или готовой модели.
+  void presentModelState(const PolygonWorkspaceSnapshot & snapshot);
+  /// Согласует доступность команд с состоянием фоновой работы.
+  void presentRunState(const PolygonWorkspaceSnapshot & snapshot);
+  /// Публикует этап и долю выполнения без искажения частичного результата.
+  void presentProgress(const PolygonWorkspaceSnapshot & snapshot);
+  /// Публикует метрики, сцену и перечни экземпляров результата.
+  void presentResult(const PolygonWorkspaceSnapshot & snapshot);
   /// Пересчитывает доступность запуска по снимку, модели и корректности настроек.
   void updateStartAvailability();
   /// Применяет значения выбранного понятного режима к запросу запуска.

@@ -34,6 +34,16 @@ protected:
   void closeEvent(QCloseEvent * event) override;
 
 private:
+  /// Собирает страницы, основные действия, панель инструментов и строку состояния.
+  void buildWindow();
+  /// Связывает команды окна, стартовой страницы и рабочей области.
+  void connectActions();
+  /// Согласует доступность общих действий с прикладным снимком.
+  void presentActions(const PolygonWorkspaceSnapshot & snapshot);
+  /// Переключает страницы и учитывает успешно открытый документ.
+  void presentDocumentNavigation(const PolygonWorkspaceSnapshot & snapshot);
+  /// Завершает измерение и сохранение пути успешно проверенной модели.
+  void presentModelLoad(const PolygonWorkspaceSnapshot & snapshot);
   /// Открывает файловый диалог из последнего пользовательского каталога.
   void chooseProblem();
   /// Передаёт выбранный путь приложению и запоминает каталог.
@@ -47,9 +57,11 @@ private:
   PolygonStartPage * startPage_;
   QStackedWidget * pages_;
   QLabel * coordinatesLabel_;
+  QAction * homeAction_;
   QAction * openProblemAction_;
   QAction * saveSolutionAction_;
   QAction * openModelAction_;
+  QAction * forgetModelAction_;
   PolygonWorkspaceActions actions_;
   QString pendingProblemPath_;
   QString pendingModelPath_;

@@ -333,3 +333,45 @@ TEST(PolygonWorkspaceWidget, PresentsDocumentStructureAndFriendlyProgressStage)
   EXPECT_EQ(tree->topLevelItem(0)->text(0), QStringLiteral("bracket"));
   EXPECT_TRUE(stage->text().contains(QStringLiteral("нейросетевые")));
 }
+
+/// Проверяет независимую публикацию документа, модели, запуска, хода выполнения и результата.
+TEST(PolygonWorkspaceWidget, PresentsIndependentWorkspaceSections)
+{
+  ensureApplication();
+  PolygonWorkspaceWidget widget;
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.state = PolygonWorkspaceState::Running;
+  snapshot.problemId = "panel-job";
+  snapshot.statusText = "Выполняется раскрой";
+  snapshot.document.sheetWidth = 120.0;
+  snapshot.document.sheetHeight = 80.0;
+  snapshot.modelState = PolygonModelState::Ready;
+  snapshot.modelReady = true;
+  snapshot.modelId = "policy-v1";
+  snapshot.modelSha256 = "0123456789abcdef";
+  snapshot.canCancel = true;
+  snapshot.canLoadModel = false;
+  snapshot.progress = {NestingProgressStage::ExpandedStates, 25, 100, 25};
+  snapshot.unplacedInstances = {"panel #1"};
+  widget.present(snapshot);
+
+  const auto * status = widget.findChild<QLabel *>("polygonStatus");
+  const auto * model = widget.findChild<QLabel *>("polygonModelStatus");
+  const auto * progress = widget.findChild<QProgressBar *>("polygonProgress");
+  const auto * stage = widget.findChild<QLabel *>("polygonProgressStage");
+  const auto * cancel = widget.findChild<QPushButton *>("polygonCancelButton");
+  const auto * unplaced = widget.findChild<QListWidget *>();
+  ASSERT_NE(status, nullptr);
+  ASSERT_NE(model, nullptr);
+  ASSERT_NE(progress, nullptr);
+  ASSERT_NE(stage, nullptr);
+  ASSERT_NE(cancel, nullptr);
+  ASSERT_NE(unplaced, nullptr);
+  EXPECT_EQ(status->text(), QStringLiteral("Выполняется раскрой"));
+  EXPECT_TRUE(model->text().contains(QStringLiteral("policy-v1")));
+  EXPECT_EQ(progress->value(), 250);
+  EXPECT_TRUE(stage->text().contains(QStringLiteral("лучевой")));
+  EXPECT_TRUE(cancel->isEnabled());
+  ASSERT_EQ(unplaced->count(), 1);
+  EXPECT_EQ(unplaced->item(0)->text(), QStringLiteral("panel #1"));
+}
