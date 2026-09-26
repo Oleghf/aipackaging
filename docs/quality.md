@@ -55,6 +55,28 @@ python tools/run_checks.py desktop --qt-dir <путь-к-Qt6Config>
 реального ожидания. Подключение пассивного уведомления не должно менять
 детерминированный результат.
 
+Полное сравнение каталогов на замороженном наборе выполняется до и после
+изменения геометрии:
+
+```powershell
+python tools/regression/hash_polygon_catalogs.py `
+  --dataset artifacts/datasets/polygon-v2 `
+  --output artifacts/regression/polygon-catalogs-before.json
+python tools/regression/hash_polygon_catalogs.py `
+  --dataset artifacts/datasets/polygon-v2 `
+  --expected artifacts/regression/polygon-catalogs-before.json
+```
+
+Средство проверяет точный индекс и действие каталога версии 1. Для версии 2
+сохранённое действие ищется по содержимому, после чего переход повторно
+проигрывается. Каждый полный каталог до действия и терминальный каталог
+канонически сериализуются в поток SHA-256. Отчёт фиксирует число задач,
+траекторий, состояний и действий; сам полный снимок каталогов в Git не входит.
+Эталон Q2.6 для 1920 траекторий и 18 131 состояния: версия 1 —
+`cfae11ebb1b402a58185c771f6317c57cc8e3db431e099f34e7cdfffe16d570e`,
+версия 2 —
+`ea63955f4149fd9a05ee5a6c6512a345219cc1aa3409b780ea4c9670d45a2f29`.
+
 ## Форматы и сохранение
 
 Схемы JSON используют Draft 2020-12. Общий набор контрактных примеров должен
