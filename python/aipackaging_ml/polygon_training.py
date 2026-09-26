@@ -30,6 +30,8 @@ from .polygon_training_data import PolygonExpertEpisode, load_polygon_baseline_s
 from .rl import compute_gae
 from .rollout import MultiprocessRolloutPool
 from .training import configure_determinism
+from .training_checkpoint import CheckpointContract, load_training_checkpoint, save_training_checkpoint
+from .training_runtime import TrainingBudget, committed_state, resume_elapsed_seconds, restore_committed_state, write_metrics_history
 
 
 @dataclass(frozen=True)
@@ -50,67 +52,25 @@ class PolygonPpoTransition:
     trace_end: bool = False
 
 
-@dataclass(frozen=True)
-class PolygonTrainingBudget:
-    """Учитывает единый временной бюджет во всех продолжениях обучения."""
+PolygonTrainingBudget = TrainingBudget
+_resume_elapsed_seconds = resume_elapsed_seconds
 
-    limit_seconds: float
-    elapsed_before_seconds: float
-    invocation_started: float
-
-    @property
-    def deadline(self) -> float:
-        """Возвращает момент исчерпания оставшейся части общего бюджета."""
-
-        return self.invocation_started + max(0.0, self.limit_seconds - self.elapsed_before_seconds)
-
-    def elapsed_seconds(self) -> float:
-        """Возвращает накопленное время, ограниченное полным бюджетом."""
-
-        current = self.elapsed_before_seconds + max(0.0, time.monotonic() - self.invocation_started)
-        return min(self.limit_seconds, current)
-
-    def checkpoint_state(self, values: Mapping[str, Any]) -> dict[str, Any]:
-        """Добавляет накопленное время к состоянию контрольной точки."""
-
-        result = dict(values)
-        result["elapsedTrainingSeconds"] = self.elapsed_seconds()
-        return result
-
-
-def _resume_elapsed_seconds(payload: Mapping[str, Any], limit_seconds: float) -> float:
-    """Проверяет накопленное время перед продолжением контрольной точки."""
-
-    training_state = payload.get("trainingState")
-    if not isinstance(training_state, Mapping) or "elapsedTrainingSeconds" not in training_state:
-        raise ValueError(
-            "контрольная точка не содержит накопленное время; её можно оценить или завершить, но нельзя продолжить"
-        )
-    elapsed = training_state["elapsedTrainingSeconds"]
-    if isinstance(elapsed, bool) or not isinstance(elapsed, (int, float)) or not math.isfinite(float(elapsed)):
-        raise ValueError("контрольная точка содержит некорректное накопленное время")
-    elapsed_value = float(elapsed)
-    if elapsed_value < 0 or elapsed_value > limit_seconds:
-        raise ValueError("накопленное время контрольной точки выходит за общий бюджет")
-    if elapsed_value >= limit_seconds:
-        raise ValueError("общий временной бюджет обучения уже исчерпан")
-    return elapsed_value
-
-
-def _budget_state(budget: PolygonTrainingBudget | None, values: Mapping[str, Any]) -> dict[str, Any]:
-    """Возвращает состояние с накопленным временем, если бюджет предоставлен."""
-
-    return budget.checkpoint_state(values) if budget is not None else dict(values)
+_POLYGON_CHECKPOINT = CheckpointContract(
+    format="aipackaging.polygon_training_checkpoint",
+    unsupported_message="неподдерживаемая контрольная точка полигонального обучения",
+    strict_fields=True,
+    write_sha256_sidecar=True,
+    require_training_state=True,
+)
 
 
 def _bc_training_state(budget: PolygonTrainingBudget | None, epoch: int, best_nll: float, stale: int,
                        history: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Отмечает подтверждённую границу эпохи и сохраняет историю выбора модели."""
 
-    return _budget_state(budget, {
-        "bcCommittedEpoch": epoch, "bestNll": best_nll, "stale": stale,
-        "history": [dict(item) for item in history],
-    })
+    return committed_state(
+        "bc", epoch, history, budget=budget, values={"bestNll": best_nll, "stale": stale}
+    )
 
 
 def _ppo_training_state(
@@ -121,28 +81,13 @@ def _ppo_training_state(
 ) -> dict[str, Any]:
     """Отмечает подтверждённую границу обновления PPO и сохраняет полную историю запуска."""
 
-    return _budget_state(budget, {
-        "ppoCommittedUpdate": update,
-        "bestScore": list(best_score) if best_score is not None else None,
-        "history": [dict(item) for item in history],
-    })
-
-
-def _checkpoint_payload(model: HierarchicalPolygonPolicyV1, optimizer: torch.optim.Optimizer,
-                        scheduler: torch.optim.lr_scheduler.LRScheduler, *, stage: str, step: int,
-                        config: Mapping[str, Any], training_state: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    """Собирает полное состояние обучения для точного продолжения."""
-
-    payload: dict[str, Any] = {
-        "format": "aipackaging.polygon_training_checkpoint", "version": 1, "stage": stage, "step": step,
-        "config": dict(config), "modelState": model.state_dict(), "optimizerState": optimizer.state_dict(),
-        "schedulerState": scheduler.state_dict(), "pythonRandomState": random.getstate(),
-        "numpyRandomState": np.random.get_state(), "torchRandomState": torch.get_rng_state(),
-        "trainingState": dict(training_state or {}),
-    }
-    if torch.cuda.is_available():
-        payload["cudaRandomState"] = torch.cuda.get_rng_state_all()
-    return payload
+    return committed_state(
+        "ppo",
+        update,
+        history,
+        budget=budget,
+        values={"bestScore": list(best_score) if best_score is not None else None},
+    )
 
 
 def save_polygon_checkpoint(path: str | Path, model: HierarchicalPolygonPolicyV1, optimizer: torch.optim.Optimizer,
@@ -150,18 +95,17 @@ def save_polygon_checkpoint(path: str | Path, model: HierarchicalPolygonPolicyV1
                             config: Mapping[str, Any], training_state: Mapping[str, Any] | None = None) -> str:
     """Атомарно сохраняет контрольную точку и возвращает её SHA-256."""
 
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(destination.suffix + ".tmp")
-    torch.save(_checkpoint_payload(model, optimizer, scheduler, stage=stage, step=step, config=config,
-                                   training_state=training_state), temporary)
-    temporary.replace(destination)
-    digest = sha256_file(destination)
-    digest_path = destination.with_suffix(destination.suffix + ".sha256")
-    digest_temporary = digest_path.with_suffix(digest_path.suffix + ".tmp")
-    digest_temporary.write_text(digest + "\n", encoding="ascii", newline="\n")
-    digest_temporary.replace(digest_path)
-    return digest
+    return save_training_checkpoint(
+        path,
+        _POLYGON_CHECKPOINT,
+        model,
+        optimizer,
+        scheduler,
+        stage=stage,
+        step=step,
+        config=config,
+        training_state=training_state or {},
+    )
 
 
 def load_polygon_checkpoint(path: str | Path, model: HierarchicalPolygonPolicyV1, device: torch.device, *,
@@ -171,44 +115,17 @@ def load_polygon_checkpoint(path: str | Path, model: HierarchicalPolygonPolicyV1
                             expected_config: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Проверяет хеш и загружает доверенную локальную контрольную точку."""
 
-    source = Path(path)
-    if expected_sha256 is None:
-        digest_path = source.with_suffix(source.suffix + ".sha256")
-        if not digest_path.is_file():
-            raise ValueError("рядом с контрольной точкой отсутствует файл SHA-256")
-        expected_sha256 = digest_path.read_text(encoding="ascii").strip()
-    if len(expected_sha256) != 64 or any(character not in "0123456789abcdef" for character in expected_sha256.lower()):
-        raise ValueError("некорректная запись SHA-256 контрольной точки")
-    if sha256_file(source) != expected_sha256.lower():
-        raise ValueError("контрольная сумма контрольной точки не совпадает")
-    payload = torch.load(source, map_location=device, weights_only=False)
-    if payload.get("format") != "aipackaging.polygon_training_checkpoint" or payload.get("version") != 1:
-        raise ValueError("неподдерживаемая контрольная точка полигонального обучения")
-    required = {
-        "format", "version", "stage", "step", "config", "modelState", "optimizerState", "schedulerState",
-        "pythonRandomState", "numpyRandomState", "torchRandomState", "trainingState",
-    }
-    actual_fields = set(payload)
-    if actual_fields != required and actual_fields != required | {"cudaRandomState"}:
-        raise ValueError("контрольная точка содержит неизвестные или пропущенные поля")
-    if payload["stage"] not in {"bc", "ppo"} or not isinstance(payload["step"], int) or payload["step"] < 0:
-        raise ValueError("контрольная точка содержит некорректный этап обучения")
-    if expected_config is not None and payload["config"] != dict(expected_config):
-        raise ValueError("конфигурация контрольной точки не совпадает с запрошенным продолжением")
-    model.load_state_dict(payload["modelState"])
-    if optimizer is not None:
-        optimizer.load_state_dict(payload["optimizerState"])
-    if scheduler is not None:
-        scheduler.load_state_dict(payload["schedulerState"])
-    if restore_rng:
-        random.setstate(payload["pythonRandomState"])
-        np.random.set_state(payload["numpyRandomState"])
-        # `map_location` переносит все тензоры контрольной точки на устройство
-        # модели, но основной генератор PyTorch принимает состояние только с CPU.
-        torch.set_rng_state(payload["torchRandomState"].cpu())
-        if torch.cuda.is_available() and "cudaRandomState" in payload:
-            torch.cuda.set_rng_state_all([state.cpu() for state in payload["cudaRandomState"]])
-    return payload
+    return load_training_checkpoint(
+        path,
+        _POLYGON_CHECKPOINT,
+        model,
+        device,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        restore_rng=restore_rng,
+        expected_sha256=expected_sha256,
+        expected_config=expected_config,
+    )
 
 
 def _validation_nll(model: HierarchicalPolygonPolicyV1, samples: Sequence[CachedPolygonExpertStep],
@@ -228,6 +145,57 @@ def _validation_nll(model: HierarchicalPolygonPolicyV1, samples: Sequence[Cached
             ).log_probability)
             count += 1
     return total / max(count, 1)
+
+
+def _train_polygon_bc_epoch(
+    model: HierarchicalPolygonPolicyV1,
+    samples: Sequence[CachedPolygonExpertStep],
+    optimizer: torch.optim.Optimizer,
+    *,
+    accumulation: int,
+    seed: int,
+    epoch: int,
+    device: torch.device,
+    deadline: float,
+) -> tuple[int, float, bool]:
+    """Выполняет одну полигональную эпоху BC без публикации её результата."""
+
+    model.train()
+    optimizer.zero_grad(set_to_none=True)
+    order = list(range(len(samples)))
+    random.Random(seed + epoch).shuffle(order)
+    count = 0
+    total_loss = 0.0
+    for sample_index in order:
+        if time.monotonic() >= deadline:
+            return count, total_loss, True
+        sample = samples[sample_index]
+        decision = evaluate_polygon_components(
+            model,
+            sample.fixed,
+            sample.dynamic,
+            sample.placement,
+            sample.instance,
+            sample.rotation,
+            sample.position,
+            device,
+        )
+        target = torch.tensor(sample.value_target, dtype=torch.float32, device=device)
+        loss = -decision.log_probability + 0.5 * torch.square(decision.value - target)
+        (loss / accumulation).backward()
+        total_loss += float(loss.detach())
+        count += 1
+        if count % accumulation == 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+    if time.monotonic() >= deadline:
+        return count, total_loss, True
+    if count % accumulation:
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
+    return count, total_loss, False
 
 
 def train_polygon_bc(model: HierarchicalPolygonPolicyV1, train_samples: Sequence[CachedPolygonExpertStep],
@@ -253,15 +221,9 @@ def train_polygon_bc(model: HierarchicalPolygonPolicyV1, train_samples: Sequence
             resume, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True,
             expected_config=config,
         )
-        if payload["stage"] != "bc":
-            raise ValueError("для продолжения BC требуется контрольная точка этапа BC")
-        start_epoch = int(payload["step"])
-        saved_state = payload["trainingState"]
-        if saved_state.get("bcCommittedEpoch") != start_epoch or not isinstance(saved_state.get("history"), list):
-            raise ValueError("контрольная точка BC не подтверждает завершённую эпоху; продолжение небезопасно")
+        start_epoch, history, saved_state = restore_committed_state(payload, "bc")
         best_nll = float(saved_state["bestNll"])
         stale = int(saved_state["stale"])
-        history = list(saved_state["history"])
     status = "complete"
     for epoch in range(start_epoch, epochs):
         if time.monotonic() >= deadline:
@@ -270,37 +232,16 @@ def train_polygon_bc(model: HierarchicalPolygonPolicyV1, train_samples: Sequence
         # Эта точка является единственным согласованным состоянием эпохи.
         save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="bc", step=epoch, config=config,
                                 training_state=_bc_training_state(budget, epoch, best_nll, stale, history))
-        model.train()
-        optimizer.zero_grad(set_to_none=True)
-        samples = 0
-        total_loss = 0.0
-        order = list(range(len(train_samples)))
-        random.Random(config["seed"] + epoch).shuffle(order)
-        exhausted = False
-        for sample_index in order:
-            if time.monotonic() >= deadline:
-                exhausted = True
-                break
-            sample = train_samples[sample_index]
-            decision = evaluate_polygon_components(
-                model, sample.fixed, sample.dynamic, sample.placement,
-                sample.instance, sample.rotation, sample.position, device,
-            )
-            target = torch.tensor(sample.value_target, dtype=torch.float32, device=device)
-            loss = -decision.log_probability + 0.5 * torch.square(decision.value - target)
-            (loss / accumulation).backward()
-            total_loss += float(loss.detach())
-            samples += 1
-            if samples % accumulation == 0:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                optimizer.step()
-                optimizer.zero_grad(set_to_none=True)
-        if not exhausted and time.monotonic() >= deadline:
-            exhausted = True
-        if not exhausted and samples % accumulation:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-            optimizer.zero_grad(set_to_none=True)
+        samples, total_loss, exhausted = _train_polygon_bc_epoch(
+            model,
+            train_samples,
+            optimizer,
+            accumulation=accumulation,
+            seed=config["seed"],
+            epoch=epoch,
+            device=device,
+            deadline=deadline,
+        )
         if exhausted:
             # Частично обновлённые веса и накопленные градиенты нельзя повторить с начала эпохи.
             load_polygon_checkpoint(resume_path, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True)
@@ -448,6 +389,73 @@ def _validation_score(model: HierarchicalPolygonPolicyV1, episodes: Sequence[Pol
                                                        "meanUsedLengthMicrometers": mean_used}
 
 
+def _optimize_polygon_ppo_update(
+    model: HierarchicalPolygonPolicyV1,
+    transitions: Sequence[PolygonPpoTransition],
+    advantages: np.ndarray,
+    returns: np.ndarray,
+    optimizer: torch.optim.Optimizer,
+    settings: Mapping[str, Any],
+    *,
+    epochs: int,
+    entropy: float,
+    seed: int,
+    update: int,
+    device: torch.device,
+    deadline: float,
+) -> tuple[float, bool]:
+    """Выполняет градиентные шаги одного полигонального обновления PPO."""
+
+    model.train()
+    total_loss = 0.0
+    for epoch in range(epochs):
+        indices = list(range(len(transitions)))
+        random.Random(seed + update * 1009 + epoch).shuffle(indices)
+        optimizer.zero_grad(set_to_none=True)
+        for local, index in enumerate(indices, 1):
+            if time.monotonic() >= deadline:
+                return total_loss, True
+            item = transitions[index]
+            decision = evaluate_polygon_components(
+                model,
+                item.fixed,
+                item.dynamic,
+                item.placement,
+                item.instance,
+                item.rotation,
+                item.position,
+                device,
+            )
+            if time.monotonic() >= deadline:
+                return total_loss, True
+            ratio = torch.exp(
+                decision.log_probability - torch.tensor(item.old_log_probability, device=device)
+            )
+            advantage = torch.tensor(float(advantages[index]), device=device)
+            actor = -torch.minimum(
+                ratio * advantage,
+                torch.clamp(
+                    ratio, 1 - settings["clipRatio"], 1 + settings["clipRatio"]
+                )
+                * advantage,
+            )
+            value = torch.square(
+                decision.value - torch.tensor(float(returns[index]), device=device)
+            )
+            loss = actor + settings["valueCoefficient"] * value - entropy * decision.entropy
+            if time.monotonic() >= deadline:
+                return total_loss, True
+            (loss / 64).backward()
+            total_loss += float(loss.detach())
+            if local % 64 == 0 or local == len(indices):
+                if time.monotonic() >= deadline:
+                    return total_loss, True
+                torch.nn.utils.clip_grad_norm_(model.parameters(), settings["maxGradientNorm"])
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+    return total_loss, False
+
+
 def train_polygon_ppo(model: HierarchicalPolygonPolicyV1, train_episodes: Sequence[PolygonExpertEpisode],
                       validation_episodes: Sequence[PolygonExpertEpisode], validation_baselines: Mapping[str, Any],
                       config: Mapping[str, Any], run_dir: Path, device: torch.device, *, smoke: bool,
@@ -471,13 +479,7 @@ def train_polygon_ppo(model: HierarchicalPolygonPolicyV1, train_episodes: Sequen
             resume, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True,
             expected_config=config,
         )
-        if payload["stage"] != "ppo":
-            raise ValueError("для продолжения PPO требуется контрольная точка этапа PPO")
-        start = int(payload["step"])
-        saved_state = payload["trainingState"]
-        if saved_state.get("ppoCommittedUpdate") != start or not isinstance(saved_state.get("history"), list):
-            raise ValueError("контрольная точка PPO не подтверждает завершённое обновление; продолжение небезопасно")
-        history = [dict(item) for item in saved_state["history"]]
+        start, history, saved_state = restore_committed_state(payload, "ppo")
     stored_score = payload.get("trainingState", {}).get("bestScore") if resume is not None else None
     best_score: tuple[float, ...] | None = tuple(stored_score) if stored_score is not None else None
     status = "complete"
@@ -505,40 +507,20 @@ def train_polygon_ppo(model: HierarchicalPolygonPolicyV1, train_episodes: Sequen
         advantages, returns = _advantages(transitions, settings["gamma"], settings["gaeLambda"])
         advantages = (advantages - advantages.mean()) / max(float(advantages.std()), 1e-8)
         entropy = settings["entropyStart"] + (settings["entropyEnd"] - settings["entropyStart"]) * update / max(updates - 1, 1)
-        model.train(); total_loss = 0.0
-        exhausted = False
-        for epoch in range(epochs):
-            indices = list(range(len(transitions)))
-            random.Random(config["seed"] + update * 1009 + epoch).shuffle(indices)
-            optimizer.zero_grad(set_to_none=True)
-            for local, index in enumerate(indices, 1):
-                if time.monotonic() >= deadline:
-                    exhausted = True
-                    break
-                item = transitions[index]
-                decision = evaluate_polygon_components(model, item.fixed, item.dynamic, item.placement,
-                                                       item.instance, item.rotation, item.position, device)
-                if time.monotonic() >= deadline:
-                    exhausted = True
-                    break
-                ratio = torch.exp(decision.log_probability - torch.tensor(item.old_log_probability, device=device))
-                advantage = torch.tensor(float(advantages[index]), device=device)
-                actor = -torch.minimum(ratio * advantage,
-                                       torch.clamp(ratio, 1 - settings["clipRatio"], 1 + settings["clipRatio"]) * advantage)
-                value = torch.square(decision.value - torch.tensor(float(returns[index]), device=device))
-                loss = actor + settings["valueCoefficient"] * value - entropy * decision.entropy
-                if time.monotonic() >= deadline:
-                    exhausted = True
-                    break
-                (loss / 64).backward(); total_loss += float(loss.detach())
-                if local % 64 == 0 or local == len(indices):
-                    if time.monotonic() >= deadline:
-                        exhausted = True
-                        break
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), settings["maxGradientNorm"])
-                    optimizer.step(); optimizer.zero_grad(set_to_none=True)
-            if exhausted:
-                break
+        total_loss, exhausted = _optimize_polygon_ppo_update(
+            model,
+            transitions,
+            advantages,
+            returns,
+            optimizer,
+            settings,
+            epochs=epochs,
+            entropy=entropy,
+            seed=config["seed"],
+            update=update,
+            device=device,
+            deadline=deadline,
+        )
         if exhausted or time.monotonic() >= deadline:
             load_polygon_checkpoint(resume_path, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True)
             save_polygon_checkpoint(resume_path, model, optimizer, scheduler, stage="ppo", step=update, config=config,
@@ -649,8 +631,7 @@ def train_polygon_pipeline(config_path: str | Path, dataset_root: str | Path, ru
             ppo_path = bc_path; ppo_history = []; status = bc_status
             run_history = bc_history
     metrics_path = output / "metrics.jsonl"
-    metrics_path.write_text("".join(canonical_json(item) + "\n" for item in run_history),
-                            encoding="utf-8", newline="\n")
+    write_metrics_history(metrics_path, run_history)
     config_hash = sha256_file(config_path)
     checkpoint_hash = sha256_file(ppo_path)
     policy_path = output / "polygon-policy.json"

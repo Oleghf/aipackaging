@@ -14,12 +14,22 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 import torch
 
-from .contracts import canonical_json, load_training_config, sha256_file, write_canonical_json
+from .contracts import load_training_config, sha256_file, write_canonical_json
 from .model import HierarchicalGridPolicyV1
 from .policy import PolicyRunner, encode_observation, evaluate_action, select_action
 from .rl import PpoTransition, compute_gae
 from .rollout import MultiprocessRolloutPool
+from .training_checkpoint import CheckpointContract, load_training_checkpoint, save_training_checkpoint
 from .training_data import ExpertEpisode, load_expert_episodes, replay_expert_steps
+from .training_runtime import TrainingBudget, committed_state, restore_committed_state, resume_elapsed_seconds, write_metrics_history
+
+
+_GRID_CHECKPOINT = CheckpointContract(
+    format="aipackaging.training_checkpoint",
+    unsupported_message="неподдерживаемая контрольная точка обучения",
+    strict_fields=False,
+    write_sha256_sidecar=False,
+)
 
 
 def configure_determinism(seed: int) -> None:
@@ -36,35 +46,6 @@ def configure_determinism(seed: int) -> None:
     torch.use_deterministic_algorithms(True)
 
 
-def _checkpoint_payload(
-    model: HierarchicalGridPolicyV1,
-    optimizer: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler.LRScheduler,
-    *,
-    stage: str,
-    step: int,
-    config: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Собирает модель, оптимизатор и состояние RNG для точного продолжения запуска."""
-
-    payload: dict[str, Any] = {
-        "format": "aipackaging.training_checkpoint",
-        "version": 1,
-        "stage": stage,
-        "step": step,
-        "config": dict(config),
-        "modelState": model.state_dict(),
-        "optimizerState": optimizer.state_dict(),
-        "schedulerState": scheduler.state_dict(),
-        "pythonRandomState": random.getstate(),
-        "numpyRandomState": np.random.get_state(),
-        "torchRandomState": torch.get_rng_state(),
-    }
-    if torch.cuda.is_available():
-        payload["cudaRandomState"] = torch.cuda.get_rng_state_all()
-    return payload
-
-
 def save_checkpoint(
     path: str | Path,
     model: HierarchicalGridPolicyV1,
@@ -74,15 +55,21 @@ def save_checkpoint(
     stage: str,
     step: int,
     config: Mapping[str, Any],
+    training_state: Mapping[str, Any] | None = None,
 ) -> str:
     """Атомарно сохраняет доверенную локальную контрольную точку и возвращает SHA-256."""
 
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(destination.suffix + ".tmp")
-    torch.save(_checkpoint_payload(model, optimizer, scheduler, stage=stage, step=step, config=config), temporary)
-    temporary.replace(destination)
-    return sha256_file(destination)
+    return save_training_checkpoint(
+        path,
+        _GRID_CHECKPOINT,
+        model,
+        optimizer,
+        scheduler,
+        stage=stage,
+        step=step,
+        config=config,
+        training_state=training_state,
+    )
 
 
 def load_checkpoint(
@@ -93,26 +80,51 @@ def load_checkpoint(
     optimizer: torch.optim.Optimizer | None = None,
     scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
     restore_rng: bool = False,
+    expected_config: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Загружает доверенную контрольную точку и при необходимости восстанавливает оптимизатор и RNG."""
 
-    # Контрольная точка содержит оптимизатор и состояние RNG, поэтому это доверенный
-    # внутренний артефакт. Пользовательские файлы с расширением `.pt` этим API загружать нельзя.
-    payload = torch.load(Path(path), map_location=device, weights_only=False)
-    if payload.get("format") != "aipackaging.training_checkpoint" or payload.get("version") != 1:
-        raise ValueError("неподдерживаемая контрольная точка обучения")
-    model.load_state_dict(payload["modelState"])
-    if optimizer is not None:
-        optimizer.load_state_dict(payload["optimizerState"])
-    if scheduler is not None:
-        scheduler.load_state_dict(payload["schedulerState"])
-    if restore_rng:
-        random.setstate(payload["pythonRandomState"])
-        np.random.set_state(payload["numpyRandomState"])
-        torch.set_rng_state(payload["torchRandomState"])
-        if torch.cuda.is_available() and "cudaRandomState" in payload:
-            torch.cuda.set_rng_state_all(payload["cudaRandomState"])
-    return payload
+    return load_training_checkpoint(
+        path,
+        _GRID_CHECKPOINT,
+        model,
+        device,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        restore_rng=restore_rng,
+        expected_config=expected_config,
+    )
+
+
+def _grid_bc_state(
+    budget: TrainingBudget | None,
+    epoch: int,
+    best_nll: float,
+    stale: int,
+    history: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Формирует подтверждённое состояние клеточной эпохи BC."""
+
+    return committed_state(
+        "bc", epoch, history, budget=budget, values={"bestNll": best_nll, "stale": stale}
+    )
+
+
+def _grid_ppo_state(
+    budget: TrainingBudget | None,
+    update: int,
+    best_score: Sequence[float] | None,
+    history: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Формирует подтверждённое состояние клеточного обновления PPO."""
+
+    return committed_state(
+        "ppo",
+        update,
+        history,
+        budget=budget,
+        values={"bestScore": list(best_score) if best_score is not None else None},
+    )
 
 
 def _validation_nll(
@@ -136,6 +148,48 @@ def _validation_nll(
     return total / max(count, 1)
 
 
+def _train_grid_bc_epoch(
+    model: HierarchicalGridPolicyV1,
+    episodes: Sequence[ExpertEpisode],
+    optimizer: torch.optim.Optimizer,
+    *,
+    accumulation: int,
+    seed: int,
+    epoch: int,
+    device: torch.device,
+    deadline: float | None,
+) -> tuple[int, float, bool]:
+    """Выполняет одну клеточную эпоху BC без публикации её результата."""
+
+    model.train()
+    optimizer.zero_grad(set_to_none=True)
+    order = list(range(len(episodes)))
+    random.Random(seed + epoch).shuffle(order)
+    training_loss = 0.0
+    samples = 0
+    for episode_index in order:
+        for sample in replay_expert_steps(episodes[episode_index]):
+            if deadline is not None and time.monotonic() >= deadline:
+                return samples, training_loss, True
+            decision = evaluate_action(model, sample.fixed, sample.dynamic, sample.action_index, device)
+            target = torch.tensor(sample.value_target, dtype=torch.float32, device=device)
+            loss = -decision.log_probability + 0.5 * torch.square(decision.value - target)
+            (loss / accumulation).backward()
+            training_loss += float(loss.detach())
+            samples += 1
+            if samples % accumulation == 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+    if deadline is not None and time.monotonic() >= deadline:
+        return samples, training_loss, True
+    if samples % accumulation:
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
+    return samples, training_loss, False
+
+
 def train_behavioral_cloning(
     model: HierarchicalGridPolicyV1,
     train_episodes: Sequence[ExpertEpisode],
@@ -146,6 +200,8 @@ def train_behavioral_cloning(
     *,
     smoke: bool = False,
     deadline: float | None = None,
+    resume: str | Path | None = None,
+    budget: TrainingBudget | None = None,
 ) -> tuple[Path, list[dict[str, Any]]]:
     """Обучает политику имитацией эксперта, а критик — точной оставшейся отдаче."""
 
@@ -156,48 +212,63 @@ def train_behavioral_cloning(
     patience = settings["earlyStoppingPatience"]
     accumulation = settings["gradientAccumulation"]
     output = Path(run_dir) / "bc-best.pt"
+    resume_path = Path(run_dir) / "resume.pt"
     history: list[dict[str, Any]] = []
     best_nll = math.inf
     stale = 0
+    start_epoch = 0
+    if resume is not None:
+        payload = load_checkpoint(
+            resume,
+            model,
+            device,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            restore_rng=True,
+            expected_config=config,
+        )
+        start_epoch, history, saved_state = restore_committed_state(payload, "bc")
+        best_nll = float(saved_state["bestNll"])
+        stale = int(saved_state["stale"])
     exhausted = False
 
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, epochs):
         if deadline is not None and time.monotonic() >= deadline:
             exhausted = True
             break
-        model.train()
-        optimizer.zero_grad(set_to_none=True)
-        order = list(range(len(train_episodes)))
-        random.Random(config["seed"] + epoch).shuffle(order)
-        training_loss = 0.0
-        samples = 0
-        for episode_index in order:
-            for sample in replay_expert_steps(train_episodes[episode_index]):
-                if deadline is not None and time.monotonic() >= deadline:
-                    exhausted = True
-                    break
-                decision = evaluate_action(model, sample.fixed, sample.dynamic, sample.action_index, device)
-                target = torch.tensor(sample.value_target, dtype=torch.float32, device=device)
-                value_loss = torch.square(decision.value - target)
-                loss = -decision.log_probability + 0.5 * value_loss
-                (loss / accumulation).backward()
-                training_loss += float(loss.detach())
-                samples += 1
-                if samples % accumulation == 0:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                    optimizer.step()
-                    optimizer.zero_grad(set_to_none=True)
-            if exhausted:
-                break
-        if samples % accumulation:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-            optimizer.zero_grad(set_to_none=True)
+        save_checkpoint(
+            resume_path,
+            model,
+            optimizer,
+            scheduler,
+            stage="bc",
+            step=epoch,
+            config=config,
+            training_state=_grid_bc_state(budget, epoch, best_nll, stale, history),
+        )
+        samples, training_loss, exhausted = _train_grid_bc_epoch(
+            model,
+            train_episodes,
+            optimizer,
+            accumulation=accumulation,
+            seed=config["seed"],
+            epoch=epoch,
+            device=device,
+            deadline=deadline,
+        )
+        if exhausted:
+            load_checkpoint(
+                resume_path, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True
+            )
+            break
         if samples:
             scheduler.step()
 
         validation_nll = _validation_nll(model, validation_episodes, device, deadline)
         if validation_nll is None:
+            load_checkpoint(
+                resume_path, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True
+            )
             exhausted = True
             break
         record = {"stage": "bc", "epoch": epoch + 1, "samples": samples, "trainingLoss": training_loss / max(samples, 1), "validationNll": validation_nll}
@@ -205,13 +276,42 @@ def train_behavioral_cloning(
         if validation_nll < best_nll:
             best_nll = validation_nll
             stale = 0
-            save_checkpoint(output, model, optimizer, scheduler, stage="bc", step=epoch + 1, config=config)
+            save_checkpoint(
+                output,
+                model,
+                optimizer,
+                scheduler,
+                stage="bc",
+                step=epoch + 1,
+                config=config,
+                training_state=_grid_bc_state(budget, epoch + 1, best_nll, stale, history),
+            )
         else:
             stale += 1
-            if stale >= patience:
-                break
+        save_checkpoint(
+            resume_path,
+            model,
+            optimizer,
+            scheduler,
+            stage="bc",
+            step=epoch + 1,
+            config=config,
+            training_state=_grid_bc_state(budget, epoch + 1, best_nll, stale, history),
+        )
+        if stale >= patience:
+            break
     if not output.exists():
-        save_checkpoint(output, model, optimizer, scheduler, stage="bc", step=len(history), config=config)
+        completed = len(history)
+        save_checkpoint(
+            output,
+            model,
+            optimizer,
+            scheduler,
+            stage="bc",
+            step=completed,
+            config=config,
+            training_state=_grid_bc_state(budget, completed, best_nll, stale, history),
+        )
     load_checkpoint(output, model, device)
     return output, history
 
@@ -314,6 +414,62 @@ def _validation_score(
     return score, {"solved": solved, "tasks": len(solutions), "meanUsedLength": mean_used, "meanLargestExtraRectangleArea": mean_extra, "meanFragmentationPenalty": mean_fragmentation}
 
 
+def _optimize_grid_ppo_update(
+    model: HierarchicalGridPolicyV1,
+    transitions: Sequence[PpoTransition],
+    advantages: np.ndarray,
+    returns: np.ndarray,
+    optimizer: torch.optim.Optimizer,
+    settings: Mapping[str, Any],
+    *,
+    epochs: int,
+    entropy_coefficient: float,
+    seed: int,
+    update: int,
+    device: torch.device,
+    deadline: float,
+) -> tuple[float, int, bool]:
+    """Выполняет градиентные шаги одного клеточного обновления PPO."""
+
+    model.train()
+    update_loss = 0.0
+    optimizer.zero_grad(set_to_none=True)
+    optimizer_steps = 0
+    for epoch in range(epochs):
+        indices = list(range(len(transitions)))
+        random.Random(seed + update * 1009 + epoch).shuffle(indices)
+        for local_index, index in enumerate(indices, 1):
+            if time.monotonic() >= deadline:
+                return update_loss, optimizer_steps, True
+            transition = transitions[index]
+            decision = evaluate_action(model, transition.fixed, transition.dynamic, transition.action_index, device)
+            old_log_probability = torch.tensor(
+                transition.old_log_probability, dtype=torch.float32, device=device
+            )
+            advantage = torch.tensor(float(advantages[index]), dtype=torch.float32, device=device)
+            target_return = torch.tensor(float(returns[index]), dtype=torch.float32, device=device)
+            ratio = torch.exp(decision.log_probability - old_log_probability)
+            unclipped = ratio * advantage
+            clipped = torch.clamp(
+                ratio, 1.0 - settings["clipRatio"], 1.0 + settings["clipRatio"]
+            ) * advantage
+            actor_loss = -torch.minimum(unclipped, clipped)
+            value_loss = torch.square(decision.value - target_return)
+            loss = (
+                actor_loss
+                + settings["valueCoefficient"] * value_loss
+                - entropy_coefficient * decision.entropy
+            )
+            (loss / 64).backward()
+            update_loss += float(loss.detach())
+            if local_index % 64 == 0 or local_index == len(indices):
+                torch.nn.utils.clip_grad_norm_(model.parameters(), settings["maxGradientNorm"])
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+                optimizer_steps += 1
+    return update_loss, optimizer_steps, False
+
+
 def train_ppo(
     model: HierarchicalGridPolicyV1,
     train_episodes: Sequence[ExpertEpisode],
@@ -325,6 +481,8 @@ def train_ppo(
     smoke: bool = False,
     resume: str | Path | None = None,
     deadline: float | None = None,
+    budget: TrainingBudget | None = None,
+    prior_history: Sequence[Mapping[str, Any]] = (),
 ) -> tuple[Path, list[dict[str, Any]], str]:
     """Дообучает политику BC методом PPO с ограничением по вознаграждению v1."""
 
@@ -335,23 +493,46 @@ def train_ppo(
     transitions_per_update = min(32, settings["transitionsPerUpdate"]) if smoke else settings["transitionsPerUpdate"]
     epochs = 1 if smoke else settings["epochsPerUpdate"]
     output = Path(run_dir) / "ppo-best.pt"
-    history: list[dict[str, Any]] = []
+    resume_path = Path(run_dir) / "resume.pt"
+    history: list[dict[str, Any]] = [dict(item) for item in prior_history]
     best_score: tuple[float, ...] | None = None
     started = time.monotonic()
-    effective_deadline = deadline if deadline is not None else started + settings["maxWallTimeSeconds"]
+    effective_deadline = (
+        budget.deadline
+        if budget is not None
+        else deadline if deadline is not None else started + settings["maxWallTimeSeconds"]
+    )
     status = "complete"
     validation_interval = 1 if smoke else max(1, updates // 10)
     start_update = 0
     if resume is not None:
-        payload = load_checkpoint(resume, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True)
-        if payload["stage"] != "ppo":
-            raise ValueError("для продолжения PPO требуется контрольная точка PPO")
-        start_update = int(payload["step"])
+        payload = load_checkpoint(
+            resume,
+            model,
+            device,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            restore_rng=True,
+            expected_config=config,
+        )
+        start_update, history, saved_state = restore_committed_state(payload, "ppo")
+        stored_score = saved_state.get("bestScore")
+        best_score = tuple(stored_score) if stored_score is not None else None
 
     for update in range(start_update, updates):
         if time.monotonic() >= effective_deadline:
             status = "budget_exhausted"
             break
+        save_checkpoint(
+            resume_path,
+            model,
+            optimizer,
+            scheduler,
+            stage="ppo",
+            step=update,
+            config=config,
+            training_state=_grid_ppo_state(budget, update, best_score, history),
+        )
         transitions = _collect_transitions(
             model,
             train_episodes,
@@ -368,38 +549,25 @@ def train_ppo(
         advantages = (advantages - advantages.mean()) / max(float(advantages.std()), 1e-8)
         entropy_coefficient = settings["entropyStart"] + (settings["entropyEnd"] - settings["entropyStart"]) * update / max(updates - 1, 1)
 
-        model.train()
-        update_loss = 0.0
-        optimizer.zero_grad(set_to_none=True)
-        optimizer_steps = 0
-        for epoch in range(epochs):
-            indices = list(range(len(transitions)))
-            random.Random(config["seed"] + update * 1009 + epoch).shuffle(indices)
-            for local_index, index in enumerate(indices, 1):
-                if time.monotonic() >= effective_deadline:
-                    status = "budget_exhausted"
-                    break
-                transition = transitions[index]
-                decision = evaluate_action(model, transition.fixed, transition.dynamic, transition.action_index, device)
-                old_log_probability = torch.tensor(transition.old_log_probability, dtype=torch.float32, device=device)
-                advantage = torch.tensor(float(advantages[index]), dtype=torch.float32, device=device)
-                target_return = torch.tensor(float(returns[index]), dtype=torch.float32, device=device)
-                ratio = torch.exp(decision.log_probability - old_log_probability)
-                unclipped = ratio * advantage
-                clipped = torch.clamp(ratio, 1.0 - settings["clipRatio"], 1.0 + settings["clipRatio"]) * advantage
-                actor_loss = -torch.minimum(unclipped, clipped)
-                value_loss = torch.square(decision.value - target_return)
-                loss = actor_loss + settings["valueCoefficient"] * value_loss - entropy_coefficient * decision.entropy
-                (loss / 64).backward()
-                update_loss += float(loss.detach())
-                if local_index % 64 == 0 or local_index == len(indices):
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), settings["maxGradientNorm"])
-                    optimizer.step()
-                    optimizer.zero_grad(set_to_none=True)
-                    optimizer_steps += 1
-            if status == "budget_exhausted":
-                break
-        if status == "budget_exhausted":
+        update_loss, optimizer_steps, exhausted = _optimize_grid_ppo_update(
+            model,
+            transitions,
+            advantages,
+            returns,
+            optimizer,
+            settings,
+            epochs=epochs,
+            entropy_coefficient=entropy_coefficient,
+            seed=config["seed"],
+            update=update,
+            device=device,
+            deadline=effective_deadline,
+        )
+        if exhausted:
+            status = "budget_exhausted"
+            load_checkpoint(
+                resume_path, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True
+            )
             break
         scheduler.step()
 
@@ -416,17 +584,49 @@ def train_ppo(
                 model, validation_episodes, device, config["seed"], effective_deadline
             )
             if validation_result is None:
+                load_checkpoint(
+                    resume_path, model, device, optimizer=optimizer, scheduler=scheduler, restore_rng=True
+                )
                 status = "budget_exhausted"
                 break
             score, validation = validation_result
             record["validation"] = validation
             if best_score is None or score > best_score:
                 best_score = score
-                save_checkpoint(output, model, optimizer, scheduler, stage="ppo", step=update + 1, config=config)
+                save_checkpoint(
+                    output,
+                    model,
+                    optimizer,
+                    scheduler,
+                    stage="ppo",
+                    step=update + 1,
+                    config=config,
+                    training_state=_grid_ppo_state(budget, update + 1, best_score, (*history, record)),
+                )
         history.append(record)
+        save_checkpoint(
+            resume_path,
+            model,
+            optimizer,
+            scheduler,
+            stage="ppo",
+            step=update + 1,
+            config=config,
+            training_state=_grid_ppo_state(budget, update + 1, best_score, history),
+        )
 
     if not output.exists():
-        save_checkpoint(output, model, optimizer, scheduler, stage="ppo", step=start_update + len(history), config=config)
+        committed = max(start_update, max((int(item["update"]) for item in history if item.get("stage") == "ppo"), default=0))
+        save_checkpoint(
+            output,
+            model,
+            optimizer,
+            scheduler,
+            stage="ppo",
+            step=committed,
+            config=config,
+            training_state=_grid_ppo_state(budget, committed, best_score, history),
+        )
     load_checkpoint(output, model, device)
     return output, history, status
 
@@ -447,18 +647,28 @@ def train_pipeline(
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("каноническое обучение M3 требует доступного устройства CUDA")
     configure_determinism(config["seed"])
-    deadline = time.monotonic() + config["ppo"]["maxWallTimeSeconds"]
-    run_path = Path(run_dir)
-    run_path.mkdir(parents=True, exist_ok=True)
-    write_canonical_json(run_path / "training-config.json", config)
+    invocation_started = time.monotonic()
+    model = HierarchicalGridPolicyV1(config["model"]["hiddenSize"]).to(device)
+    resume_payload = (
+        load_checkpoint(resume, model, device, expected_config=config) if resume is not None else None
+    )
+    if resume_payload is not None:
+        restore_committed_state(resume_payload, str(resume_payload["stage"]))
+    limit_seconds = float(config["ppo"]["maxWallTimeSeconds"])
+    elapsed_before = resume_elapsed_seconds(resume_payload, limit_seconds) if resume_payload is not None else 0.0
+    budget = TrainingBudget(limit_seconds, elapsed_before, invocation_started)
+    deadline = budget.deadline
     train_episodes = load_expert_episodes(dataset_root, "train", expected_manifest_sha256=config["datasetManifestSha256"])
     validation_episodes = load_expert_episodes(dataset_root, "validation", expected_manifest_sha256=config["datasetManifestSha256"])
     if smoke:
         train_episodes = train_episodes[:2]
         validation_episodes = validation_episodes[:2]
 
-    model = HierarchicalGridPolicyV1(config["model"]["hiddenSize"]).to(device)
+    run_path = Path(run_dir)
+    run_path.mkdir(parents=True, exist_ok=True)
+    write_canonical_json(run_path / "training-config.json", config)
     bc_history: list[dict[str, Any]] = []
+    run_history: list[dict[str, Any]] = []
     ppo_resume: str | Path | None = None
     if resume is None:
         bc_path, bc_history = train_behavioral_cloning(
@@ -470,27 +680,50 @@ def train_pipeline(
             device,
             smoke=smoke,
             deadline=deadline,
+            budget=budget,
         )
     else:
-        payload = load_checkpoint(resume, model, device)
+        payload = resume_payload
+        assert payload is not None
         existing_bc = Path(resume).parent / "bc-best.pt"
         bc_path = existing_bc if existing_bc.exists() else Path(resume)
         if payload["stage"] == "ppo":
             ppo_resume = resume
-    ppo_path, ppo_history, status = train_ppo(
-        model,
-        train_episodes,
-        validation_episodes,
-        config,
-        run_path,
-        device,
-        smoke=smoke,
-        resume=ppo_resume,
-        deadline=deadline,
-    )
+        else:
+            bc_path, bc_history = train_behavioral_cloning(
+                model,
+                train_episodes,
+                validation_episodes,
+                config,
+                run_path,
+                device,
+                smoke=smoke,
+                deadline=deadline,
+                resume=resume,
+                budget=budget,
+            )
+    if time.monotonic() >= deadline:
+        ppo_path = bc_path
+        status = "budget_exhausted"
+        run_history = bc_history
+    else:
+        ppo_path, ppo_history, status = train_ppo(
+            model,
+            train_episodes,
+            validation_episodes,
+            config,
+            run_path,
+            device,
+            smoke=smoke,
+            resume=ppo_resume,
+            deadline=deadline,
+            budget=budget,
+            prior_history=bc_history,
+        )
+        run_history = ppo_history
 
     metrics_path = run_path / "metrics.jsonl"
-    metrics_path.write_text("".join(canonical_json(item) + "\n" for item in (*bc_history, *ppo_history)), encoding="utf-8", newline="\n")
+    write_metrics_history(metrics_path, run_history)
     manifest = {
         "format": "aipackaging.training_run",
         "version": 1,

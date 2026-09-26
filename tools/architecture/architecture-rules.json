@@ -190,6 +190,8 @@
       "training": [
         "rollout",
         "training",
+        "training_checkpoint",
+        "training_runtime",
         "polygon_training",
         "polygon_training_cache"
       ],
@@ -280,6 +282,7 @@
       "python/aipackaging_ml/model.py",
       "python/aipackaging_ml/policy.py",
       "python/aipackaging_ml/training.py",
+      "python/aipackaging_ml/training_checkpoint.py",
       "python/aipackaging_ml/polygon_evaluation.py",
       "python/aipackaging_ml/polygon_model.py",
       "python/aipackaging_ml/polygon_policy.py",
