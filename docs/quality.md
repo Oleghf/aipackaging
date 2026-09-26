@@ -11,6 +11,7 @@
 ```powershell
 python tools/run_checks.py documentation
 python tools/run_checks.py language
+python tools/run_checks.py format
 python tools/run_checks.py architecture
 python tools/run_checks.py nesting
 python tools/run_checks.py headless
@@ -27,6 +28,8 @@ python tools/run_checks.py desktop --qt-dir <путь-к-Qt6Config>
 
 - `documentation` — локальные ссылки, версии, этапы и хеши;
 - `language` — русская терминология в документации, комментариях и сообщениях;
+- `format` — сухая проверка `.clang-format` всех отслеживаемых собственных
+  файлов C++;
 - `architecture` — направления зависимостей C++, CMake и Python;
 - `nesting` — чистое ядро, поиск, JSON и CLI;
 - `headless` — ядро, прикладной слой и инфраструктура без Qt;
@@ -136,3 +139,8 @@ GitHub Actions проверяет Linux, Windows MSVC, Python 3.13, настол
 
 Перед коммитом дополнительно выполняются `clang-format` для изменённых C++
 файлов, диагностический `clang-tidy` и `git diff --check`.
+
+Команда `language` дополнительно проверяет наличие русской шапки перед
+классами, структурами, объявлениями и определениями функций, включая
+удалённые и стандартные специальные функции. Точечное исключение допускается
+только для точного пути и символа с обязательной причиной в конфигурации.
