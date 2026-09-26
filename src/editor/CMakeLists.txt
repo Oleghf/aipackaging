@@ -14,4 +14,3 @@ target_sources(AIPackaging_Editor PUBLIC
     "include/aipackaging/editor/polygon_document.h"
     "include/aipackaging/editor/polygon_document_validation.h"
 )
-

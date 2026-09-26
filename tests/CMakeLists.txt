@@ -90,6 +90,14 @@ if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
   target_link_libraries(AIPackaging_EditorTests PRIVATE AIPackaging_Editor)
   set_tests_properties(AIPackaging_EditorTests PROPERTIES LABELS "app;editor")
 
+  aipackaging_add_test_executable(AIPackaging_EditorPersistenceTests
+    "editor/testpolygondraftio.cpp"
+  )
+  target_link_libraries(AIPackaging_EditorPersistenceTests PRIVATE
+    AIPackaging_EditorPersistence nlohmann_json::nlohmann_json
+  )
+  set_tests_properties(AIPackaging_EditorPersistenceTests PROPERTIES LABELS "app;editor;io;contract")
+
   aipackaging_add_test_executable(AIPackaging_ApplicationTests
     "core/app/testpolygonworkspacecontroller.cpp"
   )
@@ -320,6 +328,10 @@ if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_EditorTests
     ALLOWED_DIRECT AIPackaging_Editor
+  )
+  aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_EditorPersistenceTests
+    ALLOWED_DIRECT AIPackaging_EditorPersistence
   )
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_ApplicationTests

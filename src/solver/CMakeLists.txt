@@ -64,17 +64,23 @@ target_compile_definitions(AIPackaging_Search PRIVATE
   AIPACKAGING_BUILD_REVISION="${AIPACKAGING_BUILD_REVISION}"
 )
 
-add_library(AIPackaging_Json STATIC
+add_library(AIPackaging_StrictJsonSupport STATIC
   "json/atomicfile.cpp"
+  "json/strictjson.cpp"
+)
+target_include_directories(AIPackaging_StrictJsonSupport PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/json")
+target_link_libraries(AIPackaging_StrictJsonSupport PUBLIC nlohmann_json::nlohmann_json)
+target_compile_features(AIPackaging_StrictJsonSupport PUBLIC cxx_std_20)
+
+add_library(AIPackaging_Json STATIC
   "json/gridio.cpp"
   "json/polygonio.cpp"
   "json/solvermetadatavalidation.cpp"
-  "json/strictjson.cpp"
 )
 target_include_directories(AIPackaging_Json PUBLIC "${AIPACKAGING_NESTING_INCLUDE_DIR}")
 target_link_libraries(AIPackaging_Json
   PUBLIC AIPackaging_GridCore AIPackaging_PolygonCore
-  PRIVATE AIPackaging_SearchContracts nlohmann_json::nlohmann_json
+  PRIVATE AIPackaging_SearchContracts AIPackaging_StrictJsonSupport nlohmann_json::nlohmann_json
 )
 set_target_properties(AIPackaging_Json PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_sources(AIPackaging_Json PUBLIC

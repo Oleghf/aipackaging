@@ -8,6 +8,7 @@ endif()
 
 if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
   add_subdirectory("editor/")
+  add_subdirectory("persistence/")
   add_subdirectory("core/app/")
   add_subdirectory("infrastructure/")
 endif()

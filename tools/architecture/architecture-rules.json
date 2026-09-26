@@ -18,6 +18,7 @@
   "layers": {
     "app": "src/core/app",
     "editor": "src/editor",
+    "editor_persistence": "src/persistence",
     "dxf_import": "src/import/dxf",
     "nesting_core": "src/nesting/core",
     "grid_core": "src/solver/grid",
@@ -39,6 +40,11 @@
     ],
     "editor": [
       "editor"
+    ],
+    "editor_persistence": [
+      "editor_persistence",
+      "editor",
+      "json"
     ],
     "dxf_import": [
       "dxf_import",
@@ -148,6 +154,7 @@
       "src/solver/json/polygonio.cpp",
       "src/solver/json/strictjson.cpp",
       "src/solver/json/strictjson.h",
+      "src/persistence/polygon_draft_io.cpp",
       "src/inference/onnx/polygononnxinference.cpp"
     ],
     "clipperAllowedFiles": [

@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aipackaging.local/schemas/polygon-draft-v1.schema.json",
+  "title": "AIPackaging: черновик полигональной задачи v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "metadata", "nextEntityId", "document"],
+  "properties": {
+    "format": {"const": "aipackaging.polygon_draft"},
+    "version": {"const": 1},
+    "metadata": {"$ref": "#/$defs/metadata"},
+    "nextEntityId": {"type": "integer", "minimum": 1},
+    "document": {"$ref": "#/$defs/document"}
+  },
+  "$defs": {
+    "entityId": {"type": "integer", "minimum": 1},
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entityId", "x", "y"],
+      "properties": {
+        "entityId": {"$ref": "#/$defs/entityId"},
+        "x": {"type": "number"},
+        "y": {"type": "number"}
+      }
+    },
+    "segment": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["entityId", "type"],
+          "properties": {"entityId": {"$ref": "#/$defs/entityId"}, "type": {"const": "line"}}
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["entityId", "type", "center", "clockwise"],
+          "properties": {
+            "entityId": {"$ref": "#/$defs/entityId"},
+            "type": {"const": "arc"},
+            "center": {"$ref": "#/$defs/point"},
+            "clockwise": {"type": "boolean"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["entityId", "type", "control1", "control2"],
+          "properties": {
+            "entityId": {"$ref": "#/$defs/entityId"},
+            "type": {"const": "cubic_bezier"},
+            "control1": {"$ref": "#/$defs/point"},
+            "control2": {"$ref": "#/$defs/point"}
+          }
+        }
+      ]
+    },
+    "path": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entityId", "closed", "vertices", "segments"],
+      "properties": {
+        "entityId": {"$ref": "#/$defs/entityId"},
+        "closed": {"type": "boolean"},
+        "vertices": {"type": "array", "items": {"$ref": "#/$defs/point"}},
+        "segments": {"type": "array", "items": {"$ref": "#/$defs/segment"}}
+      }
+    },
+    "part": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entityId", "partId", "quantity", "outer", "holes", "allowedRotations"],
+      "properties": {
+        "entityId": {"$ref": "#/$defs/entityId"},
+        "partId": {"type": "string"},
+        "quantity": {"type": "integer", "minimum": 0, "maximum": 4294967295},
+        "outer": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/path"}]},
+        "holes": {"type": "array", "items": {"$ref": "#/$defs/path"}},
+        "allowedRotations": {
+          "type": "array", "uniqueItems": true,
+          "items": {"enum": [0, 90, 180, 270]}
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceKind", "sourceIdentifier", "savedAtUtc", "generation", "baseFingerprint"],
+      "properties": {
+        "sourceKind": {"enum": ["problem_file", "draft_file", "imported", "recovered", "untitled"]},
+        "sourceIdentifier": {"type": "string"},
+        "savedAtUtc": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"},
+        "generation": {"type": "integer", "minimum": 0},
+        "baseFingerprint": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object", "additionalProperties": false,
+              "required": ["size", "modifiedUnixNs"],
+              "properties": {
+                "size": {"type": "integer", "minimum": 0},
+                "modifiedUnixNs": {"type": "integer", "minimum": -9223372036854775808, "maximum": 9223372036854775807}
+              }
+            }
+          ]
+        }
+      }
+    },
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["problemId", "sheet", "manufacturing", "parts", "objective"],
+      "properties": {
+        "problemId": {"type": "string"},
+        "sheet": {
+          "type": "object", "additionalProperties": false,
+          "required": ["entityId", "width", "height", "unit"],
+          "properties": {
+            "entityId": {"$ref": "#/$defs/entityId"},
+            "width": {"type": "number"},
+            "height": {"type": "number"},
+            "unit": {"type": "string"}
+          }
+        },
+        "manufacturing": {
+          "type": "object", "additionalProperties": false,
+          "required": ["sheetMargin", "partSpacing", "kerf", "curveTolerance"],
+          "properties": {
+            "sheetMargin": {"type": "number"},
+            "partSpacing": {"type": "number"},
+            "kerf": {"type": "number"},
+            "curveTolerance": {"type": "number"}
+          }
+        },
+        "parts": {"type": "array", "items": {"$ref": "#/$defs/part"}},
+        "objective": {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "version"],
+          "properties": {"type": {"type": "string"}, "version": {"type": "integer"}}
+        }
+      }
+    }
+  }
+}

@@ -88,9 +88,13 @@ function(aipackaging_check_production_target_graph)
     ALLOWED_PUBLIC AIPackaging_SearchContracts AIPackaging_GridCore AIPackaging_PolygonCore AIPackaging_NestingCore
   )
   aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_StrictJsonSupport
+  )
+  aipackaging_assert_target_dependencies(
     TARGET AIPackaging_Json
-    ALLOWED_DIRECT AIPackaging_SearchContracts AIPackaging_GridCore AIPackaging_PolygonCore
+    ALLOWED_DIRECT AIPackaging_SearchContracts AIPackaging_GridCore AIPackaging_PolygonCore AIPackaging_StrictJsonSupport
     ALLOWED_PUBLIC AIPackaging_SearchContracts AIPackaging_GridCore AIPackaging_PolygonCore AIPackaging_NestingCore
+      AIPackaging_StrictJsonSupport
   )
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_Learning
@@ -104,6 +108,7 @@ function(aipackaging_check_production_target_graph)
     AIPackaging_Search
     AIPackaging_Json
     AIPackaging_Learning
+    AIPackaging_StrictJsonSupport
     AIPackaging_NestingCore
   )
   if (TARGET AIPackaging_OnnxInference)
@@ -125,6 +130,11 @@ function(aipackaging_check_production_target_graph)
   if (TARGET AIPackaging_Application)
     aipackaging_assert_target_dependencies(
       TARGET AIPackaging_Editor
+    )
+    aipackaging_assert_target_dependencies(
+      TARGET AIPackaging_EditorPersistence
+      ALLOWED_DIRECT AIPackaging_Editor AIPackaging_StrictJsonSupport
+      ALLOWED_PUBLIC AIPackaging_Editor AIPackaging_StrictJsonSupport
     )
     aipackaging_assert_target_dependencies(
       TARGET AIPackaging_Application
