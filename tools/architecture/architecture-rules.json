@@ -12,7 +12,8 @@
     "src/gui/qtview.cpp",
     "src/gui/qtview.h",
     "src/gui/packagingwidget.cpp",
-    "src/gui/packagingwidget.h"
+    "src/gui/packagingwidget.h",
+    "src/infrastructure/desktop/polygondesktopinfrastructure.cpp"
   ],
   "layers": {
     "app": "src/core/app",

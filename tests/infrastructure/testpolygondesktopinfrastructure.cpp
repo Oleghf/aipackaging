@@ -12,7 +12,11 @@
 #include <aipackaging/nesting/polygon_io.h>
 #include <aipackaging/nesting/polygon_solver.h>
 #include <gtest/gtest.h>
-#include <polygondesktopinfrastructure.h>
+#include <nesting_job_runner.h>
+#include <polygon_artifact_store.h>
+#include <polygon_backends.h>
+#include <polygon_document_gateway.h>
+#include <polygon_model_jobs.h>
 
 namespace
 {
@@ -351,6 +355,7 @@ bool waitUntil(const std::function<bool()> & predicate)
 }
 } // namespace
 
+#ifdef AIPACKAGING_DESKTOP_BACKEND_TESTS
 /// Проверяет строгую загрузку, выполнение, точную регистрацию и сохранение результата.
 TEST(PolygonDesktopInfrastructure, LoadsRunsValidatesAndSaves)
 {
@@ -388,7 +393,9 @@ TEST(PolygonDesktopInfrastructure, LoadsRunsValidatesAndSaves)
   std::filesystem::remove(input);
   std::filesystem::remove(output);
 }
+#endif
 
+#ifdef AIPACKAGING_DESKTOP_GATEWAY_TESTS
 /// Проверяет, что повреждённое решение не получает сохраняемый идентификатор.
 TEST(PolygonDesktopInfrastructure, RejectsCorruptSolution)
 {
@@ -406,6 +413,31 @@ TEST(PolygonDesktopInfrastructure, RejectsCorruptSolution)
   EXPECT_FALSE(error.empty());
 }
 
+/// Проверяет загрузку и сохранение через шлюз без участия внутренней реализации раскроя.
+TEST(PolygonDesktopInfrastructure, LoadsAndSavesValidatedSolutionThroughGateway)
+{
+  const auto input = writeProblem();
+  const auto output = std::filesystem::temp_directory_path() / "aipackaging-gateway-solution.json";
+  const auto store = std::make_shared<PolygonArtifactStore>();
+  LocalPolygonDocumentGateway gateway(store);
+  const PolygonDocumentLoadResult loaded = gateway.load(input.string());
+  ASSERT_TRUE(loaded.success) << loaded.error;
+  SolverConfig config;
+  config.timeoutMs = 0;
+  std::string error;
+  const auto solution = store->addValidatedSolution(loaded.document, solvePolygonProblem(testProblem(), config), error);
+  ASSERT_TRUE(solution.has_value()) << error;
+  const PolygonDocumentOperationResult saved = gateway.save(output.string(), *solution);
+  ASSERT_TRUE(saved.success) << saved.error;
+  EXPECT_TRUE(loadPolygonSolutionFromFile(output.string()).success);
+  gateway.release(*solution);
+  gateway.release(loaded.document);
+  std::filesystem::remove(input);
+  std::filesystem::remove(output);
+}
+#endif
+
+#ifdef AIPACKAGING_DESKTOP_JOB_TESTS
 /// Проверяет асинхронную доставку результата только через очередь диспетчера.
 TEST(PolygonDesktopInfrastructure, DeliversCompletionThroughDispatcherQueue)
 {
@@ -809,8 +841,9 @@ TEST(PolygonDesktopInfrastructure, ReleasesModelAfterCancellation)
   EXPECT_EQ(gateway->releasedValue.load(), 9U);
 }
 #endif
+#endif
 
-#ifdef AIPACKAGING_HAS_ONNX_BACKEND
+#if defined(AIPACKAGING_DESKTOP_BACKEND_TESTS) && defined(AIPACKAGING_HAS_ONNX_BACKEND)
 /// Проверяет загрузку комплекта и нейросетевой запуск через прикладные идентификаторы.
 TEST(PolygonDesktopInfrastructure, LoadsModelAndRunsNeuralBackend)
 {

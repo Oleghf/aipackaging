@@ -89,19 +89,40 @@ if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
   target_link_libraries(AIPackaging_ApplicationTests PRIVATE AIPackaging_Application)
   set_tests_properties(AIPackaging_ApplicationTests PROPERTIES LABELS "app;application")
 
-  aipackaging_add_test_executable(AIPackaging_DesktopInfrastructureTests
+  aipackaging_add_test_executable(AIPackaging_DesktopGatewayTests
     "infrastructure/testpolygondesktopinfrastructure.cpp"
   )
-  target_link_libraries(AIPackaging_DesktopInfrastructureTests PRIVATE
+  target_compile_definitions(AIPackaging_DesktopGatewayTests PRIVATE AIPACKAGING_DESKTOP_GATEWAY_TESTS=1)
+  target_link_libraries(AIPackaging_DesktopGatewayTests PRIVATE
+    AIPackaging_DesktopInfrastructure AIPackaging_Search AIPackaging_Json AIPackaging_PolygonCore
+  )
+  set_tests_properties(AIPackaging_DesktopGatewayTests PROPERTIES LABELS "app;infrastructure;io;polygon")
+
+  aipackaging_add_test_executable(AIPackaging_DesktopBackendTests
+    "infrastructure/testpolygondesktopinfrastructure.cpp"
+  )
+  target_compile_definitions(AIPackaging_DesktopBackendTests PRIVATE AIPACKAGING_DESKTOP_BACKEND_TESTS=1)
+  target_link_libraries(AIPackaging_DesktopBackendTests PRIVATE
+    AIPackaging_DesktopInfrastructure AIPackaging_Search AIPackaging_Json AIPackaging_PolygonCore
+  )
+
+  aipackaging_add_test_executable(AIPackaging_DesktopJobTests
+    "infrastructure/testpolygondesktopinfrastructure.cpp"
+  )
+  target_compile_definitions(AIPackaging_DesktopJobTests PRIVATE AIPACKAGING_DESKTOP_JOB_TESTS=1)
+  target_link_libraries(AIPackaging_DesktopJobTests PRIVATE
     AIPackaging_DesktopInfrastructure AIPackaging_Search AIPackaging_Json AIPackaging_PolygonCore
   )
   if (BUILD_ONNX_BACKEND)
-    target_compile_definitions(AIPackaging_DesktopInfrastructureTests PRIVATE
-      AIPACKAGING_ONNX_TEST_MODEL="${CMAKE_SOURCE_DIR}/tests/fixtures/models/polygon-policy-smoke"
-    )
-    aipackaging_copy_onnxruntime(AIPackaging_DesktopInfrastructureTests)
+    foreach(target IN ITEMS AIPackaging_DesktopGatewayTests AIPackaging_DesktopBackendTests AIPackaging_DesktopJobTests)
+      target_compile_definitions(${target} PRIVATE
+        AIPACKAGING_ONNX_TEST_MODEL="${CMAKE_SOURCE_DIR}/tests/fixtures/models/polygon-policy-smoke"
+      )
+      aipackaging_copy_onnxruntime(${target})
+    endforeach()
   endif()
-  set_tests_properties(AIPackaging_DesktopInfrastructureTests PROPERTIES LABELS "app;infrastructure;polygon")
+  set_tests_properties(AIPackaging_DesktopBackendTests PROPERTIES LABELS "app;infrastructure;search;polygon")
+  set_tests_properties(AIPackaging_DesktopJobTests PROPERTIES LABELS "app;infrastructure;threading;polygon")
 
 endif()
 
@@ -283,10 +304,12 @@ if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
     TARGET AIPackaging_ApplicationTests
     ALLOWED_DIRECT AIPackaging_Application
   )
-  aipackaging_assert_target_dependencies(
-    TARGET AIPackaging_DesktopInfrastructureTests
-    ALLOWED_DIRECT AIPackaging_DesktopInfrastructure AIPackaging_Search AIPackaging_Json AIPackaging_PolygonCore
-  )
+  foreach(target IN ITEMS AIPackaging_DesktopGatewayTests AIPackaging_DesktopBackendTests AIPackaging_DesktopJobTests)
+    aipackaging_assert_target_dependencies(
+      TARGET ${target}
+      ALLOWED_DIRECT AIPackaging_DesktopInfrastructure AIPackaging_Search AIPackaging_Json AIPackaging_PolygonCore
+    )
+  endforeach()
 endif()
 if (BUILD_ONNX_BACKEND)
   aipackaging_assert_target_dependencies(

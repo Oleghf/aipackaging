@@ -1,6 +1,11 @@
 # Адаптеры локального настольного запуска полигонального раскроя.
 add_library(AIPackaging_DesktopInfrastructure STATIC
-  "polygondesktopinfrastructure.cpp"
+  "nesting_job_runner.cpp"
+  "polygon_artifact_store.cpp"
+  "polygon_backends.cpp"
+  "polygon_document_gateway.cpp"
+  "polygon_model_jobs.cpp"
+  "polygon_presentation_mapper.cpp"
 )
 target_include_directories(AIPackaging_DesktopInfrastructure PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}"
