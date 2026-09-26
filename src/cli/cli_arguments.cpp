@@ -35,17 +35,16 @@ bool readValue(std::span<const std::string_view> arguments, std::size_t & index,
   return true;
 }
 
-/// Читает значение параметра с проверкой диапазона типа `size_t` текущей платформы.
-bool readSizeOption(std::span<const std::string_view> arguments, std::size_t & index, std::size_t & value)
+/// Читает значение параметра и возвращает его после проверки диапазона `size_t`.
+std::optional<std::size_t> readSizeOption(std::span<const std::string_view> arguments, std::size_t & index)
 {
   std::string text;
   std::uint64_t parsed = 0;
   if (!readValue(arguments, index, text) || !parseUnsigned(text, parsed) || parsed > std::numeric_limits<std::size_t>::max())
   {
-    return false;
+    return std::nullopt;
   }
-  value = static_cast<std::size_t>(parsed);
-  return true;
+  return static_cast<std::size_t>(parsed);
 }
 
 /// Разбирает параметры проверки согласованной пары задачи и решения.
@@ -121,18 +120,24 @@ ParseResult parseSolve(std::span<const std::string_view> arguments)
     }
     else if (option == "--random-iterations")
     {
-      if (!readSizeOption(arguments, index, command.randomIterations) || command.randomIterations == 0)
+      const std::optional<std::size_t> parsed = readSizeOption(arguments, index);
+      if (!parsed || *parsed == 0)
         return failure({}, true);
+      command.randomIterations = *parsed;
     }
     else if (option == "--beam-width")
     {
-      if (!readSizeOption(arguments, index, command.beamWidth) || command.beamWidth == 0)
+      const std::optional<std::size_t> parsed = readSizeOption(arguments, index);
+      if (!parsed || *parsed == 0)
         return failure({}, true);
+      command.beamWidth = *parsed;
     }
     else if (option == "--max-expanded-states")
     {
-      if (!readSizeOption(arguments, index, command.maxExpandedStates) || command.maxExpandedStates == 0)
+      const std::optional<std::size_t> parsed = readSizeOption(arguments, index);
+      if (!parsed || *parsed == 0)
         return failure({}, true);
+      command.maxExpandedStates = *parsed;
     }
     else if (option == "--timeout-ms")
     {
@@ -146,8 +151,10 @@ ParseResult parseSolve(std::span<const std::string_view> arguments)
     }
     else if (option == "--rollouts")
     {
-      if (!readSizeOption(arguments, index, command.neuralRollouts) || command.neuralRollouts == 0)
+      const std::optional<std::size_t> parsed = readSizeOption(arguments, index);
+      if (!parsed || *parsed == 0)
         return failure({}, true);
+      command.neuralRollouts = *parsed;
     }
     else
       return failure("Неизвестный параметр: " + std::string(option) + '\n', true);

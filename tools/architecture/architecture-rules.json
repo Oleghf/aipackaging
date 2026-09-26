@@ -145,6 +145,8 @@
     "nlohmannAllowedFiles": [
       "src/solver/json/gridio.cpp",
       "src/solver/json/polygonio.cpp",
+      "src/solver/json/strictjson.cpp",
+      "src/solver/json/strictjson.h",
       "src/inference/onnx/polygononnxinference.cpp"
     ],
     "clipperAllowedFiles": [

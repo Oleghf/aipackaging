@@ -44,6 +44,7 @@ aipackaging_add_test_executable(AIPackaging_JsonTests
   "solver/testatomicfile.cpp"
   "solver/testgridio.cpp"
   "solver/testpolygonio.cpp"
+  "solver/teststrictjson.cpp"
   "solver/testcontractcorpus.cpp"
 )
 target_link_libraries(AIPackaging_JsonTests PRIVATE AIPackaging_Json AIPackaging_Search nlohmann_json::nlohmann_json)

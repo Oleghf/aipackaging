@@ -69,6 +69,7 @@ add_library(AIPackaging_Json STATIC
   "json/gridio.cpp"
   "json/polygonio.cpp"
   "json/solvermetadatavalidation.cpp"
+  "json/strictjson.cpp"
 )
 target_include_directories(AIPackaging_Json PUBLIC "${AIPACKAGING_NESTING_INCLUDE_DIR}")
 target_link_libraries(AIPackaging_Json

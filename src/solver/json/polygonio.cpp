@@ -1,11 +1,4 @@
-#include <algorithm>
-#include <cctype>
-#include <cmath>
-#include <fstream>
-#include <initializer_list>
 #include <limits>
-#include <sstream>
-#include <string_view>
 
 #include <aipackaging/nesting/polygon_environment.h>
 #include <aipackaging/nesting/polygon_io.h>
@@ -13,110 +6,20 @@
 
 #include "atomicfile.h"
 #include "solvermetadatavalidation.h"
+#include "strictjson.h"
 
 namespace aipackaging::solver
 {
 namespace
 {
-using Json = nlohmann::json;
-
-/// Проверяет объект на точное множество разрешённых полей.
-bool onlyKeys(const Json & value, std::initializer_list<std::string_view> keys)
-{
-  if (!value.is_object())
-    return false;
-  for (const auto & item : value.items())
-    if (std::none_of(keys.begin(), keys.end(), [&item](std::string_view key) { return item.key() == key; }))
-      return false;
-  return true;
-}
-
-/// Читает обязательную строку без JSON-преобразований.
-bool readString(const Json & object, const char * key, std::string & value)
-{
-  if (!object.contains(key) || !object.at(key).is_string())
-    return false;
-  value = object.at(key).get<std::string>();
-  return true;
-}
-
-/// Читает обязательное конечное число.
-bool readDouble(const Json & object, const char * key, double & value)
-{
-  if (!object.contains(key) || !object.at(key).is_number())
-    return false;
-  value = object.at(key).get<double>();
-  return std::isfinite(value);
-}
-
-/// Читает обязательное целое в диапазоне типа `int`.
-bool readInt(const Json & object, const char * key, int & value)
-{
-  if (!object.contains(key) || !object.at(key).is_number_integer())
-    return false;
-  try
-  {
-    const std::int64_t parsed = object.at(key).get<std::int64_t>();
-    if (parsed < std::numeric_limits<int>::min() || parsed > std::numeric_limits<int>::max())
-      return false;
-    value = static_cast<int>(parsed);
-    return true;
-  }
-  catch (const Json::exception &)
-  {
-    return false;
-  }
-}
-
-/// Читает обязательное беззнаковое целое в диапазоне типа `uint64_t`.
-bool readUint64(const Json & object, const char * key, std::uint64_t & value)
-{
-  if (!object.contains(key) || !object.at(key).is_number_integer())
-    return false;
-  try
-  {
-    if (object.at(key).is_number_unsigned())
-    {
-      value = object.at(key).get<std::uint64_t>();
-      return true;
-    }
-    const std::int64_t parsed = object.at(key).get<std::int64_t>();
-    if (parsed < 0)
-      return false;
-    value = static_cast<std::uint64_t>(parsed);
-    return true;
-  }
-  catch (const Json::exception &)
-  {
-    return false;
-  }
-}
-
-/// Читает размер контейнера без потери диапазона текущей платформы.
-bool readSize(const Json & object, const char * key, std::size_t & value)
-{
-  std::uint64_t parsed = 0;
-  if (!readUint64(object, key, parsed) || parsed > std::numeric_limits<std::size_t>::max())
-    return false;
-  value = static_cast<std::size_t>(parsed);
-  return true;
-}
-
-/// Читает обязательную знаковую микронную координату.
-bool readInt64(const Json & object, const char * key, std::int64_t & value)
-{
-  if (!object.contains(key) || !object.at(key).is_number_integer())
-    return false;
-  try
-  {
-    value = object.at(key).get<std::int64_t>();
-    return true;
-  }
-  catch (const Json::exception &)
-  {
-    return false;
-  }
-}
+using internal::Json;
+using internal::onlyKeys;
+using internal::readDouble;
+using internal::readInt;
+using internal::readInt64;
+using internal::readSize;
+using internal::readString;
+using internal::readUint64;
 
 /// Читает точку миллиметрового исходного пути.
 bool readPoint(const Json & value, PolygonPointMm & point)
@@ -295,24 +198,18 @@ bool readSolverV2(const Json & value, SolverMetadata & solver)
 PolygonProblemLoadResult loadPolygonProblemFromText(const std::string & text)
 {
   Json root;
-  try
-  {
-    root = Json::parse(text);
-  }
-  catch (const Json::exception & error)
-  {
-    return problemFailure(std::string("invalid JSON: ") + error.what());
-  }
+  const internal::StrictJsonResult parsed = internal::parseDocument(text, root);
+  if (!parsed)
+    return problemFailure(std::string("invalid JSON: ") + parsed.detail);
   // Унаследованная клеточная сцена не является полигональной задачей и не преобразуется без масштаба клетки.
   if (root.is_object() && root.value("format", Json()) == "aipackaging.packing_scene")
     return problemFailure("Формат `aipackaging.packing_scene` больше не поддерживается; откройте `polygon_problem` v1");
   if (!onlyKeys(root, {"format", "version", "problemId", "sheet", "manufacturing", "parts", "objective"}))
     return problemFailure("polygon problem contains unknown fields or is not an object");
   PolygonProblem problem;
-  std::string format;
   int version = 0;
-  if (!readString(root, "format", format) || format != "aipackaging.polygon_problem" || !readInt(root, "version", version) ||
-      version != 1 || !readString(root, "problemId", problem.problemId))
+  if (!internal::validateRootContract(root, "aipackaging.polygon_problem", {1}, version) ||
+      !readString(root, "problemId", problem.problemId))
     return problemFailure("unsupported polygon problem format or version");
   if (!root.contains("sheet") || !onlyKeys(root.at("sheet"), {"width", "height", "unit"}) ||
       !readDouble(root.at("sheet"), "width", problem.sheet.width) ||
@@ -370,12 +267,10 @@ PolygonProblemLoadResult loadPolygonProblemFromText(const std::string & text)
 /// Читает файл целиком и передаёт текст строгому синтаксическому анализатору.
 PolygonProblemLoadResult loadPolygonProblemFromFile(const std::string & filePath)
 {
-  std::ifstream input(filePath);
-  if (!input)
+  std::string text;
+  if (!internal::readTextFile(filePath, text))
     return problemFailure("unable to open polygon problem file");
-  std::ostringstream buffer;
-  buffer << input.rdbuf();
-  return loadPolygonProblemFromText(buffer.str());
+  return loadPolygonProblemFromText(text);
 }
 
 /// Строит стабильное дерево JSON исходной задачи без раскрытия nlohmann/json в API.
@@ -411,25 +306,18 @@ std::string savePolygonProblemToText(const PolygonProblem & problem)
 PolygonSolutionLoadResult loadPolygonSolutionFromText(const std::string & text)
 {
   Json root;
-  try
-  {
-    root = Json::parse(text);
-  }
-  catch (const Json::exception & error)
-  {
-    return solutionFailure(std::string("invalid JSON: ") + error.what());
-  }
+  const internal::StrictJsonResult parsed = internal::parseDocument(text, root);
+  if (!parsed)
+    return solutionFailure(std::string("invalid JSON: ") + parsed.detail);
   if (!onlyKeys(root,
                 {"format", "version", "problemId", "status", "placements", "objective", "metrics", "solver", "errorMessage"}))
     return solutionFailure("polygon solution contains unknown fields");
   PolygonSolution solution;
-  std::string format;
   std::string status;
   int version = 0;
-  if (!readString(root, "format", format) || format != "aipackaging.polygon_solution" || !readInt(root, "version", version) ||
-      (version != 1 && version != 2) || !readString(root, "problemId", solution.problemId) ||
-      !readString(root, "status", status) || !parseSolveStatus(status, solution.status) ||
-      !readString(root, "errorMessage", solution.errorMessage))
+  if (!internal::validateRootContract(root, "aipackaging.polygon_solution", {1, 2}, version) ||
+      !readString(root, "problemId", solution.problemId) || !readString(root, "status", status) ||
+      !parseSolveStatus(status, solution.status) || !readString(root, "errorMessage", solution.errorMessage))
     return solutionFailure("unsupported polygon solution format, version, or status");
   solution.wireVersion = version;
   if (!root.contains("placements") || !root.at("placements").is_array())
@@ -495,12 +383,10 @@ PolygonSolutionLoadResult loadPolygonSolutionFromText(const std::string & text)
 /// Читает файл решения целиком и делегирует обработку текстовому синтаксическому анализатору.
 PolygonSolutionLoadResult loadPolygonSolutionFromFile(const std::string & filePath)
 {
-  std::ifstream input(filePath);
-  if (!input)
+  std::string text;
+  if (!internal::readTextFile(filePath, text))
     return solutionFailure("unable to open polygon solution file");
-  std::ostringstream buffer;
-  buffer << input.rdbuf();
-  return loadPolygonSolutionFromText(buffer.str());
+  return loadPolygonSolutionFromText(text);
 }
 
 /// Сериализует точные координаты, целевую функцию, метрики и происхождение результата.
@@ -583,17 +469,12 @@ bool savePolygonSolutionToFile(const std::string & filePath, const PolygonSoluti
 /// Разбирает только корневой объект JSON и возвращает строковое поле формата.
 std::string detectJsonFormat(const std::string & text)
 {
-  try
-  {
-    const Json root = Json::parse(text);
-    if (root.is_object() && root.contains("format") && root.at("format").is_string())
-      return root.at("format").get<std::string>();
-  }
-  catch (const Json::exception &)
-  {
-    // Для определения формата синтаксическая ошибка эквивалентна отсутствию
-    // распознаваемого discriminator; подробную диагностику вернёт parser.
-  }
+  Json root;
+  if (!internal::parseDocument(text, root))
+    return {};
+  std::string format;
+  if (readString(root, "format", format))
+    return format;
   return {};
 }
 } // namespace aipackaging::solver

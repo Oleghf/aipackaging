@@ -1,11 +1,5 @@
-#include <algorithm>
-#include <cctype>
 #include <cmath>
-#include <fstream>
-#include <initializer_list>
 #include <limits>
-#include <sstream>
-#include <string_view>
 
 #include <aipackaging/nesting/grid_environment.h>
 #include <aipackaging/nesting/grid_io.h>
@@ -14,91 +8,19 @@
 
 #include "atomicfile.h"
 #include "solvermetadatavalidation.h"
+#include "strictjson.h"
 
 namespace aipackaging::solver
 {
 namespace
 {
-using Json = nlohmann::json;
-
-/// Проверяет объект на отсутствие полей, не объявленных контрактом текущей версии.
-bool onlyKeys(const Json & value, std::initializer_list<std::string_view> keys)
-{
-  if (!value.is_object())
-    return false;
-  for (const auto & item : value.items())
-  {
-    const bool known = std::any_of(keys.begin(), keys.end(), [&item](std::string_view key) { return item.key() == key; });
-    if (!known)
-      return false;
-  }
-  return true;
-}
-
-/// Читает обязательное строковое поле без неявных преобразований типов.
-bool readString(const Json & object, const char * key, std::string & result)
-{
-  if (!object.contains(key) || !object.at(key).is_string())
-    return false;
-  result = object.at(key).get<std::string>();
-  return true;
-}
-
-/// Читает обязательное целое поле после проверки диапазона типа `int`.
-bool readInt(const Json & object, const char * key, int & result)
-{
-  if (!object.contains(key) || !object.at(key).is_number_integer())
-    return false;
-  try
-  {
-    const std::int64_t value = object.at(key).get<std::int64_t>();
-    if (value < std::numeric_limits<int>::min() || value > std::numeric_limits<int>::max())
-      return false;
-    result = static_cast<int>(value);
-    return true;
-  }
-  catch (const Json::exception &)
-  {
-    return false;
-  }
-}
-
-/// Читает обязательное неотрицательное целое поле после проверки диапазона типа `size_t`.
-bool readSize(const Json & object, const char * key, std::size_t & result)
-{
-  if (!object.contains(key) || !object.at(key).is_number_integer())
-    return false;
-  try
-  {
-    if (object.at(key).is_number_unsigned())
-    {
-      const std::uint64_t value = object.at(key).get<std::uint64_t>();
-      if (value > std::numeric_limits<std::size_t>::max())
-        return false;
-      result = static_cast<std::size_t>(value);
-      return true;
-    }
-    const std::int64_t value = object.at(key).get<std::int64_t>();
-    if (value < 0 || static_cast<std::uint64_t>(value) > std::numeric_limits<std::size_t>::max())
-      return false;
-    result = static_cast<std::size_t>(value);
-    return true;
-  }
-  catch (const Json::exception &)
-  {
-    return false;
-  }
-}
-
-/// Читает обязательный беззнаковый 64-битный счётчик.
-bool readUint64(const Json & object, const char * key, std::uint64_t & result)
-{
-  std::size_t value = 0;
-  if (!readSize(object, key, value))
-    return false;
-  result = static_cast<std::uint64_t>(value);
-  return true;
-}
+using internal::Json;
+using internal::onlyKeys;
+using internal::readDouble;
+using internal::readInt;
+using internal::readSize;
+using internal::readString;
+using internal::readUint64;
 
 /// Создаёт единообразный ошибочный результат загрузки задачи.
 GridProblemLoadResult problemFailure(const std::string & message)
@@ -212,22 +134,16 @@ Json solutionJson(const GridSolution & solution)
 GridProblemLoadResult loadGridProblemFromText(const std::string & text)
 {
   Json root;
-  try
-  {
-    root = Json::parse(text);
-  }
-  catch (const Json::exception & error)
-  {
-    return problemFailure(std::string("invalid JSON: ") + error.what());
-  }
+  const internal::StrictJsonResult parsed = internal::parseDocument(text, root);
+  if (!parsed)
+    return problemFailure(std::string("invalid JSON: ") + parsed.detail);
   if (!onlyKeys(root, {"format", "version", "problemId", "sheet", "parts", "objective"}))
     return problemFailure("grid problem contains unknown fields or is not an object");
 
-  std::string format;
   int version = 0;
   GridProblem problem;
-  if (!readString(root, "format", format) || format != "aipackaging.grid_problem" || !readInt(root, "version", version) ||
-      version != 1 || !readString(root, "problemId", problem.problemId))
+  if (!internal::validateRootContract(root, "aipackaging.grid_problem", {1}, version) ||
+      !readString(root, "problemId", problem.problemId))
   {
     return problemFailure("unsupported grid problem format or version");
   }
@@ -270,14 +186,11 @@ GridProblemLoadResult loadGridProblemFromText(const std::string & text)
     {
       if (!rotationJson.is_number_integer())
         return problemFailure("allowedRotations must contain integers");
-      try
-      {
-        part.allowedRotations.push_back(rotationJson.get<int>());
-      }
-      catch (const Json::exception &)
-      {
+      int rotation = 0;
+      const Json wrapper = {{"rotation", rotationJson}};
+      if (!readInt(wrapper, "rotation", rotation))
         return problemFailure("rotation is outside integer range");
-      }
+      part.allowedRotations.push_back(rotation);
     }
     problem.parts.push_back(std::move(part));
   }
@@ -297,12 +210,10 @@ GridProblemLoadResult loadGridProblemFromText(const std::string & text)
 /// Читает весь файл в память и делегирует строгому текстовому загрузчику.
 GridProblemLoadResult loadGridProblemFromFile(const std::string & filePath)
 {
-  std::ifstream input(filePath);
-  if (!input.is_open())
+  std::string text;
+  if (!internal::readTextFile(filePath, text))
     return problemFailure("unable to open grid problem file");
-  std::ostringstream buffer;
-  buffer << input.rdbuf();
-  return loadGridProblemFromText(buffer.str());
+  return loadGridProblemFromText(text);
 }
 
 /// Формирует стабильный отформатированный JSON с завершающим переводом строки.
@@ -315,14 +226,9 @@ std::string saveGridProblemToText(const GridProblem & problem)
 GridSolutionLoadResult loadGridSolutionFromText(const std::string & text)
 {
   Json root;
-  try
-  {
-    root = Json::parse(text);
-  }
-  catch (const Json::exception & error)
-  {
-    return solutionFailure(std::string("invalid JSON: ") + error.what());
-  }
+  const internal::StrictJsonResult parsed = internal::parseDocument(text, root);
+  if (!parsed)
+    return solutionFailure(std::string("invalid JSON: ") + parsed.detail);
   if (!onlyKeys(root,
                 {"format", "version", "problemId", "status", "placements", "objective", "metrics", "solver", "errorMessage"}))
   {
@@ -330,13 +236,12 @@ GridSolutionLoadResult loadGridSolutionFromText(const std::string & text)
   }
 
   GridSolution solution;
-  std::string format;
   std::string status;
   int version = 0;
-  if (!readString(root, "format", format) || format != "aipackaging.grid_solution" || !readInt(root, "version", version) ||
-      (version != 1 && version != 2) || !readString(root, "problemId", solution.problemId) ||
-      !readString(root, "status", status) || !parseSolveStatus(status, solution.status) ||
-      solution.status == SolveStatus::UnsupportedEnvironment || !readString(root, "errorMessage", solution.errorMessage))
+  if (!internal::validateRootContract(root, "aipackaging.grid_solution", {1, 2}, version) ||
+      !readString(root, "problemId", solution.problemId) || !readString(root, "status", status) ||
+      !parseSolveStatus(status, solution.status) || solution.status == SolveStatus::UnsupportedEnvironment ||
+      !readString(root, "errorMessage", solution.errorMessage))
   {
     return solutionFailure("unsupported grid solution format, version, or status");
   }
@@ -377,13 +282,11 @@ GridSolutionLoadResult loadGridSolutionFromText(const std::string & text)
       !readSize(objective, "totalParts", solution.objective.totalParts) ||
       !readSize(objective, "placedCells", solution.objective.placedCells) ||
       !readSize(objective, "totalPartCells", solution.objective.totalPartCells) || !objective.contains("materialUtilization") ||
-      !objective.at("materialUtilization").is_number())
+      !readDouble(objective, "materialUtilization", solution.objective.materialUtilization))
   {
     return solutionFailure("invalid objective values");
   }
-  solution.objective.materialUtilization = objective.at("materialUtilization").get<double>();
-  if (!std::isfinite(solution.objective.materialUtilization) || solution.objective.materialUtilization < 0.0 ||
-      solution.objective.materialUtilization > 1.0)
+  if (solution.objective.materialUtilization < 0.0 || solution.objective.materialUtilization > 1.0)
   {
     return solutionFailure("invalid materialUtilization");
   }
@@ -487,12 +390,10 @@ GridSolutionLoadResult loadGridSolutionFromText(const std::string & text)
 /// Читает весь файл решения и делегирует строгому текстовому загрузчику.
 GridSolutionLoadResult loadGridSolutionFromFile(const std::string & filePath)
 {
-  std::ifstream input(filePath);
-  if (!input.is_open())
+  std::string text;
+  if (!internal::readTextFile(filePath, text))
     return solutionFailure("unable to open grid solution file");
-  std::ostringstream buffer;
-  buffer << input.rdbuf();
-  return loadGridSolutionFromText(buffer.str());
+  return loadGridSolutionFromText(text);
 }
 
 /// Формирует стабильный отформатированный JSON решения.

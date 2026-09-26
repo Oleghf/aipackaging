@@ -10,7 +10,7 @@
 namespace aipackaging::cli
 {
 /// Согласованные коды завершения командной строки.
-enum class CliExitCode : int
+enum class CliExitCode : std::uint8_t
 {
   Success = 0,
   Failure = 1,
