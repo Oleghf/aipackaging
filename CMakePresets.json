@@ -87,6 +87,14 @@
             }
         },
         {
+            "name": "windows-desktop-no-onnx-tests",
+            "displayName": "Windows Desktop Tests Without ONNX",
+            "inherits": "windows-desktop-ci-tests",
+            "cacheVariables": {
+                "BUILD_ONNX_BACKEND": "OFF"
+            }
+        },
+        {
             "name": "unix-base",
             "hidden": true,
             "generator": "Unix Makefiles",
@@ -256,6 +264,16 @@
         {
             "name": "build-windows-desktop-ci-tests",
             "configurePreset": "windows-desktop-ci-tests",
+            "configuration": "Debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "build-windows-desktop-no-onnx-tests",
+            "configurePreset": "windows-desktop-no-onnx-tests",
             "configuration": "Debug",
             "condition": {
                 "type": "equals",

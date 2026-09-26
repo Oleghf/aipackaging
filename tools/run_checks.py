@@ -143,13 +143,17 @@ def python_checks() -> int:
     return run([sys.executable, "-m", "pytest"])
 
 
-def desktop_checks(qt_dir: str | None) -> int:
-    """Проверяет настольное приложение Windows, не сохраняя локальный путь Qt."""
+def desktop_checks(qt_dir: str | None, *, with_onnx: bool = True) -> int:
+    """Проверяет настольное приложение Windows с выбранной внутренней реализацией."""
 
     if platform.system() != "Windows":
         print("Проверка настольного приложения сейчас поддерживается только в Windows.", file=sys.stderr)
         return 1
-    configure = ["cmake", "--preset", "windows-tests"]
+    preset = "windows-desktop-ci-tests" if with_onnx else "windows-desktop-no-onnx-tests"
+    build_preset = (
+        "build-windows-desktop-ci-tests" if with_onnx else "build-windows-desktop-no-onnx-tests"
+    )
+    configure = ["cmake", "--preset", preset]
     if qt_dir:
         configure.append(f"-DQt6_DIR={qt_dir}")
     elif not (os.environ.get("Qt6_DIR") or os.environ.get("CMAKE_PREFIX_PATH")):
@@ -157,9 +161,9 @@ def desktop_checks(qt_dir: str | None) -> int:
     return run_sequence(
         [
             configure,
-            ["cmake", "--build", "--preset", "build-windows-tests"],
-            ["ctest", "--test-dir", "build/windows-tests", "-C", "Debug", "--output-on-failure"],
-            semantic_cli_command("build/windows-tests"),
+            ["cmake", "--build", "--preset", build_preset],
+            ["ctest", "--test-dir", f"build/{preset}", "-C", "Debug", "--output-on-failure"],
+            semantic_cli_command(f"build/{preset}"),
         ]
     )
 
@@ -178,6 +182,7 @@ def main() -> int:
             "headless",
             "python",
             "desktop",
+            "desktop-no-onnx",
             "all",
         ],
     )
@@ -197,10 +202,20 @@ def main() -> int:
         "headless": headless_checks,
         "python": python_checks,
         "desktop": lambda: desktop_checks(arguments.qt_dir),
+        "desktop-no-onnx": lambda: desktop_checks(arguments.qt_dir, with_onnx=False),
     }
     if arguments.check != "all":
         return actions[arguments.check]()
-    for name in ("documentation", "language", "architecture", "nesting", "headless", "python", "desktop"):
+    for name in (
+        "documentation",
+        "language",
+        "architecture",
+        "nesting",
+        "headless",
+        "python",
+        "desktop-no-onnx",
+        "desktop",
+    ):
         result = actions[name]()
         if result:
             return result
