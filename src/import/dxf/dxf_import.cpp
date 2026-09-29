@@ -27,6 +27,7 @@ namespace
 constexpr double MAX_ABS_COORDINATE_MM = 9.0e12;
 constexpr double POINT_EPSILON = 1.0e-12;
 
+/// Хранит одну разобранную пару кода группы и значения с исходной строкой.
 struct Pair
 {
   int code = 0;
@@ -34,6 +35,7 @@ struct Pair
   std::size_t line = 0;
 };
 
+/// Группирует заголовок сущности DXF и следующие за ним пары полей.
 struct Record
 {
   std::string type;
@@ -42,12 +44,14 @@ struct Record
   std::vector<Pair> fields;
 };
 
+/// Представляет конечную двумерную координату во внутренних вычислениях импорта.
 struct Point
 {
   double x = 0.0;
   double y = 0.0;
 };
 
+/// Различает геометрические примитивы одной собираемой цепочки.
 enum class SegmentKind : std::uint8_t
 {
   Line,
@@ -55,6 +59,7 @@ enum class SegmentKind : std::uint8_t
   CubicBezier
 };
 
+/// Хранит нормализованный сегмент с происхождением и параметрами кривой.
 struct Segment
 {
   SegmentKind kind = SegmentKind::Line;
@@ -69,6 +74,7 @@ struct Segment
   std::size_t line = 0;
 };
 
+/// Содержит упорядоченные совместимые сегменты одного слоя.
 struct Chain
 {
   std::uint64_t id = 0;
@@ -77,6 +83,7 @@ struct Chain
   bool closed = false;
 };
 
+/// Возвращает синтаксически разобранные секции и накопленную диагностику.
 struct ParsedDxf
 {
   bool success = false;
@@ -87,6 +94,7 @@ struct ParsedDxf
   std::vector<Diagnostic> diagnostics;
 };
 
+/// Возвращает собранные цепочки и предложения соединения после преобразования сущностей.
 struct Geometry
 {
   bool success = false;
@@ -395,7 +403,7 @@ bool bulgeArc(Point start, Point end, double bulge, Segment & segment) noexcept
 }
 
 /// Добавляет сегменты одной полилинии с учётом её замкнутости и коэффициентов выпуклости.
-void appendPolyline(const std::vector<Point> & points, const std::vector<double> & bulges, bool closed, std::string layer,
+void appendPolyline(const std::vector<Point> & points, const std::vector<double> & bulges, bool closed, const std::string & layer,
                     std::size_t sourceOrder, std::size_t line, std::vector<Segment> & segments)
 {
   if (points.size() < 2)
@@ -875,6 +883,7 @@ std::vector<Chain> assembleChains(std::vector<Segment> segments, std::vector<Dia
 /// Строит только однозначные предложения соединения открытых концов.
 std::vector<JoinProposal> proposeJoins(const std::vector<Chain> & chains, double tolerance)
 {
+  /// Представляет один свободный конец открытой цепочки при поиске однозначной пары.
   struct End
   {
     std::size_t chain = 0;
@@ -1247,12 +1256,12 @@ bool layerSelected(const std::vector<std::string> & selected, const std::string 
 /// Сопоставляет пользовательский машинный литерал с поддерживаемой единицей.
 std::optional<LengthUnit> parseLengthUnit(std::string_view value) noexcept
 {
-  constexpr std::array values{std::pair{"mm", LengthUnit::Millimeter}, std::pair{"cm", LengthUnit::Centimeter},
+  constexpr std::array VALUES{std::pair{"mm", LengthUnit::Millimeter}, std::pair{"cm", LengthUnit::Centimeter},
                               std::pair{"m", LengthUnit::Meter},       std::pair{"km", LengthUnit::Kilometer},
                               std::pair{"in", LengthUnit::Inch},       std::pair{"ft", LengthUnit::Foot},
                               std::pair{"yd", LengthUnit::Yard},       std::pair{"um", LengthUnit::Micrometer}};
-  const auto found = std::find_if(values.begin(), values.end(), [value](const auto & item) { return item.first == value; });
-  return found == values.end() ? std::nullopt : std::optional{found->second};
+  const auto found = std::find_if(VALUES.begin(), VALUES.end(), [value](const auto & item) { return item.first == value; });
+  return found == VALUES.end() ? std::nullopt : std::optional{found->second};
 }
 
 /// Возвращает устойчивый литерал единицы без локализованного представления.

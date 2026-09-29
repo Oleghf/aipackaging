@@ -314,7 +314,7 @@ std::optional<PolygonImportJobHandle> StdThreadPolygonImportJobRunner::inspect(c
   const auto dispatcher = dispatcher_;
   return startWorker(
     [this, gateway, dispatcher, request](const std::stop_token & stopToken, PolygonImportJobHandle job,
-                                         PolygonImportJobCallbacks callbacks) mutable noexcept
+                                         PolygonImportJobCallbacks callbacks) mutable
     {
       PolygonImportInspection result;
       try
@@ -346,6 +346,7 @@ std::optional<PolygonImportJobHandle> StdThreadPolygonImportJobRunner::inspect(c
                          }
                          catch (...)
                          {
+                           return;
                          }
                        };
                      });
@@ -365,6 +366,7 @@ std::optional<PolygonImportJobHandle> StdThreadPolygonImportJobRunner::inspect(c
                          }
                          catch (...)
                          {
+                           return;
                          }
                        };
                      });
@@ -386,6 +388,7 @@ std::optional<PolygonImportJobHandle> StdThreadPolygonImportJobRunner::inspect(c
                          }
                          catch (...)
                          {
+                           return;
                          }
                        };
                      });
@@ -409,7 +412,7 @@ std::optional<PolygonImportJobHandle> StdThreadPolygonImportJobRunner::build(Pol
   const auto dispatcher = dispatcher_;
   return startWorker(
     [this, gateway, dispatcher, session, configuration](const std::stop_token & stopToken, PolygonImportJobHandle job,
-                                                        PolygonImportJobCallbacks callbacks) mutable noexcept
+                                                        PolygonImportJobCallbacks callbacks) mutable
     {
       PolygonImportBuildResult result;
       try
@@ -440,6 +443,7 @@ std::optional<PolygonImportJobHandle> StdThreadPolygonImportJobRunner::build(Pol
                          }
                          catch (...)
                          {
+                           return;
                          }
                        };
                      });
@@ -460,6 +464,7 @@ std::optional<PolygonImportJobHandle> StdThreadPolygonImportJobRunner::build(Pol
                          }
                          catch (...)
                          {
+                           return;
                          }
                        };
                      });
@@ -481,6 +486,7 @@ std::optional<PolygonImportJobHandle> StdThreadPolygonImportJobRunner::build(Pol
                          }
                          catch (...)
                          {
+                           return;
                          }
                        };
                      });
@@ -511,7 +517,7 @@ std::optional<PolygonImportJobHandle> StdThreadPolygonImportJobRunner::startWork
   try
   {
     worker_ = std::jthread(
-      [work = std::move(work), callbacks = std::move(callbacks), job](const std::stop_token & token) mutable noexcept
+      [this, work = std::move(work), callbacks = std::move(callbacks), job](const std::stop_token & token) mutable noexcept
       {
         try
         {
@@ -519,6 +525,7 @@ std::optional<PolygonImportJobHandle> StdThreadPolygonImportJobRunner::startWork
         }
         catch (...)
         {
+          clearActiveJob(mutex_, activeJob_, job);
         }
       });
   }

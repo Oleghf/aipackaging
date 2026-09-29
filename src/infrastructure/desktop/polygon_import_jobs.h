@@ -66,8 +66,8 @@ public:
   void release(const PolygonImportBuildResult & result) noexcept override;
 
 private:
-  /// Запускает подготовленную невыбрасывающую функцию рабочего потока.
   std::optional<PolygonImportJobHandle>
+  /// Запускает подготовленную невыбрасывающую функцию рабочего потока.
   startWorker(std::function<void(const std::stop_token &, PolygonImportJobHandle, PolygonImportJobCallbacks)> work,
               PolygonImportJobCallbacks callbacks, std::string & error);
 
