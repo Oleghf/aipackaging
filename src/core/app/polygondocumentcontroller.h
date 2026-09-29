@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 
+#include <aipackaging/editor/polygon_editor_commands.h>
 #include <polygoneditablecontracts.h>
 #include <polygonworkspaceports.h>
 
@@ -26,6 +27,8 @@ public:
   void inspectRecovery();
   /// Открывает задачу или пользовательский черновик после завершения активного поиска.
   void openDocument(const std::string & filePath);
+  /// Создаёт новый грязный документ с листом в миллиметрах и пустым составом деталей.
+  void createDocument(const std::string & problemId, double sheetWidth, double sheetHeight);
   /// Сохраняет активный документ как строгую задачу либо пользовательский черновик.
   void saveDocument(const std::string & filePath, bool asDraft);
   /// Немедленно сохраняет актуальное поколение грязного документа в автоматический черновик.
@@ -36,6 +39,18 @@ public:
   void deleteRecovery();
   /// Принимает построенный импортом документ после согласованного завершения поиска.
   void adoptImported(PolygonEditableDocumentLoadResult loaded);
+  /// Выполняет атомарный пакет изменений, затем повторяет точную проверку снимка.
+  void editDocument(const aipackaging::editor::EditorCommandBatch & batch);
+  /// Отменяет последнюю транзакцию документа.
+  void undo();
+  /// Повторяет следующую отменённую транзакцию документа.
+  void redo();
+  /// Начинает непрерывное изменение и возвращает его идентификатор либо ноль при блокировке.
+  std::uint64_t beginGesture() noexcept;
+  /// Отменяет незавершённое объединённое изменение.
+  void cancelGesture(std::uint64_t gestureId);
+  /// Завершает объединение изменений одного жеста.
+  void finishGesture(std::uint64_t gestureId);
 
 private:
   /// Выполняет загрузку после согласованного завершения предыдущей фоновой работы.
@@ -44,12 +59,14 @@ private:
   void acceptLoaded(PolygonEditableDocumentLoadResult loaded, bool recovered);
   /// Удаляет автоматический черновик после успешного пользовательского сохранения.
   bool clearRecoveryAfterSave(const std::string & savedPath);
+  /// Компилирует текущее состояние сессии и публикует его как изменение документа.
+  void publishEdited(const aipackaging::editor::EditorCommandResult & result, aipackaging::editor::PolygonEditorSession previous);
 
   std::shared_ptr<IPolygonEditableDocumentGateway> gateway_;
   std::shared_ptr<PolygonWorkspaceController> workspace_;
   std::shared_ptr<ActivePolygonDocument> activeDocument_;
   std::string autosavePath_;
-  std::optional<aipackaging::editor::EditablePolygonDocument> document_;
+  std::optional<aipackaging::editor::PolygonEditorSession> session_;
   std::optional<PolygonSourceFingerprint> baseFingerprint_;
   std::uint64_t generation_ = 0;
 };

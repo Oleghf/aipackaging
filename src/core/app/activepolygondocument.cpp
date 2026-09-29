@@ -52,6 +52,19 @@ void ActivePolygonDocument::markChanged(bool valid) noexcept
   state_.hasSolution = false;
 }
 
+/// Заменяет только снимок решателя и признаки редактора, не скрывая прежнее решение.
+bool ActivePolygonDocument::updateEdited(std::optional<PolygonDocumentHandle> handle, bool valid, bool dirty) noexcept
+{
+  if (!state_.present || state_.running || (valid && (!handle || !*handle)))
+    return false;
+  state_.handle = handle;
+  state_.valid = valid;
+  state_.dirty = dirty;
+  if (state_.hasSolution)
+    state_.solutionStale = true;
+  return true;
+}
+
 /// Обновляет происхождение документа и устанавливает чистую точку сохранения.
 void ActivePolygonDocument::markSaved(PolygonDocumentSource source, std::string sourceIdentifier)
 {

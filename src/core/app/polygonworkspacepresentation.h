@@ -3,10 +3,12 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include <activepolygondocument.h>
+#include <aipackaging/editor/polygon_document.h>
 #include <aipackaging/editor/polygon_document_validation.h>
 
 /// Содержит компоненты целевой функции, необходимые интерфейсу.
@@ -148,6 +150,9 @@ struct PolygonWorkspaceSnapshot
   bool canSave = false;
   bool canSaveDocument = false;
   bool canSaveProblem = false;
+  bool canEdit = false;
+  bool canUndo = false;
+  bool canRedo = false;
   bool canLoadModel = true;
   bool canCancelModelLoad = false;
   bool modelReady = false;
@@ -159,7 +164,11 @@ struct PolygonWorkspaceSnapshot
   bool documentDirty = false;
   bool documentValid = false;
   bool solutionStale = false;
+  std::uint64_t documentRevision = 0;
+  std::string undoLabel;
+  std::string redoLabel;
   PolygonDocumentSource documentSource = PolygonDocumentSource::None;
+  std::optional<aipackaging::editor::EditablePolygonDocument> editableDocument;
   std::vector<aipackaging::editor::DocumentDiagnostic> documentDiagnostics;
   PolygonRecoveryCandidate recovery;
   NestingProgress progress;

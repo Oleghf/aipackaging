@@ -119,8 +119,11 @@ public:
                                                     const std::string & sourceIdentifier,
                                                     std::optional<PolygonSourceFingerprint> sourceFingerprint) override
   {
+    if (!compileSucceeds)
+      return {false, "точная проверка недоступна"};
     PolygonEditableDocumentLoadResult result = load(sourceIdentifier);
     result.document = std::move(document);
+    result.problemId = result.document.problemId;
     result.source = PolygonDocumentSource::Imported;
     result.baseFingerprint = sourceFingerprint;
     return result;
@@ -171,6 +174,7 @@ public:
   int loadCount = 0;
   int removeCount = 0;
   bool invalidRecovery = false;
+  bool compileSucceeds = true;
   bool saveSucceeds = true;
   std::string savedProblem;
   std::string savedDraft;
@@ -707,4 +711,96 @@ TEST(PolygonDocumentController, KeepsPreviousDocumentAfterLoadFailure)
   EXPECT_EQ(output->snapshot.problemId, "first.json");
   EXPECT_DOUBLE_EQ(output->snapshot.scene.sheetWidth, sheetWidth);
   EXPECT_NE(output->snapshot.statusText.find("Ошибка загрузки"), std::string::npos);
+}
+
+/// Проверяет создание документа, выполнение команды и согласованную отмену через прикладные действия.
+TEST(PolygonDocumentController, CreatesEditsAndUndoesDocument)
+{
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<EditableDocumentGatewayStub> editable;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto [workspace, controller] = makeDocumentControllers(output, documents, editable, jobs);
+  PolygonWorkspaceActions actions = workspace->actions();
+  controller->bindActions(actions);
+
+  actions.createDocument("new-problem", 200.0, 100.0);
+  ASSERT_TRUE(output->snapshot.editableDocument.has_value());
+  EXPECT_EQ(output->snapshot.documentSource, PolygonDocumentSource::Untitled);
+  EXPECT_TRUE(output->snapshot.documentDirty);
+  const std::size_t releasedBefore = documents->releasedDocumentCount;
+
+  aipackaging::editor::EditorCommandBatch addPart;
+  addPart.label = "Добавление детали";
+  addPart.commands.push_back(aipackaging::editor::AddPartCommand{"part", 1, {0}});
+  actions.editDocument(addPart);
+  ASSERT_EQ(output->snapshot.editableDocument->parts.size(), 1U);
+  EXPECT_TRUE(output->snapshot.canUndo);
+  EXPECT_GT(documents->releasedDocumentCount, releasedBefore);
+
+  actions.undoDocument();
+  EXPECT_TRUE(output->snapshot.editableDocument->parts.empty());
+  EXPECT_TRUE(output->snapshot.canRedo);
+
+  const std::uint64_t gesture = actions.beginEditGesture();
+  ASSERT_NE(gesture, 0U);
+  actions.editDocument({"Размер листа", {aipackaging::editor::SetSheetCommand{210.0, 110.0}}, gesture});
+  actions.editDocument({"Размер листа", {aipackaging::editor::SetSheetCommand{220.0, 120.0}}, gesture});
+  actions.finishEditGesture(gesture);
+  EXPECT_DOUBLE_EQ(output->snapshot.editableDocument->sheet.width, 220.0);
+  actions.undoDocument();
+  EXPECT_DOUBLE_EQ(output->snapshot.editableDocument->sheet.width, 200.0);
+}
+
+/// Проверяет блокировку изменения во время поиска и запрет сохранения устаревшего решения.
+TEST(PolygonDocumentController, BlocksEditWhileRunningAndMarksSolutionStale)
+{
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<EditableDocumentGatewayStub> editable;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto [workspace, controller] = makeDocumentControllers(output, documents, editable, jobs);
+  PolygonWorkspaceActions actions = workspace->actions();
+  controller->bindActions(actions);
+  actions.openProblem("problem.json");
+  actions.start({});
+  const std::uint64_t revision = output->snapshot.documentRevision;
+  EXPECT_EQ(actions.beginEditGesture(), 0U);
+  actions.editDocument({"Переименование", {aipackaging::editor::SetProblemIdCommand{"blocked"}}, std::nullopt});
+  EXPECT_EQ(output->snapshot.documentRevision, revision);
+  jobs->complete(solvedResult());
+  ASSERT_TRUE(output->snapshot.canSave);
+
+  actions.editDocument({"Переименование", {aipackaging::editor::SetProblemIdCommand{"changed"}}, std::nullopt});
+  EXPECT_TRUE(output->snapshot.solutionStale);
+  EXPECT_FALSE(output->snapshot.canSave);
+  EXPECT_EQ(output->snapshot.problemId, "changed");
+  actions.saveSolution("stale.json");
+  EXPECT_FALSE(documents->saved.has_value());
+}
+
+/// Проверяет откат документа и истории при внутреннем отказе точной компиляции.
+TEST(PolygonDocumentController, RestoresPreviousRevisionAfterGatewayFailure)
+{
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<EditableDocumentGatewayStub> editable;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto [workspace, controller] = makeDocumentControllers(output, documents, editable, jobs);
+  PolygonWorkspaceActions actions = workspace->actions();
+  controller->bindActions(actions);
+  actions.openProblem("problem.json");
+  const std::uint64_t revision = output->snapshot.documentRevision;
+
+  editable->compileSucceeds = false;
+  actions.editDocument({"Переименование", {aipackaging::editor::SetProblemIdCommand{"unpublished"}}, std::nullopt});
+  EXPECT_EQ(output->snapshot.documentRevision, revision);
+  EXPECT_EQ(output->snapshot.problemId, "problem.json");
+  EXPECT_FALSE(output->snapshot.canUndo);
+  EXPECT_NE(output->snapshot.statusText.find("точная проверка недоступна"), std::string::npos);
+
+  editable->compileSucceeds = true;
+  actions.editDocument({"Переименование", {aipackaging::editor::SetProblemIdCommand{"published"}}, std::nullopt});
+  EXPECT_EQ(output->snapshot.problemId, "published");
+  EXPECT_TRUE(output->snapshot.canUndo);
 }

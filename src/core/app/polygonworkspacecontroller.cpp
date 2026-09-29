@@ -186,7 +186,7 @@ void PolygonWorkspaceController::openProblem(const std::string & filePath)
 /// Делегирует запись шлюзу только для зарегистрированного проверенного результата.
 void PolygonWorkspaceController::saveSolution(const std::string & filePath)
 {
-  if (filePath.empty() || !solution_ || snapshot_.state == PolygonWorkspaceState::Running)
+  if (filePath.empty() || !solution_ || snapshot_.state == PolygonWorkspaceState::Running || document_->state().solutionStale)
     return;
   const PolygonDocumentOperationResult saved = documents_->save(filePath, *solution_);
   snapshot_.statusText = saved.success ? "Решение сохранено" : "Ошибка сохранения: " + saved.error;
@@ -322,10 +322,60 @@ void PolygonWorkspaceController::acceptEditableDocument(PolygonEditableDocumentL
   snapshot_.document = std::move(loaded.summary);
   snapshot_.document.sourceIdentifier = loaded.sourceIdentifier;
   snapshot_.documentDiagnostics = std::move(loaded.diagnostics);
+  snapshot_.editableDocument = loaded.document;
   snapshot_.scene = std::move(loaded.scene);
   snapshot_.unplacedInstances = std::move(loaded.unplacedInstances);
   snapshot_.statusText =
     valid ? (dirty ? "Черновик восстановлен" : "Документ загружен") : "Черновик загружен; исправьте ошибки перед запуском";
+  publish();
+}
+
+/// Заменяет снимок решателя после изменения и сохраняет прежнюю сцену результата для просмотра.
+void PolygonWorkspaceController::acceptEditedDocument(PolygonEditableDocumentLoadResult loaded,
+                                                      const aipackaging::editor::EditorHistoryState & history)
+{
+  if (activeJob_ || !loaded.success)
+    return;
+  const std::optional<PolygonDocumentHandle> nextHandle =
+    loaded.compiled ? std::optional<PolygonDocumentHandle>{loaded.compiled->document} : std::nullopt;
+  const std::optional<PolygonDocumentHandle> previousHandle = document_->state().handle;
+  const bool valid = nextHandle.has_value();
+  if (!document_->updateEdited(nextHandle, valid, history.dirty))
+  {
+    if (nextHandle)
+      documents_->release(*nextHandle);
+    return;
+  }
+  if (previousHandle)
+    documents_->release(*previousHandle);
+  snapshot_.problemId = loaded.problemId;
+  snapshot_.document = std::move(loaded.summary);
+  snapshot_.document.sourceIdentifier = loaded.sourceIdentifier;
+  snapshot_.documentDiagnostics = std::move(loaded.diagnostics);
+  snapshot_.editableDocument = std::move(loaded.document);
+  snapshot_.unplacedInstances = std::move(loaded.unplacedInstances);
+  if (!document_->state().hasSolution)
+    snapshot_.scene = std::move(loaded.scene);
+  snapshot_.statusText =
+    valid ? "Документ изменён; выполните раскрой заново" : "Документ изменён и содержит ошибки; запуск заблокирован";
+  snapshot_.documentRevision = history.revision;
+  snapshot_.canUndo = history.canUndo;
+  snapshot_.canRedo = history.canRedo;
+  snapshot_.undoLabel = history.undoLabel;
+  snapshot_.redoLabel = history.redoLabel;
+  publish();
+}
+
+/// Копирует представление документа и истории после изменения чистой точки.
+void PolygonWorkspaceController::presentEditorHistory(const aipackaging::editor::EditablePolygonDocument & document,
+                                                      const aipackaging::editor::EditorHistoryState & history)
+{
+  snapshot_.editableDocument = document;
+  snapshot_.documentRevision = history.revision;
+  snapshot_.canUndo = history.canUndo;
+  snapshot_.canRedo = history.canRedo;
+  snapshot_.undoLabel = history.undoLabel;
+  snapshot_.redoLabel = history.redoLabel;
   publish();
 }
 
@@ -356,7 +406,7 @@ void PolygonWorkspaceController::publish()
   snapshot_.canOpen = !running;
   snapshot_.canRun = document_->state().handle.has_value() && document_->state().valid && !running && !activeModelJob_;
   snapshot_.canCancel = running;
-  snapshot_.canSave = solution_.has_value() && !running;
+  snapshot_.canSave = solution_.has_value() && !running && !document_->state().solutionStale;
   snapshot_.canLoadModel = !running && !activeModelJob_ && static_cast<bool>(modelJobs_);
   snapshot_.canCancelModelLoad = activeModelJob_.has_value();
   snapshot_.modelReady = model_.has_value();
@@ -364,6 +414,9 @@ void PolygonWorkspaceController::publish()
   snapshot_.hasDocument = document.present;
   snapshot_.canSaveDocument = document.present && !running;
   snapshot_.canSaveProblem = document.present && document.valid && !running;
+  snapshot_.canEdit = document.present && !running;
+  snapshot_.canUndo = snapshot_.canUndo && !running;
+  snapshot_.canRedo = snapshot_.canRedo && !running;
   snapshot_.documentSource = document.source;
   snapshot_.documentDirty = document.dirty;
   snapshot_.documentValid = document.valid;

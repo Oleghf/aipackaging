@@ -7,6 +7,7 @@
 #include <string>
 
 #include <activepolygondocument.h>
+#include <aipackaging/editor/polygon_editor_commands.h>
 #include <polygoneditablecontracts.h>
 #include <polygonworkspaceports.h>
 
@@ -42,6 +43,11 @@ public:
   void requestDocumentReplacement(std::function<void()> replacement);
   /// Публикует успешно загруженный редактируемый документ и его необязательный точный снимок.
   void acceptEditableDocument(PolygonEditableDocumentLoadResult loaded, bool dirty);
+  /// Публикует изменённый документ, не удаляя прежнее решение из режима просмотра.
+  void acceptEditedDocument(PolygonEditableDocumentLoadResult loaded, const aipackaging::editor::EditorHistoryState & history);
+  /// Обновляет доступность отмены и повтора после сохранения без замены документа.
+  void presentEditorHistory(const aipackaging::editor::EditablePolygonDocument & document,
+                            const aipackaging::editor::EditorHistoryState & history);
   /// Публикует состояние найденного автоматического черновика.
   void presentRecovery(PolygonRecoveryCandidate recovery);
   /// Показывает диагностируемый результат операции документа без потери прежней сцены.

@@ -47,6 +47,8 @@ public:
   bool clear() noexcept;
   /// Отмечает изменение документа и устаревание существующего решения.
   void markChanged(bool valid) noexcept;
+  /// Публикует новый проверенный снимок после изменения, сохраняя старое решение как устаревшее.
+  bool updateEdited(std::optional<PolygonDocumentHandle> handle, bool valid, bool dirty) noexcept;
   /// Отмечает успешное сохранение документа в указанном источнике.
   void markSaved(PolygonDocumentSource source, std::string sourceIdentifier);
   /// Обновляет результат предметной проверки документа.

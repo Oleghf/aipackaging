@@ -1,10 +1,12 @@
 #ifndef AIPACKAGING_APPLICATION_POLYGONWORKSPACEPORTS_H
 #define AIPACKAGING_APPLICATION_POLYGONWORKSPACEPORTS_H
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
 
+#include <aipackaging/editor/polygon_editor_commands.h>
 #include <polygondocumentcontracts.h>
 #include <polygonmodelcontracts.h>
 #include <polygonruncontracts.h>
@@ -12,8 +14,15 @@
 /// Набор действий полигональной вкладки, привязываемых в корне композиции.
 struct PolygonWorkspaceActions
 {
+  std::function<void(const std::string &, double, double)> createDocument;
   std::function<void(const std::string &)> openProblem;
   std::function<void(const std::string &, bool)> saveDocument;
+  std::function<void(const aipackaging::editor::EditorCommandBatch &)> editDocument;
+  std::function<void()> undoDocument;
+  std::function<void()> redoDocument;
+  std::function<std::uint64_t()> beginEditGesture;
+  std::function<void(std::uint64_t)> cancelEditGesture;
+  std::function<void(std::uint64_t)> finishEditGesture;
   std::function<void()> autosaveDocument;
   std::function<void()> restoreRecovery;
   std::function<void()> deleteRecovery;
