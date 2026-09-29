@@ -110,6 +110,14 @@ if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
   target_link_libraries(AIPackaging_ApplicationTests PRIVATE AIPackaging_Application)
   set_tests_properties(AIPackaging_ApplicationTests PROPERTIES LABELS "app;application")
 
+  aipackaging_add_test_executable(AIPackaging_DxfImportWorkflowTests
+    "import/testdxfworkflow.cpp"
+  )
+  target_link_libraries(AIPackaging_DxfImportWorkflowTests PRIVATE
+    AIPackaging_Application AIPackaging_DesktopInfrastructure AIPackaging_DxfImport
+  )
+  set_tests_properties(AIPackaging_DxfImportWorkflowTests PROPERTIES LABELS "app;infrastructure;threading;import;dxf")
+
   aipackaging_add_test_executable(AIPackaging_DesktopGatewayTests
     "infrastructure/testpolygondesktopinfrastructure.cpp"
   )
@@ -346,6 +354,10 @@ if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_ApplicationTests
     ALLOWED_DIRECT AIPackaging_Application
+  )
+  aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_DxfImportWorkflowTests
+    ALLOWED_DIRECT AIPackaging_Application AIPackaging_DesktopInfrastructure AIPackaging_DxfImport
   )
   foreach(target IN ITEMS AIPackaging_DesktopGatewayTests AIPackaging_DesktopBackendTests AIPackaging_DesktopJobTests)
     aipackaging_assert_target_dependencies(

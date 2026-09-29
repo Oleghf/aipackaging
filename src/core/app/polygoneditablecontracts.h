@@ -50,6 +50,10 @@ public:
   virtual PolygonEditableDocumentLoadResult load(const std::string & filePath) = 0;
   /// Загружает найденный автоматический черновик как восстановленный документ.
   virtual PolygonEditableDocumentLoadResult loadRecovery(const std::string & filePath) = 0;
+  /// Выполняет локальную и точную проверки документа, построенного внешним импортёром.
+  virtual PolygonEditableDocumentLoadResult compileImported(aipackaging::editor::EditablePolygonDocument document,
+                                                            const std::string & sourceIdentifier,
+                                                            std::optional<PolygonSourceFingerprint> sourceFingerprint) = 0;
   /// Сохраняет точную задачу только из полностью проверяемого документа.
   virtual PolygonDocumentOperationResult saveProblem(const std::string & filePath,
                                                      const aipackaging::editor::EditablePolygonDocument & document) = 0;

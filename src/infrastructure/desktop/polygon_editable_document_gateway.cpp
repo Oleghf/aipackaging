@@ -374,6 +374,21 @@ PolygonEditableDocumentLoadResult LocalPolygonEditableDocumentGateway::loadRecov
   return result;
 }
 
+/// Проверяет импортированную модель тем же точным путём, что и загруженную задачу.
+PolygonEditableDocumentLoadResult
+LocalPolygonEditableDocumentGateway::compileImported(EditablePolygonDocument document, const std::string & sourceIdentifier,
+                                                     std::optional<PolygonSourceFingerprint> sourceFingerprint)
+{
+  PolygonEditableDocumentLoadResult result;
+  result.success = true;
+  result.document = std::move(document);
+  result.source = PolygonDocumentSource::Imported;
+  result.sourceIdentifier = sourceIdentifier;
+  result.baseFingerprint = sourceFingerprint;
+  compileDocument(store_, result);
+  return result;
+}
+
 /// Отвергает локальные ошибки, повторяет точную нормализацию и только затем атомарно записывает задачу.
 PolygonDocumentOperationResult LocalPolygonEditableDocumentGateway::saveProblem(const std::string & filePath,
                                                                                 const EditablePolygonDocument & document)

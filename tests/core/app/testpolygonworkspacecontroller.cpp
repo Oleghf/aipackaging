@@ -114,6 +114,18 @@ public:
     return result;
   }
 
+  /// Возвращает импортированный документ с управляемым точным снимком.
+  PolygonEditableDocumentLoadResult compileImported(aipackaging::editor::EditablePolygonDocument document,
+                                                    const std::string & sourceIdentifier,
+                                                    std::optional<PolygonSourceFingerprint> sourceFingerprint) override
+  {
+    PolygonEditableDocumentLoadResult result = load(sourceIdentifier);
+    result.document = std::move(document);
+    result.source = PolygonDocumentSource::Imported;
+    result.baseFingerprint = sourceFingerprint;
+    return result;
+  }
+
   /// Запоминает сохранение строгой задачи.
   PolygonDocumentOperationResult saveProblem(const std::string & filePath,
                                              const aipackaging::editor::EditablePolygonDocument &) override

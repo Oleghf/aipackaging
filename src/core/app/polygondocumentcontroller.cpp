@@ -148,6 +148,19 @@ void PolygonDocumentController::deleteRecovery()
   inspectRecovery();
 }
 
+/// Откладывает публикацию импортированного документа до безопасной замены текущего снимка.
+void PolygonDocumentController::adoptImported(PolygonEditableDocumentLoadResult loaded)
+{
+  auto pending = std::make_shared<PolygonEditableDocumentLoadResult>(std::move(loaded));
+  const std::weak_ptr<PolygonDocumentController> weak = weak_from_this();
+  workspace_->requestDocumentReplacement(
+    [weak, pending]() mutable
+    {
+      if (const auto self = weak.lock())
+        self->acceptLoaded(std::move(*pending), false);
+    });
+}
+
 /// Выбирает обычную или восстановительную загрузку и сохраняет прежний документ при отказе.
 void PolygonDocumentController::loadAfterStop(const std::string & filePath, bool recovery)
 {

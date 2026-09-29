@@ -5,6 +5,7 @@ add_library(AIPackaging_DesktopInfrastructure STATIC
   "polygon_backends.cpp"
   "polygon_document_gateway.cpp"
   "polygon_editable_document_gateway.cpp"
+  "polygon_import_jobs.cpp"
   "polygon_model_jobs.cpp"
   "polygon_presentation_mapper.cpp"
 )
@@ -13,7 +14,7 @@ target_include_directories(AIPackaging_DesktopInfrastructure PUBLIC
 )
 target_link_libraries(AIPackaging_DesktopInfrastructure
   PUBLIC AIPackaging_Application
-  PRIVATE AIPackaging_Search AIPackaging_Json AIPackaging_PolygonCore AIPackaging_EditorPersistence
+  PRIVATE AIPackaging_Search AIPackaging_Json AIPackaging_PolygonCore AIPackaging_EditorPersistence AIPackaging_DxfImport
 )
 if (BUILD_ONNX_BACKEND)
   target_link_libraries(AIPackaging_DesktopInfrastructure PRIVATE AIPackaging_OnnxInference)

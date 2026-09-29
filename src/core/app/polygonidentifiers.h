@@ -43,6 +43,26 @@ struct PolygonModelJobHandle
   friend bool operator==(const PolygonModelJobHandle &, const PolygonModelJobHandle &) = default;
 };
 
+/// Непостоянный идентификатор разобранного сеанса импорта текущего процесса.
+struct PolygonImportSessionHandle
+{
+  std::uint64_t value = 0;
+  /// Сообщает, ссылается ли идентификатор на сохранённый сеанс импорта.
+  explicit operator bool() const noexcept { return value != 0; }
+  /// Сравнивает два идентификатора одной процессной области.
+  friend bool operator==(const PolygonImportSessionHandle &, const PolygonImportSessionHandle &) = default;
+};
+
+/// Непостоянный идентификатор фоновой работы импорта DXF.
+struct PolygonImportJobHandle
+{
+  std::uint64_t value = 0;
+  /// Сообщает, ссылается ли идентификатор на активную работу импорта.
+  explicit operator bool() const noexcept { return value != 0; }
+  /// Сравнивает два идентификатора одной процессной области.
+  friend bool operator==(const PolygonImportJobHandle &, const PolygonImportJobHandle &) = default;
+};
+
 /// Непостоянный идентификатор фонового запуска в текущем процессе.
 struct NestingJobHandle
 {

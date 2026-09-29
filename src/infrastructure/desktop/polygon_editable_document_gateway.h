@@ -16,6 +16,10 @@ public:
   PolygonEditableDocumentLoadResult load(const std::string & filePath) override;
   /// Загружает автоматический черновик и помечает состояние исходного файла.
   PolygonEditableDocumentLoadResult loadRecovery(const std::string & filePath) override;
+  /// Компилирует импортированную модель и сохраняет связь с исходным файлом.
+  PolygonEditableDocumentLoadResult compileImported(aipackaging::editor::EditablePolygonDocument document,
+                                                    const std::string & sourceIdentifier,
+                                                    std::optional<PolygonSourceFingerprint> sourceFingerprint) override;
   /// Проверяет и атомарно сохраняет неизменяемую задачу `polygon_problem` v1.
   PolygonDocumentOperationResult saveProblem(const std::string & filePath,
                                              const aipackaging::editor::EditablePolygonDocument & document) override;

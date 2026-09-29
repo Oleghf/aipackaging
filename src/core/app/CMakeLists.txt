@@ -2,6 +2,7 @@
 add_library(AIPackaging_Application STATIC
   "activepolygondocument.cpp"
   "polygondocumentcontroller.cpp"
+  "polygonimportcontroller.cpp"
   "polygonworkspacecontroller.cpp"
 )
 target_include_directories(AIPackaging_Application PUBLIC "${CMAKE_SOURCE_DIR}/src/core/app/")
