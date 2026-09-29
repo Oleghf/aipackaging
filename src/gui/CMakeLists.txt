@@ -5,6 +5,7 @@ add_library(${gui_static_lib_name} STATIC)
 target_sources(${gui_static_lib_name} PRIVATE
 "polygoncanvaswidget.cpp" "polygondocumentpanel.cpp" "polygonrunpanel.cpp" "polygonstatuspanel.cpp"
 "polygonworkspacewidget.cpp" "polygonstartpage.cpp" "qtapplicationdispatcher.cpp" "polygonmainwindow.cpp")
+target_sources(${gui_static_lib_name} PRIVATE "polygondxfimportwizard.cpp")
 
 target_include_directories(${gui_static_lib_name} PUBLIC
 "${CMAKE_SOURCE_DIR}/src/gui"

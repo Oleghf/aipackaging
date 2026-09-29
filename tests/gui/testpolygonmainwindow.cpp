@@ -114,6 +114,30 @@ TEST(PolygonMainWindow, ShowsFriendlyStartPage)
   EXPECT_EQ(examples->count(), 3);
 }
 
+/// Проверяет, что импорт становится доступен только после подключения отдельного сценария.
+TEST(PolygonMainWindow, EnablesDxfImportOnlyWhenWorkspaceCanOpen)
+{
+  application();
+  QSettings().clear();
+  PolygonMainWindow window;
+  PolygonImportActions importActions;
+  importActions.inspect = [](const PolygonImportInspectionRequest &) {};
+  window.setPolygonImportActions(std::move(importActions));
+  PolygonWorkspaceSnapshot ready;
+  ready.canOpen = true;
+  window.presentPolygonWorkspace(ready);
+  auto * button = window.findChild<QPushButton *>("startImportButton");
+  auto * action = window.findChild<QAction *>("importDxfAction");
+  ASSERT_NE(button, nullptr);
+  ASSERT_NE(action, nullptr);
+  EXPECT_TRUE(button->isEnabled());
+  EXPECT_TRUE(action->isEnabled());
+  ready.canOpen = false;
+  window.presentPolygonWorkspace(ready);
+  EXPECT_FALSE(button->isEnabled());
+  EXPECT_FALSE(action->isEnabled());
+}
+
 /// Проверяет немодальную карточку читаемого и повреждённого автоматического черновика.
 TEST(PolygonMainWindow, PresentsRecoveryCardAndForwardsActions)
 {

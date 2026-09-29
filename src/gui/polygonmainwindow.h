@@ -5,6 +5,7 @@
 #include <QMainWindow>
 #include <QStringList>
 
+#include <polygonimportcontracts.h>
 #include <polygonworkspaceview.h>
 
 class PolygonWorkspaceWidget;
@@ -14,10 +15,12 @@ class QLabel;
 class QStackedWidget;
 class QTimer;
 class PolygonStartPage;
+class PolygonDxfImportWizard;
 
 /// Показывает только полигональный раскрой и передаёт действия прикладному контроллеру.
 class PolygonMainWindow final : public QMainWindow,
-                                public IPolygonWorkspaceOutput
+                                public IPolygonWorkspaceOutput,
+                                public IPolygonImportOutput
 {
   Q_OBJECT
 public:
@@ -26,9 +29,13 @@ public:
 
   /// Подключает действия контроллера и восстанавливает ранее проверенный путь модели.
   void setPolygonWorkspaceActions(PolygonWorkspaceActions actions);
+  /// Подключает отдельные действия фонового импорта DXF.
+  void setPolygonImportActions(PolygonImportActions actions);
 
   /// Отображает согласованный снимок состояния полигональной рабочей области.
   void presentPolygonWorkspace(const PolygonWorkspaceSnapshot & snapshot) override;
+  /// Передаёт согласованный снимок открытому мастеру импорта.
+  void presentPolygonImport(const PolygonImportSnapshot & snapshot) override;
 
 protected:
   /// Сохраняет геометрию и расположение панелей перед закрытием окна.
@@ -65,6 +72,8 @@ private:
   void presentModelLoad(const PolygonWorkspaceSnapshot & snapshot);
   /// Открывает файловый диалог из последнего пользовательского каталога.
   void chooseProblem();
+  /// Выбирает файл DXF и открывает пошаговый мастер импорта.
+  void chooseDxf();
   /// Передаёт выбранный путь приложению и запоминает каталог.
   void openPath(const QString & path);
   /// Добавляет только успешно загруженный путь в начало списка недавних задач.
@@ -83,8 +92,11 @@ private:
   QAction * saveSolutionAction_;
   QAction * saveDocumentAction_;
   QAction * openModelAction_;
+  QAction * importDxfAction_;
   QAction * forgetModelAction_;
   PolygonWorkspaceActions actions_;
+  PolygonImportActions importActions_;
+  PolygonDxfImportWizard * importWizard_;
   PolygonWorkspaceSnapshot lastSnapshot_;
   QTimer * autosaveTimer_;
   QString pendingProblemPath_;

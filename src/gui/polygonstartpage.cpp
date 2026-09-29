@@ -22,6 +22,7 @@ PolygonStartPage::PolygonStartPage(QWidget * parent)
   , recoveryCard_(new QWidget(this))
   , recoveryText_(new QLabel(recoveryCard_))
   , restoreRecoveryButton_(new QPushButton(tr("Восстановить"), recoveryCard_))
+  , importDxfButton_(new QPushButton(tr("Импортировать DXF"), this))
 {
   setObjectName(QStringLiteral("polygonStartPage"));
   auto * title = new QLabel(tr("Подготовьте задачу раскроя"), this);
@@ -38,10 +39,9 @@ PolygonStartPage::PolygonStartPage(QWidget * parent)
   create->setObjectName(QStringLiteral("startCreateButton"));
   create->setEnabled(false);
   create->setToolTip(tr("Создание задачи появится на этапе M7"));
-  auto * importDxf = new QPushButton(tr("Импортировать DXF"), this);
-  importDxf->setObjectName(QStringLiteral("startImportButton"));
-  importDxf->setEnabled(false);
-  importDxf->setToolTip(tr("Импорт DXF появится на этапе M7"));
+  importDxfButton_->setObjectName(QStringLiteral("startImportButton"));
+  importDxfButton_->setEnabled(false);
+  importDxfButton_->setToolTip(tr("Импортируйте линии, дуги и кривые из ASCII DXF"));
 
   recentList_->setObjectName(QStringLiteral("recentProblemList"));
   recentList_->setAccessibleName(tr("Недавние задачи"));
@@ -66,7 +66,7 @@ PolygonStartPage::PolygonStartPage(QWidget * parent)
   auto * actions = new QHBoxLayout();
   actions->addWidget(open);
   actions->addWidget(create);
-  actions->addWidget(importDxf);
+  actions->addWidget(importDxfButton_);
   actions->addStretch(1);
   auto * recentActions = new QHBoxLayout();
   recentActions->addStretch(1);
@@ -105,6 +105,13 @@ PolygonStartPage::PolygonStartPage(QWidget * parent)
           });
   connect(restoreRecoveryButton_, &QPushButton::clicked, this, &PolygonStartPage::requestRestoreRecovery);
   connect(deleteRecovery, &QPushButton::clicked, this, &PolygonStartPage::requestDeleteRecovery);
+  connect(importDxfButton_, &QPushButton::clicked, this, &PolygonStartPage::requestImportDxf);
+}
+
+/// Переключает доступность импорта без изменения остальных действий стартовой страницы.
+void PolygonStartPage::setImportEnabled(bool enabled)
+{
+  importDxfButton_->setEnabled(enabled);
 }
 
 /// Формирует понятное описание источника, времени и доступности найденного черновика.

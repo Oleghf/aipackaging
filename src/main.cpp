@@ -7,8 +7,10 @@
 #include <polygon_backends.h>
 #include <polygon_document_gateway.h>
 #include <polygon_editable_document_gateway.h>
+#include <polygon_import_jobs.h>
 #include <polygon_model_jobs.h>
 #include <polygondocumentcontroller.h>
+#include <polygonimportcontroller.h>
 #include <polygonmainwindow.h>
 #include <polygonworkspacecontroller.h>
 #include <qtapplicationdispatcher.h>
@@ -25,6 +27,7 @@ int main(int argc, char * argv[])
 
   // Порядок объявления удерживает окно дольше контроллера и фонового средства запуска.
   auto polygonOutput = std::shared_ptr<IPolygonWorkspaceOutput>(&mainWindow, [](IPolygonWorkspaceOutput *) {});
+  auto importOutput = std::shared_ptr<IPolygonImportOutput>(&mainWindow, [](IPolygonImportOutput *) {});
   auto polygonStore = std::make_shared<PolygonArtifactStore>();
   auto polygonDocuments = std::make_shared<LocalPolygonDocumentGateway>(polygonStore);
   auto editableDocuments = std::make_shared<LocalPolygonEditableDocumentGateway>(polygonStore);
@@ -40,6 +43,8 @@ int main(int argc, char * argv[])
   auto polygonBackend = std::make_shared<PolygonBackendRouter>(baselineBackend);
 #endif
   auto polygonJobs = std::make_shared<StdThreadNestingJobRunner>(polygonBackend, polygonDispatcher, polygonDocuments);
+  auto importGateway = std::make_shared<LocalPolygonImportGateway>(editableDocuments, polygonDocuments);
+  auto importJobs = std::make_shared<StdThreadPolygonImportJobRunner>(importGateway, polygonDispatcher);
   auto activeDocument = std::make_shared<ActivePolygonDocument>();
   auto polygonController =
     std::make_shared<PolygonWorkspaceController>(polygonOutput, polygonDocuments, polygonJobs, polygonModels, activeDocument);
@@ -49,9 +54,11 @@ int main(int argc, char * argv[])
   const std::string autosavePath = QDir(autosaveDirectory).filePath(QStringLiteral("active.aipdraft.json")).toStdString();
   auto documentController =
     std::make_shared<PolygonDocumentController>(editableDocuments, polygonController, activeDocument, autosavePath);
+  auto importController = std::make_shared<PolygonImportController>(importOutput, importJobs, documentController);
   PolygonWorkspaceActions actions = polygonController->actions();
   documentController->bindActions(actions);
   mainWindow.setPolygonWorkspaceActions(std::move(actions));
+  mainWindow.setPolygonImportActions(importController->actions());
   documentController->inspectRecovery();
 
   return app.exec();

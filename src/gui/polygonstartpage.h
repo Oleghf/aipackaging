@@ -23,6 +23,8 @@ public:
   void setExamples(const QList<QPair<QString, QString>> & examples);
   /// Показывает либо скрывает немодальную карточку автоматического восстановления.
   void setRecoveryCandidate(const PolygonRecoveryCandidate & recovery);
+  /// Разрешает импорт DXF только после подключения прикладного сценария и при отсутствии поиска.
+  void setImportEnabled(bool enabled);
 
 signals:
   /// Запрашивает стандартный выбор задачи пользователем.
@@ -35,6 +37,8 @@ signals:
   void requestRestoreRecovery();
   /// Запрашивает удаление автоматического черновика после подтверждения пользователя.
   void requestDeleteRecovery();
+  /// Запрашивает выбор исходного файла DXF.
+  void requestImportDxf();
 
 private:
   /// Открывает выбранный доступный элемент указанного списка.
@@ -46,6 +50,7 @@ private:
   QWidget * recoveryCard_;
   QLabel * recoveryText_;
   QPushButton * restoreRecoveryButton_;
+  QPushButton * importDxfButton_;
 };
 
 #endif

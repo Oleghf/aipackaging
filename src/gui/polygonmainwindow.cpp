@@ -14,6 +14,7 @@
 #include <QToolBar>
 #include <utility>
 
+#include <polygondxfimportwizard.h>
 #include <polygonmainwindow.h>
 #include <polygonstartpage.h>
 #include <polygonworkspacewidget.h>
@@ -41,7 +42,9 @@ PolygonMainWindow::PolygonMainWindow(QWidget * parent)
   , saveSolutionAction_(nullptr)
   , saveDocumentAction_(nullptr)
   , openModelAction_(nullptr)
+  , importDxfAction_(nullptr)
   , forgetModelAction_(nullptr)
+  , importWizard_(nullptr)
   , autosaveTimer_(new QTimer(this))
 {
   buildWindow();
@@ -66,6 +69,7 @@ void PolygonMainWindow::buildWindow()
   QMenu * fileMenu = menuBar()->addMenu(tr("&Файл"));
   homeAction_ = fileMenu->addAction(tr("&Начальная страница"));
   openProblemAction_ = fileMenu->addAction(tr("&Открыть задачу…"));
+  importDxfAction_ = fileMenu->addAction(tr("&Импортировать DXF…"));
   saveDocumentAction_ = fileMenu->addAction(tr("&Сохранить документ"));
   saveSolutionAction_ = fileMenu->addAction(tr("&Сохранить решение…"));
   fileMenu->addSeparator();
@@ -75,6 +79,7 @@ void PolygonMainWindow::buildWindow()
   saveDocumentAction_->setShortcut(QKeySequence::Save);
   saveSolutionAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
   openProblemAction_->setObjectName(QStringLiteral("openProblemAction"));
+  importDxfAction_->setObjectName(QStringLiteral("importDxfAction"));
   saveSolutionAction_->setObjectName(QStringLiteral("saveSolutionAction"));
   saveDocumentAction_->setObjectName(QStringLiteral("saveDocumentAction"));
   openModelAction_->setObjectName(QStringLiteral("openModelAction"));
@@ -84,6 +89,7 @@ void PolygonMainWindow::buildWindow()
   toolbar->setMovable(false);
   toolbar->addAction(homeAction_);
   toolbar->addAction(openProblemAction_);
+  toolbar->addAction(importDxfAction_);
   toolbar->addAction(saveDocumentAction_);
   toolbar->addAction(saveSolutionAction_);
   toolbar->addSeparator();
@@ -106,6 +112,7 @@ void PolygonMainWindow::connectActions()
 {
   connect(homeAction_, &QAction::triggered, this, [this]() { pages_->setCurrentWidget(startPage_); });
   connect(openProblemAction_, &QAction::triggered, this, &PolygonMainWindow::chooseProblem);
+  connect(importDxfAction_, &QAction::triggered, this, &PolygonMainWindow::chooseDxf);
   connect(saveDocumentAction_, &QAction::triggered, this, &PolygonMainWindow::saveDocument);
   connect(saveSolutionAction_, &QAction::triggered, this, &PolygonMainWindow::saveSolution);
   connect(openModelAction_, &QAction::triggered, this, &PolygonMainWindow::chooseModel);
@@ -125,6 +132,7 @@ void PolygonMainWindow::connectActions()
             if (actions_.deleteRecovery)
               actions_.deleteRecovery();
           });
+  connect(startPage_, &PolygonStartPage::requestImportDxf, this, &PolygonMainWindow::chooseDxf);
   connect(workspace_, &PolygonWorkspaceWidget::requestOpenProblem, this, &PolygonMainWindow::chooseProblem);
   connect(workspace_, &PolygonWorkspaceWidget::requestSaveSolution, saveSolutionAction_, &QAction::trigger);
   connect(workspace_, &PolygonWorkspaceWidget::requestOpenModel, openModelAction_, &QAction::trigger);
@@ -170,12 +178,17 @@ void PolygonMainWindow::saveDocument()
   {
     QSettings settings;
     const QString directory = settings.value(QStringLiteral("files/lastDirectory")).toString();
-    path = QFileDialog::getSaveFileName(this, tr("Сохраните черновик полигональной задачи"),
-                                        QDir(directory).filePath(QStringLiteral("polygon-document.aipdraft.json")),
-                                        tr("Черновик AIPackaging (*.aipdraft.json);;JSON (*.json);;Все файлы (*)"));
+    const bool importedProblem = lastSnapshot_.documentSource == PolygonDocumentSource::Imported && lastSnapshot_.documentValid;
+    path = QFileDialog::getSaveFileName(
+      this,
+      importedProblem ? tr("Сохраните импортированную полигональную задачу") : tr("Сохраните черновик полигональной задачи"),
+      QDir(directory).filePath(importedProblem ? QStringLiteral("polygon-problem.json")
+                                               : QStringLiteral("polygon-document.aipdraft.json")),
+      importedProblem ? tr("Полигональная задача (*.json);;Все файлы (*)")
+                      : tr("Черновик AIPackaging (*.aipdraft.json);;JSON (*.json);;Все файлы (*)"));
     if (path.isEmpty())
       return;
-    asDraft = true;
+    asDraft = !importedProblem;
     settings.setValue(QStringLiteral("files/lastDirectory"), QFileInfo(path).absolutePath());
   }
   actions_.saveDocument(path.toStdString(), asDraft);
@@ -252,6 +265,15 @@ void PolygonMainWindow::setPolygonWorkspaceActions(PolygonWorkspaceActions actio
   }
 }
 
+/// Сохраняет независимые действия импорта и открывает доступ к мастеру на стартовой странице.
+void PolygonMainWindow::setPolygonImportActions(PolygonImportActions actions)
+{
+  importActions_ = std::move(actions);
+  const bool enabled = static_cast<bool>(importActions_.inspect) && lastSnapshot_.canOpen;
+  importDxfAction_->setEnabled(enabled);
+  startPage_->setImportEnabled(enabled);
+}
+
 /// Передаёт снимок рабочей странице и согласует навигацию, недавние файлы и модель.
 void PolygonMainWindow::presentPolygonWorkspace(const PolygonWorkspaceSnapshot & snapshot)
 {
@@ -270,6 +292,13 @@ void PolygonMainWindow::presentPolygonWorkspace(const PolygonWorkspaceSnapshot &
     autosaveTimer_->stop();
 }
 
+/// Передаёт состояние только существующему мастеру; фоновая работа не создаёт окон самостоятельно.
+void PolygonMainWindow::presentPolygonImport(const PolygonImportSnapshot & snapshot)
+{
+  if (importWizard_)
+    importWizard_->present(snapshot);
+}
+
 /// Обновляет доступность общих действий и строку состояния окна.
 void PolygonMainWindow::presentActions(const PolygonWorkspaceSnapshot & snapshot)
 {
@@ -277,6 +306,9 @@ void PolygonMainWindow::presentActions(const PolygonWorkspaceSnapshot & snapshot
   saveSolutionAction_->setEnabled(snapshot.canSave);
   saveDocumentAction_->setEnabled(snapshot.canSaveDocument);
   openModelAction_->setEnabled(snapshot.canLoadModel);
+  const bool importEnabled = snapshot.canOpen && static_cast<bool>(importActions_.inspect);
+  importDxfAction_->setEnabled(importEnabled);
+  startPage_->setImportEnabled(importEnabled);
   statusBar()->showMessage(QString::fromStdString(snapshot.statusText));
 }
 
@@ -367,6 +399,26 @@ void PolygonMainWindow::chooseProblem()
                                                     tr("Задачи и черновики (*.json *.aipdraft.json);;Все файлы (*)"));
   if (!path.isEmpty())
     openPath(path);
+}
+
+/// Выбирает обычный файл DXF и запускает отдельный мастер без замены текущего документа.
+void PolygonMainWindow::chooseDxf()
+{
+  if (!importActions_.inspect || importWizard_ || !confirmDocumentReplacement())
+    return;
+  QSettings settings;
+  const QString directory = settings.value(QStringLiteral("files/lastDirectory")).toString();
+  const QString path =
+    QFileDialog::getOpenFileName(this, tr("Импортируйте ASCII DXF"), directory, tr("Файлы DXF (*.dxf);;Все файлы (*)"));
+  if (path.isEmpty())
+    return;
+  settings.setValue(QStringLiteral("files/lastDirectory"), QFileInfo(path).absolutePath());
+  importWizard_ = new PolygonDxfImportWizard(this);
+  importWizard_->setAttribute(Qt::WA_DeleteOnClose);
+  connect(importWizard_, &QObject::destroyed, this, [this]() { importWizard_ = nullptr; });
+  importWizard_->startImport(path, importActions_);
+  importWizard_->show();
+  importWizard_->raise();
 }
 
 /// Запоминает каталог, но добавляет путь в недавние только после успешного снимка.
