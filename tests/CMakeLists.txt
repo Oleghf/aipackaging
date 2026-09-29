@@ -86,6 +86,7 @@ endif()
 if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
   aipackaging_add_test_executable(AIPackaging_EditorTests
     "editor/testpolygondocument.cpp"
+    "editor/testpolygoneditorcommands.cpp"
   )
   target_link_libraries(AIPackaging_EditorTests PRIVATE AIPackaging_Editor)
   set_tests_properties(AIPackaging_EditorTests PROPERTIES LABELS "app;editor")

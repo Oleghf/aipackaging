@@ -22,7 +22,7 @@ FUNCTION_PATTERN = re.compile(
     r"(?P<ending>=\s*(?:delete|default)\s*;|[;{])",
     re.DOTALL,
 )
-CONTROL_NAMES = {"if", "for", "while", "switch", "catch", "return", "sizeof", "alignof", "static_assert"}
+CONTROL_NAMES = {"if", "constexpr", "for", "while", "switch", "catch", "return", "sizeof", "alignof", "static_assert"}
 
 
 @dataclass(frozen=True)

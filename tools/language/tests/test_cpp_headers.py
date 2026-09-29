@@ -91,7 +91,10 @@ class CppHeaderCheckerTests(unittest.TestCase):
         external.parent.mkdir(parents=True)
         external.write_text("int foreign() { return 0; }\n", encoding="utf-8")
         lambda_path = self.root / "src" / "lambda.cpp"
-        lambda_path.write_text("auto action = []() { return 1; };\n", encoding="utf-8")
+        lambda_path.write_text(
+            "auto action = []() { if constexpr (true) return 1; return 0; };\n",
+            encoding="utf-8",
+        )
         symbols = [finding.symbol for finding in collect_findings(self.root, self.rules)]
         self.assertEqual(symbols, [])
 
