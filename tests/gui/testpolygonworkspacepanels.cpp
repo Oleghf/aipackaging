@@ -1,8 +1,10 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QLabel>
 #include <QLineEdit>
@@ -10,9 +12,11 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QTreeWidget>
+#include <variant>
 
 #include <gtest/gtest.h>
 #include <polygondocumentpanel.h>
+#include <polygoneditorpanel.h>
 #include <polygonrunpanel.h>
 #include <polygonstatuspanel.h>
 
@@ -102,7 +106,7 @@ TEST(PolygonRunPanel, PresentsModelAndUnplacedInstances)
   panel.present(snapshot);
   auto * modes = panel.findChild<QComboBox *>(QStringLiteral("polygonSolverBox"));
   auto * start = panel.findChild<QPushButton *>(QStringLiteral("polygonStartButton"));
-  auto * unplaced = panel.findChild<QListWidget *>();
+  auto * unplaced = panel.findChild<QListWidget *>(QStringLiteral("polygonUnplacedInstances"));
   ASSERT_NE(modes, nullptr);
   ASSERT_NE(start, nullptr);
   ASSERT_NE(unplaced, nullptr);
@@ -163,4 +167,72 @@ TEST(PolygonStatusPanel, ShowsEditableDocumentDiagnostics)
   const auto * status = panel.findChild<QLabel *>(QStringLiteral("polygonStatus"));
   ASSERT_NE(status, nullptr);
   EXPECT_TRUE(status->text().contains(QStringLiteral("Внешний контур детали открыт")));
+}
+
+/// Проверяет, что числовая панель публикует команды, а не изменяет снимок напрямую.
+TEST(PolygonEditorPanel, BuildsDocumentAndPartCommands)
+{
+  ensurePanelApplication();
+  PolygonEditorPanel panel;
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.canEdit = true;
+  snapshot.documentValid = false;
+  snapshot.editableDocument.emplace();
+  snapshot.editableDocument->problemId = "draft";
+  snapshot.editableDocument->sheet.width = 100.0;
+  snapshot.editableDocument->sheet.height = 80.0;
+  panel.present(snapshot);
+
+  std::vector<aipackaging::editor::EditorCommandBatch> commands;
+  QObject::connect(&panel, &PolygonEditorPanel::editRequested,
+                   [&commands](const aipackaging::editor::EditorCommandBatch & batch) { commands.push_back(batch); });
+  auto * addPart = panel.findChild<QPushButton *>(QStringLiteral("addPartButton"));
+  auto * applyDocument = panel.findChild<QPushButton *>(QStringLiteral("applyDocumentPropertiesButton"));
+  ASSERT_NE(addPart, nullptr);
+  ASSERT_NE(applyDocument, nullptr);
+  addPart->click();
+  applyDocument->click();
+  ASSERT_EQ(commands.size(), 2U);
+  ASSERT_EQ(commands.front().commands.size(), 1U);
+  EXPECT_TRUE(std::holds_alternative<aipackaging::editor::AddPartCommand>(commands.front().commands.front()));
+  EXPECT_EQ(commands.back().commands.size(), 3U);
+}
+
+/// Проверяет передачу направления дуги из числовой формы выбранного контура.
+TEST(PolygonEditorPanel, BuildsDirectedArcCommand)
+{
+  ensurePanelApplication();
+  PolygonEditorPanel panel;
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.canEdit = true;
+  snapshot.editableDocument.emplace();
+  aipackaging::editor::EditablePart part;
+  part.id = {1};
+  part.partId = "arc";
+  part.outer.emplace();
+  part.outer->id = {2};
+  part.outer->vertices.push_back({{3}, 0.0, 0.0});
+  snapshot.editableDocument->parts.push_back(std::move(part));
+  snapshot.editableDocument->restoreNextEntityId(4);
+  panel.present(snapshot);
+
+  auto * tree = panel.findChild<QTreeWidget *>(QStringLiteral("editorEntityTree"));
+  auto * kind = panel.findChild<QComboBox *>(QStringLiteral("editorSegmentKind"));
+  auto * clockwise = panel.findChild<QCheckBox *>(QStringLiteral("editorArcClockwise"));
+  auto * append = panel.findChild<QPushButton *>(QStringLiteral("appendSegmentButton"));
+  ASSERT_NE(tree, nullptr);
+  ASSERT_NE(kind, nullptr);
+  ASSERT_NE(clockwise, nullptr);
+  ASSERT_NE(append, nullptr);
+  tree->setCurrentItem(tree->topLevelItem(0)->child(0));
+  kind->setCurrentIndex(static_cast<int>(aipackaging::editor::EditableSegmentKind::Arc));
+  clockwise->setChecked(true);
+
+  std::optional<aipackaging::editor::EditorCommandBatch> emitted;
+  QObject::connect(&panel, &PolygonEditorPanel::editRequested,
+                   [&emitted](const aipackaging::editor::EditorCommandBatch & batch) { emitted = batch; });
+  append->click();
+  ASSERT_TRUE(emitted.has_value());
+  const auto & command = std::get<aipackaging::editor::AppendSegmentCommand>(emitted->commands.front());
+  EXPECT_TRUE(command.segment.clockwise);
 }

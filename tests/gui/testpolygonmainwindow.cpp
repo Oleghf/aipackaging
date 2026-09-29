@@ -2,6 +2,10 @@
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QDoubleSpinBox>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QMenuBar>
 #include <QPushButton>
@@ -47,7 +51,7 @@ TEST(PolygonMainWindow, HasOnlyPolygonWorkspace)
   QSettings().clear();
   PolygonMainWindow window;
   EXPECT_NE(window.findChild<PolygonWorkspaceWidget *>(), nullptr);
-  EXPECT_EQ(window.findChild<QTabWidget *>(), nullptr);
+  EXPECT_NE(window.findChild<QTabWidget *>(QStringLiteral("workspaceRightTabs")), nullptr);
   EXPECT_NE(window.findChild<PolygonStartPage *>(), nullptr);
   EXPECT_EQ(window.findChild<QStackedWidget *>("mainPages"), window.centralWidget());
   EXPECT_EQ(window.objectName(), QStringLiteral("polygonMainWindow"));
@@ -95,7 +99,7 @@ TEST(PolygonMainWindow, PresentsRunningAndCompletedState)
   EXPECT_TRUE(modelAction->isEnabled());
 }
 
-/// Проверяет стартовую страницу, примеры и честно недоступные действия будущего M7.
+/// Проверяет стартовую страницу, примеры и доступные создание документа и импорт.
 TEST(PolygonMainWindow, ShowsFriendlyStartPage)
 {
   application();
@@ -109,9 +113,72 @@ TEST(PolygonMainWindow, ShowsFriendlyStartPage)
   ASSERT_NE(create, nullptr);
   ASSERT_NE(importDxf, nullptr);
   ASSERT_NE(examples, nullptr);
-  EXPECT_FALSE(create->isEnabled());
+  EXPECT_TRUE(create->isEnabled());
   EXPECT_FALSE(importDxf->isEnabled());
   EXPECT_EQ(examples->count(), 3);
+}
+
+/// Проверяет создание задачи через обязательные поля и пересылку команд истории.
+TEST(PolygonMainWindow, CreatesDocumentAndForwardsHistoryActions)
+{
+  application();
+  QSettings().clear();
+  PolygonMainWindow window;
+  std::string problemId;
+  double width = 0.0;
+  double height = 0.0;
+  int undoCount = 0;
+  int redoCount = 0;
+  PolygonWorkspaceActions actions;
+  actions.createDocument = [&](const std::string & id, double valueWidth, double valueHeight)
+  {
+    problemId = id;
+    width = valueWidth;
+    height = valueHeight;
+  };
+  actions.undoDocument = [&]()
+  {
+    ++undoCount;
+  };
+  actions.redoDocument = [&]()
+  {
+    ++redoCount;
+  };
+  window.setPolygonWorkspaceActions(std::move(actions));
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.canOpen = true;
+  snapshot.canUndo = true;
+  snapshot.canRedo = true;
+  snapshot.undoLabel = "Свойства листа";
+  snapshot.redoLabel = "Добавление детали";
+  window.presentPolygonWorkspace(snapshot);
+
+  QTimer::singleShot(
+    0,
+    []()
+    {
+      auto * dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+      ASSERT_NE(dialog, nullptr);
+      dialog->findChild<QLineEdit *>(QStringLiteral("newProblemId"))->setText(QStringLiteral("созданная-задача"));
+      dialog->findChild<QDoubleSpinBox *>(QStringLiteral("newSheetWidth"))->setValue(250.0);
+      dialog->findChild<QDoubleSpinBox *>(QStringLiteral("newSheetHeight"))->setValue(125.0);
+      dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok)->click();
+    });
+  window.findChild<QAction *>(QStringLiteral("createDocumentAction"))->trigger();
+  EXPECT_EQ(problemId, "созданная-задача");
+  EXPECT_DOUBLE_EQ(width, 250.0);
+  EXPECT_DOUBLE_EQ(height, 125.0);
+
+  auto * undo = window.findChild<QAction *>(QStringLiteral("undoDocumentAction"));
+  auto * redo = window.findChild<QAction *>(QStringLiteral("redoDocumentAction"));
+  ASSERT_NE(undo, nullptr);
+  ASSERT_NE(redo, nullptr);
+  EXPECT_TRUE(undo->text().contains(QStringLiteral("Свойства листа")));
+  EXPECT_TRUE(redo->text().contains(QStringLiteral("Добавление детали")));
+  undo->trigger();
+  redo->trigger();
+  EXPECT_EQ(undoCount, 1);
+  EXPECT_EQ(redoCount, 1);
 }
 
 /// Проверяет, что импорт становится доступен только после подключения отдельного сценария.

@@ -1,9 +1,11 @@
 #include <QAction>
 #include <QSplitter>
+#include <QTabWidget>
 #include <QVBoxLayout>
 
 #include <polygoncanvaswidget.h>
 #include <polygondocumentpanel.h>
+#include <polygoneditorpanel.h>
 #include <polygonrunpanel.h>
 #include <polygonstatuspanel.h>
 #include <polygonworkspacewidget.h>
@@ -13,7 +15,9 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   : QWidget(parent)
   , documentPanel_(new PolygonDocumentPanel(this))
   , canvas_(new PolygonCanvasWidget(this))
+  , editorPanel_(new PolygonEditorPanel(this))
   , runPanel_(new PolygonRunPanel(this))
+  , rightTabs_(new QTabWidget(this))
   , statusPanel_(new PolygonStatusPanel(this))
   , splitter_(new QSplitter(Qt::Horizontal, this))
 {
@@ -23,7 +27,10 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   splitter_->setObjectName(QStringLiteral("workspaceSplitter"));
   splitter_->addWidget(documentPanel_);
   splitter_->addWidget(canvas_);
-  splitter_->addWidget(runPanel_);
+  rightTabs_->setObjectName(QStringLiteral("workspaceRightTabs"));
+  rightTabs_->addTab(editorPanel_, tr("Редактор"));
+  rightTabs_->addTab(runPanel_, tr("Раскрой"));
+  splitter_->addWidget(rightTabs_);
   splitter_->setStretchFactor(0, 0);
   splitter_->setStretchFactor(1, 1);
   splitter_->setStretchFactor(2, 0);
@@ -43,6 +50,8 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   connect(runPanel_, &PolygonRunPanel::requestFit, canvas_, &PolygonCanvasWidget::fitToView);
   connect(canvas_, &PolygonCanvasWidget::cursorPositionChanged, this, &PolygonWorkspaceWidget::cursorPositionChanged);
   connect(canvas_, &PolygonCanvasWidget::partSelected, documentPanel_, &PolygonDocumentPanel::showSelectedPart);
+  connect(editorPanel_, &PolygonEditorPanel::editRequested, this, &PolygonWorkspaceWidget::requestEditDocument);
+  connect(editorPanel_, &PolygonEditorPanel::entitySelected, canvas_, &PolygonCanvasWidget::selectEditorEntity);
   present({});
 }
 
@@ -61,7 +70,16 @@ bool PolygonWorkspaceWidget::settingsValid() const
 /// Публикует один снимок во всех профильных представлениях в прежнем порядке.
 void PolygonWorkspaceWidget::present(const PolygonWorkspaceSnapshot & snapshot)
 {
+  if (snapshot.documentRevision != presentedRevision_)
+  {
+    rightTabs_->setCurrentWidget(snapshot.documentDirty || !snapshot.documentValid ? static_cast<QWidget *>(editorPanel_)
+                                                                                   : static_cast<QWidget *>(runPanel_));
+    presentedRevision_ = snapshot.documentRevision;
+  }
+  else if (!snapshot.editableDocument && rightTabs_->currentWidget() == editorPanel_)
+    rightTabs_->setCurrentWidget(runPanel_);
   documentPanel_->present(snapshot);
+  editorPanel_->present(snapshot);
   runPanel_->present(snapshot);
   statusPanel_->present(snapshot);
   canvas_->setSnapshot(snapshot);

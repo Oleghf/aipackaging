@@ -1,10 +1,15 @@
 #include <QCloseEvent>
 #include <QCoreApplication>
 #include <QDebug>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDir>
+#include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFormLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QSettings>
@@ -39,11 +44,14 @@ PolygonMainWindow::PolygonMainWindow(QWidget * parent)
   , coordinatesLabel_(new QLabel(tr("Координаты: —"), this))
   , homeAction_(nullptr)
   , openProblemAction_(nullptr)
+  , createDocumentAction_(nullptr)
   , saveSolutionAction_(nullptr)
   , saveDocumentAction_(nullptr)
   , openModelAction_(nullptr)
   , importDxfAction_(nullptr)
   , forgetModelAction_(nullptr)
+  , undoAction_(nullptr)
+  , redoAction_(nullptr)
   , importWizard_(nullptr)
   , autosaveTimer_(new QTimer(this))
 {
@@ -68,6 +76,7 @@ void PolygonMainWindow::buildWindow()
 
   QMenu * fileMenu = menuBar()->addMenu(tr("&Файл"));
   homeAction_ = fileMenu->addAction(tr("&Начальная страница"));
+  createDocumentAction_ = fileMenu->addAction(tr("&Создать задачу…"));
   openProblemAction_ = fileMenu->addAction(tr("&Открыть задачу…"));
   importDxfAction_ = fileMenu->addAction(tr("&Импортировать DXF…"));
   saveDocumentAction_ = fileMenu->addAction(tr("&Сохранить документ"));
@@ -79,19 +88,31 @@ void PolygonMainWindow::buildWindow()
   saveDocumentAction_->setShortcut(QKeySequence::Save);
   saveSolutionAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
   openProblemAction_->setObjectName(QStringLiteral("openProblemAction"));
+  createDocumentAction_->setObjectName(QStringLiteral("createDocumentAction"));
   importDxfAction_->setObjectName(QStringLiteral("importDxfAction"));
   saveSolutionAction_->setObjectName(QStringLiteral("saveSolutionAction"));
   saveDocumentAction_->setObjectName(QStringLiteral("saveDocumentAction"));
   openModelAction_->setObjectName(QStringLiteral("openModelAction"));
 
+  QMenu * editMenu = menuBar()->addMenu(tr("&Правка"));
+  undoAction_ = editMenu->addAction(tr("&Отменить"));
+  redoAction_ = editMenu->addAction(tr("&Повторить"));
+  undoAction_->setShortcuts({QKeySequence::Undo});
+  redoAction_->setShortcuts({QKeySequence::Redo, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z)});
+  undoAction_->setObjectName(QStringLiteral("undoDocumentAction"));
+  redoAction_->setObjectName(QStringLiteral("redoDocumentAction"));
+
   auto * toolbar = addToolBar(tr("Основные команды"));
   toolbar->setObjectName(QStringLiteral("mainToolbar"));
   toolbar->setMovable(false);
   toolbar->addAction(homeAction_);
+  toolbar->addAction(createDocumentAction_);
   toolbar->addAction(openProblemAction_);
   toolbar->addAction(importDxfAction_);
   toolbar->addAction(saveDocumentAction_);
   toolbar->addAction(saveSolutionAction_);
+  toolbar->addAction(undoAction_);
+  toolbar->addAction(redoAction_);
   toolbar->addSeparator();
   toolbar->addAction(openModelAction_);
   toolbar->addSeparator();
@@ -111,13 +132,27 @@ void PolygonMainWindow::buildWindow()
 void PolygonMainWindow::connectActions()
 {
   connect(homeAction_, &QAction::triggered, this, [this]() { pages_->setCurrentWidget(startPage_); });
+  connect(createDocumentAction_, &QAction::triggered, this, &PolygonMainWindow::createDocument);
   connect(openProblemAction_, &QAction::triggered, this, &PolygonMainWindow::chooseProblem);
   connect(importDxfAction_, &QAction::triggered, this, &PolygonMainWindow::chooseDxf);
   connect(saveDocumentAction_, &QAction::triggered, this, &PolygonMainWindow::saveDocument);
   connect(saveSolutionAction_, &QAction::triggered, this, &PolygonMainWindow::saveSolution);
   connect(openModelAction_, &QAction::triggered, this, &PolygonMainWindow::chooseModel);
   connect(forgetModelAction_, &QAction::triggered, this, &PolygonMainWindow::forgetModel);
+  connect(undoAction_, &QAction::triggered, this,
+          [this]()
+          {
+            if (actions_.undoDocument)
+              actions_.undoDocument();
+          });
+  connect(redoAction_, &QAction::triggered, this,
+          [this]()
+          {
+            if (actions_.redoDocument)
+              actions_.redoDocument();
+          });
   connect(startPage_, &PolygonStartPage::requestOpenProblem, this, &PolygonMainWindow::chooseProblem);
+  connect(startPage_, &PolygonStartPage::requestCreateDocument, this, &PolygonMainWindow::createDocument);
   connect(startPage_, &PolygonStartPage::requestOpenPath, this, &PolygonMainWindow::openPath);
   connect(startPage_, &PolygonStartPage::requestRemoveRecent, this, &PolygonMainWindow::removeRecentProblem);
   connect(startPage_, &PolygonStartPage::requestRestoreRecovery, this,
@@ -139,6 +174,12 @@ void PolygonMainWindow::connectActions()
   connect(workspace_, &PolygonWorkspaceWidget::requestCancelModelLoad, this, &PolygonMainWindow::cancelModelLoad);
   connect(workspace_, &PolygonWorkspaceWidget::requestStart, this, &PolygonMainWindow::startRun);
   connect(workspace_, &PolygonWorkspaceWidget::requestCancel, this, &PolygonMainWindow::cancelRun);
+  connect(workspace_, &PolygonWorkspaceWidget::requestEditDocument, this,
+          [this](const aipackaging::editor::EditorCommandBatch & batch)
+          {
+            if (actions_.editDocument)
+              actions_.editDocument(batch);
+          });
   connect(workspace_, &PolygonWorkspaceWidget::cursorPositionChanged, this, &PolygonMainWindow::showCursorPosition);
   connect(autosaveTimer_, &QTimer::timeout, this,
           [this]()
@@ -146,6 +187,44 @@ void PolygonMainWindow::connectActions()
             if (actions_.autosaveDocument)
               actions_.autosaveDocument();
           });
+}
+
+/// Показывает один диалог обязательных полей и создаёт документ только после подтверждения пользователя.
+void PolygonMainWindow::createDocument()
+{
+  if (!actions_.createDocument || !confirmDocumentReplacement())
+    return;
+  QDialog dialog(this);
+  dialog.setWindowTitle(tr("Создание полигональной задачи"));
+  auto * identifier = new QLineEdit(&dialog);
+  identifier->setObjectName(QStringLiteral("newProblemId"));
+  auto makeSize = [&dialog]()
+  {
+    auto * value = new QDoubleSpinBox(&dialog);
+    value->setDecimals(3);
+    value->setRange(0.001, 1.0e9);
+    value->setSuffix(QObject::tr(" мм"));
+    return value;
+  };
+  QDoubleSpinBox * width = makeSize();
+  QDoubleSpinBox * height = makeSize();
+  width->setObjectName(QStringLiteral("newSheetWidth"));
+  height->setObjectName(QStringLiteral("newSheetHeight"));
+  auto * buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+  auto * form = new QFormLayout(&dialog);
+  form->addRow(tr("Идентификатор задачи"), identifier);
+  form->addRow(tr("Ширина листа"), width);
+  form->addRow(tr("Высота листа"), height);
+  form->addRow(buttons);
+  connect(buttons, &QDialogButtonBox::accepted, &dialog,
+          [&dialog, identifier]()
+          {
+            if (!identifier->text().trimmed().isEmpty())
+              dialog.accept();
+          });
+  connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+  if (dialog.exec() == QDialog::Accepted)
+    actions_.createDocument(identifier->text().trimmed().toStdString(), width->value(), height->value());
 }
 
 /// Выбирает путь рядом с последним каталогом и сохраняет только при наличии прикладного действия.
@@ -178,7 +257,9 @@ void PolygonMainWindow::saveDocument()
   {
     QSettings settings;
     const QString directory = settings.value(QStringLiteral("files/lastDirectory")).toString();
-    const bool importedProblem = lastSnapshot_.documentSource == PolygonDocumentSource::Imported && lastSnapshot_.documentValid;
+    const bool importedProblem = (lastSnapshot_.documentSource == PolygonDocumentSource::Imported ||
+                                  lastSnapshot_.documentSource == PolygonDocumentSource::Untitled) &&
+                                 lastSnapshot_.documentValid;
     path = QFileDialog::getSaveFileName(
       this,
       importedProblem ? tr("Сохраните импортированную полигональную задачу") : tr("Сохраните черновик полигональной задачи"),
@@ -279,7 +360,8 @@ void PolygonMainWindow::presentPolygonWorkspace(const PolygonWorkspaceSnapshot &
 {
   const bool scheduleAutosave =
     snapshot.documentDirty &&
-    (!lastSnapshot_.documentDirty || snapshot.document.sourceIdentifier != lastSnapshot_.document.sourceIdentifier);
+    (!lastSnapshot_.documentDirty || snapshot.document.sourceIdentifier != lastSnapshot_.document.sourceIdentifier ||
+     snapshot.documentRevision != lastSnapshot_.documentRevision);
   lastSnapshot_ = snapshot;
   workspace_->present(snapshot);
   startPage_->setRecoveryCandidate(snapshot.recovery);
@@ -303,12 +385,19 @@ void PolygonMainWindow::presentPolygonImport(const PolygonImportSnapshot & snaps
 void PolygonMainWindow::presentActions(const PolygonWorkspaceSnapshot & snapshot)
 {
   openProblemAction_->setEnabled(snapshot.canOpen);
+  createDocumentAction_->setEnabled(snapshot.canOpen);
   saveSolutionAction_->setEnabled(snapshot.canSave);
   saveDocumentAction_->setEnabled(snapshot.canSaveDocument);
   openModelAction_->setEnabled(snapshot.canLoadModel);
   const bool importEnabled = snapshot.canOpen && static_cast<bool>(importActions_.inspect);
   importDxfAction_->setEnabled(importEnabled);
   startPage_->setImportEnabled(importEnabled);
+  undoAction_->setEnabled(snapshot.canUndo);
+  redoAction_->setEnabled(snapshot.canRedo);
+  undoAction_->setText(snapshot.undoLabel.empty() ? tr("&Отменить")
+                                                  : tr("&Отменить: %1").arg(QString::fromStdString(snapshot.undoLabel)));
+  redoAction_->setText(snapshot.redoLabel.empty() ? tr("&Повторить")
+                                                  : tr("&Повторить: %1").arg(QString::fromStdString(snapshot.redoLabel)));
   statusBar()->showMessage(QString::fromStdString(snapshot.statusText));
 }
 

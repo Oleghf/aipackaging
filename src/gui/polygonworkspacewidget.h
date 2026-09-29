@@ -1,6 +1,7 @@
 #ifndef AIPACKAGING_GUI_POLYGONWORKSPACEWIDGET_H
 #define AIPACKAGING_GUI_POLYGONWORKSPACEWIDGET_H
 
+#include <cstdint>
 #include <QByteArray>
 #include <QWidget>
 
@@ -9,9 +10,11 @@
 class QAction;
 class PolygonCanvasWidget;
 class PolygonDocumentPanel;
+class PolygonEditorPanel;
 class PolygonRunPanel;
 class PolygonStatusPanel;
 class QSplitter;
+class QTabWidget;
 
 /// Совместимый фасад рабочей области, объединяющий документ, полотно, запуск и состояние.
 class PolygonWorkspaceWidget : public QWidget
@@ -62,13 +65,18 @@ signals:
   void requestCancel();
   /// Передаёт координаты курсора главному окну.
   void cursorPositionChanged(double x, double y, bool inside);
+  /// Передаёт атомарное изменение активного документа главному окну.
+  void requestEditDocument(const aipackaging::editor::EditorCommandBatch & batch);
 
 private:
   PolygonDocumentPanel * documentPanel_;
   PolygonCanvasWidget * canvas_;
+  PolygonEditorPanel * editorPanel_;
   PolygonRunPanel * runPanel_;
+  QTabWidget * rightTabs_;
   PolygonStatusPanel * statusPanel_;
   QSplitter * splitter_;
+  std::uint64_t presentedRevision_ = static_cast<std::uint64_t>(-1);
 };
 
 #endif

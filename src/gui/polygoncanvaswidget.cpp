@@ -1,10 +1,12 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <numbers>
 #include <QColor>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPolygonF>
 #include <QWheelEvent>
 
 #include <polygoncanvaswidget.h>
@@ -31,6 +33,58 @@ QColor partColor(std::size_t index)
                                                    "#78D3F8", "#9661BC", "#F6903D", "#008685", "#F08BB4"};
   return QColor(COLORS[index % COLORS.size()]);
 }
+
+/// Добавляет один редактируемый сегмент к пути без изменения исходной геометрии.
+void appendEditableSegment(QPainterPath & path, const aipackaging::editor::EditablePoint & start,
+                           const aipackaging::editor::EditablePoint & end, const aipackaging::editor::EditableSegment & segment)
+{
+  if (segment.kind == aipackaging::editor::EditableSegmentKind::CubicBezier)
+  {
+    path.cubicTo(segment.control1.x, segment.control1.y, segment.control2.x, segment.control2.y, end.x, end.y);
+    return;
+  }
+  if (segment.kind == aipackaging::editor::EditableSegmentKind::Arc)
+  {
+    const double radius = std::hypot(start.x - segment.center.x, start.y - segment.center.y);
+    if (radius <= 0.0 || !std::isfinite(radius))
+    {
+      path.lineTo(end.x, end.y);
+      return;
+    }
+    const double startAngle = std::atan2(start.y - segment.center.y, start.x - segment.center.x) * 180.0 / std::numbers::pi;
+    const double endAngle = std::atan2(end.y - segment.center.y, end.x - segment.center.x) * 180.0 / std::numbers::pi;
+    double sweep = endAngle - startAngle;
+    if (segment.clockwise && sweep > 0.0)
+      sweep -= 360.0;
+    if (!segment.clockwise && sweep < 0.0)
+      sweep += 360.0;
+    path.arcTo(QRectF(segment.center.x - radius, segment.center.y - radius, 2.0 * radius, 2.0 * radius), startAngle, sweep);
+    return;
+  }
+  path.lineTo(end.x, end.y);
+}
+
+/// Рисует направленный маркер постоянного экранного размера в середине сегмента.
+void drawDirectionMarker(QPainter & painter, const QPainterPath & segment)
+{
+  const QPointF before = segment.pointAtPercent(0.45);
+  const QPointF after = segment.pointAtPercent(0.55);
+  const double length = std::hypot(after.x() - before.x(), after.y() - before.y());
+  const double scale = std::abs(painter.worldTransform().m11());
+  if (length <= 0.0 || scale <= 0.0)
+    return;
+  const double size = 6.0 / scale;
+  const double directionX = (after.x() - before.x()) / length;
+  const double directionY = (after.y() - before.y()) / length;
+  const QPointF tip = segment.pointAtPercent(0.55);
+  const QPointF base(tip.x() - directionX * size, tip.y() - directionY * size);
+  const QPointF normal(-directionY * size * 0.45, directionX * size * 0.45);
+  painter.save();
+  painter.setPen(Qt::NoPen);
+  painter.setBrush(QColor("#1E3A8A"));
+  painter.drawPolygon(QPolygonF{tip, base + normal, base - normal});
+  painter.restore();
+}
 } // namespace
 
 /// Настраивает фон, минимальный размер и обработку мыши.
@@ -47,6 +101,13 @@ PolygonCanvasWidget::PolygonCanvasWidget(QWidget * parent)
 void PolygonCanvasWidget::setSnapshot(const PolygonWorkspaceSnapshot & snapshot)
 {
   snapshot_ = snapshot;
+  update();
+}
+
+/// Сохраняет только идентификатор выбранной сущности и запрашивает повторную отрисовку.
+void PolygonCanvasWidget::selectEditorEntity(std::uint64_t entityId)
+{
+  selectedEditorEntity_ = entityId;
   update();
 }
 
@@ -78,6 +139,8 @@ void PolygonCanvasWidget::paintEvent(QPaintEvent * event)
   drawSheet(painter, scene);
   drawRemnant(painter, scene);
   drawMargin(painter, scene);
+  if (scene.placements.empty() || snapshot_.solutionStale)
+    drawEditableDocument(painter);
   drawPlacements(painter, scene);
 }
 
@@ -153,6 +216,68 @@ void PolygonCanvasWidget::drawPlacements(QPainter & painter, const PolygonSceneV
     painter.setPen(outline);
     painter.setBrush(fill);
     painter.drawPath(path);
+  }
+}
+
+/// Строит пути по исходным сегментам, используя дуги и Bézier только для визуального предварительного просмотра.
+void PolygonCanvasWidget::drawEditableDocument(QPainter & painter) const
+{
+  if (!snapshot_.editableDocument)
+    return;
+  for (const aipackaging::editor::EditablePart & part : snapshot_.editableDocument->parts)
+  {
+    auto drawPath = [&](const aipackaging::editor::EditablePath & source)
+    {
+      if (source.vertices.empty())
+        return;
+      bool pathSelected = selectedEditorEntity_ == part.id.value || selectedEditorEntity_ == source.id.value;
+      QPainterPath path(QPointF(source.vertices.front().x, source.vertices.front().y));
+      for (std::size_t index = 0; index < source.segments.size(); ++index)
+      {
+        const auto & segment = source.segments[index];
+        const auto & start = source.vertices[index];
+        const auto & end = source.vertices[(index + 1) % source.vertices.size()];
+        appendEditableSegment(path, start, end, segment);
+        pathSelected =
+          pathSelected || selectedEditorEntity_ == segment.id.value || selectedEditorEntity_ == start.id.value ||
+          selectedEditorEntity_ == end.id.value ||
+          (segment.kind == aipackaging::editor::EditableSegmentKind::Arc && selectedEditorEntity_ == segment.center.id.value) ||
+          (segment.kind == aipackaging::editor::EditableSegmentKind::CubicBezier &&
+           (selectedEditorEntity_ == segment.control1.id.value || selectedEditorEntity_ == segment.control2.id.value));
+      }
+      if (source.closed)
+        path.closeSubpath();
+      QPen outline(pathSelected ? QColor("#D97706") : QColor("#2563EB"));
+      outline.setCosmetic(true);
+      outline.setWidthF(pathSelected ? 3.0 : 2.0);
+      painter.setPen(outline);
+      painter.setBrush(source.closed ? QColor(59, 130, 246, 28) : Qt::NoBrush);
+      painter.drawPath(path);
+
+      for (std::size_t index = 0; index < source.segments.size(); ++index)
+      {
+        const auto & segment = source.segments[index];
+        const auto & start = source.vertices[index];
+        const auto & end = source.vertices[(index + 1) % source.vertices.size()];
+        QPainterPath direction(QPointF(start.x, start.y));
+        appendEditableSegment(direction, start, end, segment);
+        drawDirectionMarker(painter, direction);
+      }
+
+      const double scale = std::max(1.0, std::abs(painter.worldTransform().m11()));
+      for (const auto & vertex : source.vertices)
+      {
+        const bool selected = selectedEditorEntity_ == vertex.id.value;
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(selected ? QColor("#D97706") : QColor("#1E3A8A"));
+        const double radius = (selected ? 5.0 : 3.0) / scale;
+        painter.drawEllipse(QPointF(vertex.x, vertex.y), radius, radius);
+      }
+    };
+    if (part.outer)
+      drawPath(*part.outer);
+    for (const auto & hole : part.holes)
+      drawPath(hole);
   }
 }
 

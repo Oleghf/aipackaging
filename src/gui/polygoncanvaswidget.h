@@ -23,6 +23,8 @@ public:
   explicit PolygonCanvasWidget(QWidget * parent = nullptr);
   /// Заменяет отображаемый снимок и запрашивает перерисовку.
   void setSnapshot(const PolygonWorkspaceSnapshot & snapshot);
+  /// Выделяет исходную геометрическую сущность, выбранную во внутреннем дереве редактора.
+  void selectEditorEntity(std::uint64_t entityId);
 
   /// Сбрасывает пользовательский масштаб и смещение, чтобы вписать сцену в область просмотра.
   void fitToView();
@@ -56,6 +58,8 @@ private:
   void drawMargin(QPainter & painter, const PolygonSceneView & scene) const;
   /// Рисует размещения, отверстия и выделение выбранной детали.
   void drawPlacements(QPainter & painter, const PolygonSceneView & scene) const;
+  /// Рисует исходные цепочки редактируемого документа без изменения геометрии.
+  void drawEditableDocument(QPainter & painter) const;
   /// Переводит экранную точку в миллиметровые координаты листа.
   QPointF mapToSheet(const QPointF & position) const;
   /// Находит верхнюю деталь под точкой с учётом отверстий.
@@ -69,6 +73,7 @@ private:
   bool dragged_ = false;
   std::string selectedPartId_;
   std::uint32_t selectedInstanceIndex_ = 0;
+  std::uint64_t selectedEditorEntity_ = 0;
 };
 
 #endif

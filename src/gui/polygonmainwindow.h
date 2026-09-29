@@ -72,6 +72,8 @@ private:
   void presentModelLoad(const PolygonWorkspaceSnapshot & snapshot);
   /// Открывает файловый диалог из последнего пользовательского каталога.
   void chooseProblem();
+  /// Запрашивает обязательные поля и создаёт новый пустой документ.
+  void createDocument();
   /// Выбирает файл DXF и открывает пошаговый мастер импорта.
   void chooseDxf();
   /// Передаёт выбранный путь приложению и запоминает каталог.
@@ -89,11 +91,14 @@ private:
   QLabel * coordinatesLabel_;
   QAction * homeAction_;
   QAction * openProblemAction_;
+  QAction * createDocumentAction_;
   QAction * saveSolutionAction_;
   QAction * saveDocumentAction_;
   QAction * openModelAction_;
   QAction * importDxfAction_;
   QAction * forgetModelAction_;
+  QAction * undoAction_;
+  QAction * redoAction_;
   PolygonWorkspaceActions actions_;
   PolygonImportActions importActions_;
   PolygonDxfImportWizard * importWizard_;

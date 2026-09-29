@@ -37,8 +37,7 @@ PolygonStartPage::PolygonStartPage(QWidget * parent)
   open->setAccessibleName(tr("Открыть существующую задачу"));
   auto * create = new QPushButton(tr("Создать задачу"), this);
   create->setObjectName(QStringLiteral("startCreateButton"));
-  create->setEnabled(false);
-  create->setToolTip(tr("Создание задачи появится на этапе M7"));
+  create->setToolTip(tr("Создайте новый документ и заполните его числовыми формами"));
   importDxfButton_->setObjectName(QStringLiteral("startImportButton"));
   importDxfButton_->setEnabled(false);
   importDxfButton_->setToolTip(tr("Импортируйте линии, дуги и кривые из ASCII DXF"));
@@ -95,6 +94,7 @@ PolygonStartPage::PolygonStartPage(QWidget * parent)
   root->addStretch(1);
 
   connect(open, &QPushButton::clicked, this, &PolygonStartPage::requestOpenProblem);
+  connect(create, &QPushButton::clicked, this, &PolygonStartPage::requestCreateDocument);
   connect(recentList_, &QListWidget::itemActivated, this, [this]() { openSelected(recentList_); });
   connect(exampleList_, &QListWidget::itemActivated, this, [this]() { openSelected(exampleList_); });
   connect(removeRecentButton_, &QPushButton::clicked, this,

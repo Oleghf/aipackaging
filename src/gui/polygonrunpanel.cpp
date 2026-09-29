@@ -158,6 +158,7 @@ PolygonRunPanel::PolygonRunPanel(QWidget * parent)
   seedValidationLabel_->setStyleSheet(QStringLiteral("color:#B91C1C"));
   seedValidationLabel_->setWordWrap(true);
   unplacedList_->setMinimumHeight(100);
+  unplacedList_->setObjectName(QStringLiteral("polygonUnplacedInstances"));
 
   auto * runLayout = new QHBoxLayout();
   runLayout->addWidget(startButton_);

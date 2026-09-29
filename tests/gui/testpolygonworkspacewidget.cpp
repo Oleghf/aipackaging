@@ -175,7 +175,7 @@ TEST(PolygonWorkspaceWidget, HighlightsPartialAndListsUnplacedInstances)
   widget.present(snapshot);
 
   auto * status = widget.findChild<QLabel *>("polygonStatus");
-  auto * unplaced = widget.findChild<QListWidget *>();
+  auto * unplaced = widget.findChild<QListWidget *>(QStringLiteral("polygonUnplacedInstances"));
   ASSERT_NE(status, nullptr);
   ASSERT_NE(unplaced, nullptr);
   EXPECT_TRUE(status->styleSheet().contains(QStringLiteral("font-weight")));
@@ -360,7 +360,7 @@ TEST(PolygonWorkspaceWidget, PresentsIndependentWorkspaceSections)
   const auto * progress = widget.findChild<QProgressBar *>("polygonProgress");
   const auto * stage = widget.findChild<QLabel *>("polygonProgressStage");
   const auto * cancel = widget.findChild<QPushButton *>("polygonCancelButton");
-  const auto * unplaced = widget.findChild<QListWidget *>();
+  const auto * unplaced = widget.findChild<QListWidget *>(QStringLiteral("polygonUnplacedInstances"));
   ASSERT_NE(status, nullptr);
   ASSERT_NE(model, nullptr);
   ASSERT_NE(progress, nullptr);
