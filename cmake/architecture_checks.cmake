@@ -132,6 +132,11 @@ function(aipackaging_check_production_target_graph)
       TARGET AIPackaging_Editor
     )
     aipackaging_assert_target_dependencies(
+      TARGET AIPackaging_DxfImport
+      ALLOWED_DIRECT AIPackaging_Editor
+      ALLOWED_PUBLIC AIPackaging_Editor
+    )
+    aipackaging_assert_target_dependencies(
       TARGET AIPackaging_EditorPersistence
       ALLOWED_DIRECT AIPackaging_Editor AIPackaging_StrictJsonSupport
       ALLOWED_PUBLIC AIPackaging_Editor AIPackaging_StrictJsonSupport

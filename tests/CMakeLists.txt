@@ -98,6 +98,12 @@ if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
   )
   set_tests_properties(AIPackaging_EditorPersistenceTests PROPERTIES LABELS "app;editor;io;contract")
 
+  aipackaging_add_test_executable(AIPackaging_DxfImportTests
+    "import/testdxfimport.cpp"
+  )
+  target_link_libraries(AIPackaging_DxfImportTests PRIVATE AIPackaging_DxfImport)
+  set_tests_properties(AIPackaging_DxfImportTests PROPERTIES LABELS "app;editor;import;dxf")
+
   aipackaging_add_test_executable(AIPackaging_ApplicationTests
     "core/app/testpolygonworkspacecontroller.cpp"
   )
@@ -332,6 +338,10 @@ if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_EditorPersistenceTests
     ALLOWED_DIRECT AIPackaging_EditorPersistence
+  )
+  aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_DxfImportTests
+    ALLOWED_DIRECT AIPackaging_DxfImport
   )
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_ApplicationTests
