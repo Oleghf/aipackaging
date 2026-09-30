@@ -130,3 +130,24 @@ TEST(EditablePolygonDocument, RejectsInvalidNumbersRotationsAndNextIdentifier)
                          [](const auto & item) { return item.code == DocumentDiagnosticCode::InvalidNextEntityId; }),
             diagnostics.end());
 }
+
+/// Проверяет привязку вырожденного сегмента к самому сегменту и его конечным точкам.
+TEST(EditablePolygonDocument, ReportsDegenerateAndRoundedSegments)
+{
+  EditablePolygonDocument document = validDocument();
+  EditablePath & path = *document.parts.front().outer;
+  path.vertices[1].x = path.vertices[0].x;
+  path.vertices[1].y = path.vertices[0].y;
+  const auto diagnostics = validateEditableDocument(document);
+  const auto found = std::find_if(diagnostics.begin(), diagnostics.end(),
+                                  [](const auto & item) { return item.code == DocumentDiagnosticCode::DegenerateSegment; });
+  ASSERT_NE(found, diagnostics.end());
+  EXPECT_EQ(found->entity, path.segments.front().id);
+  EXPECT_EQ(found->relatedEntities.size(), 2U);
+
+  path.vertices[1].x = path.vertices[0].x + 0.0004;
+  const auto rounded = validateEditableDocument(document);
+  EXPECT_NE(std::find_if(rounded.begin(), rounded.end(),
+                         [](const auto & item) { return item.code == DocumentDiagnosticCode::RoundingCollapse; }),
+            rounded.end());
+}

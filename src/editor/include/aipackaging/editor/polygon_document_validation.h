@@ -37,7 +37,13 @@ enum class DocumentDiagnosticCode : std::uint8_t
   InvalidCoordinate,
   KerfIgnored,
   UnsupportedObjective,
-  ExactGeometryRejected
+  ExactGeometryRejected,
+  DegenerateSegment,
+  SelfIntersectingPath,
+  InvalidHolePlacement,
+  IntersectingHoles,
+  RoundingCollapse,
+  CoordinateLimitExceeded
 };
 
 /// Связывает код и русское объяснение проблемы с конкретной сущностью.
@@ -47,6 +53,7 @@ struct DocumentDiagnostic
   DiagnosticSeverity severity = DiagnosticSeverity::Error;
   EntityId entity;
   std::string message;
+  std::vector<EntityId> relatedEntities;
 };
 
 /// Возвращает все локальные структурные диагностики без изменения документа.

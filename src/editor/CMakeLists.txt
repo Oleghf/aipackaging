@@ -4,6 +4,7 @@ set(AIPACKAGING_EDITOR_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 add_library(AIPackaging_Editor STATIC
   "polygon_document.cpp"
   "polygon_editor_commands.cpp"
+  "polygon_editor_interaction.cpp"
   "polygon_document_validation.cpp"
 )
 target_include_directories(AIPackaging_Editor PUBLIC "${AIPACKAGING_EDITOR_INCLUDE_DIR}")
@@ -14,5 +15,6 @@ target_sources(AIPackaging_Editor PUBLIC
   FILES
     "include/aipackaging/editor/polygon_document.h"
     "include/aipackaging/editor/polygon_editor_commands.h"
+    "include/aipackaging/editor/polygon_editor_interaction.h"
     "include/aipackaging/editor/polygon_document_validation.h"
 )

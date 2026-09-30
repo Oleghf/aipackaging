@@ -1,4 +1,5 @@
 #include <aipackaging/editor/polygon_editor_commands.h>
+#include <aipackaging/editor/polygon_editor_interaction.h>
 #include <gtest/gtest.h>
 
 using namespace aipackaging::editor;
@@ -175,4 +176,39 @@ TEST(PolygonEditorCommands, LimitsHistoryToTwoHundredTransactions)
   while (session.undo().accepted)
     ++undone;
   EXPECT_EQ(undone, 200);
+}
+
+/// Проверяет раскрытие разных уровней выбора в уникальные перемещаемые точки.
+TEST(PolygonEditorInteraction, CollectsStableMovablePointSelection)
+{
+  PolygonEditorSession session = rectangleSession();
+  const EditablePart & part = session.document().parts.front();
+  const EditablePath & path = *part.outer;
+  const std::vector<EntityId> segmentPoints = collectMovablePointIds(session.document(), {path.segments.front().id});
+  ASSERT_EQ(segmentPoints.size(), 2U);
+  EXPECT_EQ(segmentPoints[0], path.vertices[0].id);
+  EXPECT_EQ(segmentPoints[1], path.vertices[1].id);
+
+  const std::vector<EntityId> allPoints = collectMovablePointIds(session.document(), {part.id, path.vertices[0].id});
+  ASSERT_EQ(allPoints.size(), path.vertices.size());
+  EXPECT_EQ(allPoints.front(), path.vertices.front().id);
+}
+
+/// Проверяет, что исправления предлагаются только для однозначных диагностик.
+TEST(PolygonEditorInteraction, SuggestsOnlyDeterministicDiagnosticFixes)
+{
+  PolygonEditorSession session = rectangleSession();
+  ASSERT_TRUE(session.undo().accepted);
+  const EditablePath & path = *session.document().parts.front().outer;
+  ASSERT_FALSE(path.closed);
+  const DocumentDiagnostic open{DocumentDiagnosticCode::OpenPath, DiagnosticSeverity::Error, path.id,
+                                "Контур должен быть замкнут"};
+  const auto close = suggestedDiagnosticFix(session.document(), open);
+  ASSERT_TRUE(close.has_value());
+  ASSERT_EQ(close->commands.size(), 1U);
+  EXPECT_TRUE(std::holds_alternative<ClosePathCommand>(close->commands.front()));
+
+  const DocumentDiagnostic unsupported{DocumentDiagnosticCode::SelfIntersectingPath, DiagnosticSeverity::Error, path.id,
+                                       "Самопересечение"};
+  EXPECT_FALSE(suggestedDiagnosticFix(session.document(), unsupported).has_value());
 }
