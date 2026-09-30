@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -457,6 +458,38 @@ TEST(PolygonDesktopInfrastructure, PreservesInvalidDraftAndDetectsChangedSource)
   EXPECT_FALSE(gateway.saveProblem(source.string(), recovered.document).success);
   EXPECT_TRUE(gateway.removeRecovery(autosave.string()).success);
   EXPECT_FALSE(gateway.inspectRecovery(autosave.string()).present);
+  std::filesystem::remove(source);
+}
+
+/// Проверяет привязку точного отказа самопересечения к устойчивому идентификатору контура.
+TEST(PolygonDesktopInfrastructure, AssociatesExactGeometryErrorWithEditablePath)
+{
+  const auto source = writeProblem();
+  auto store = std::make_shared<PolygonArtifactStore>();
+  LocalPolygonEditableDocumentGateway gateway(store);
+  PolygonEditableDocumentLoadResult loaded = gateway.load(source.string());
+  ASSERT_TRUE(loaded.success) << loaded.error;
+  auto & outer = *loaded.document.parts.front().outer;
+  ASSERT_EQ(outer.vertices.size(), 4U);
+  outer.vertices[0].x = 0.0;
+  outer.vertices[0].y = 0.0;
+  outer.vertices[1].x = 30.0;
+  outer.vertices[1].y = 20.0;
+  outer.vertices[2].x = 0.0;
+  outer.vertices[2].y = 20.0;
+  outer.vertices[3].x = 30.0;
+  outer.vertices[3].y = 0.0;
+
+  const PolygonEditableDocumentLoadResult result = gateway.compileImported(loaded.document, {}, std::nullopt);
+  ASSERT_TRUE(result.success) << result.error;
+  EXPECT_FALSE(result.compiled.has_value());
+  const auto diagnostic =
+    std::find_if(result.diagnostics.begin(), result.diagnostics.end(), [](const auto & item)
+                 { return item.code == aipackaging::editor::DocumentDiagnosticCode::SelfIntersectingPath; });
+  ASSERT_NE(diagnostic, result.diagnostics.end());
+  EXPECT_EQ(diagnostic->entity, outer.id);
+  EXPECT_NE(std::find(diagnostic->relatedEntities.begin(), diagnostic->relatedEntities.end(), outer.segments.front().id),
+            diagnostic->relatedEntities.end());
   std::filesystem::remove(source);
 }
 

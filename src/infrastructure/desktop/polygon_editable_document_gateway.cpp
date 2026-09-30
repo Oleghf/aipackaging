@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <string_view>
 #include <utility>
 
 #include <aipackaging/editor/polygon_draft_io.h>
@@ -142,7 +143,7 @@ EditablePath toEditablePath(EditablePolygonDocument & document, const PolygonPat
       segment.control1 = toEditablePoint(document, sourceSegment.control1);
       segment.control2 = toEditablePoint(document, sourceSegment.control2);
     }
-    path.segments.push_back(std::move(segment));
+    path.segments.push_back(segment);
   }
   return path;
 }
@@ -254,6 +255,103 @@ PolygonDocumentSummary editableSummary(const EditablePolygonDocument & document)
   return summary;
 }
 
+/// Добавляет к диагностике устойчивые дочерние идентификаторы указанного контура.
+void appendPathEntities(const EditablePath & path, std::vector<EntityId> & related)
+{
+  for (const EditablePoint & point : path.vertices)
+    related.push_back(point.id);
+  for (const EditableSegment & segment : path.segments)
+  {
+    related.push_back(segment.id);
+    if (segment.kind == EditableSegmentKind::Arc)
+      related.push_back(segment.center.id);
+    else if (segment.kind == EditableSegmentKind::CubicBezier)
+    {
+      related.push_back(segment.control1.id);
+      related.push_back(segment.control2.id);
+    }
+  }
+}
+
+/// Повторяет точную проверку по одной детали, чтобы не связывать ошибку с соседней геометрией.
+const EditablePart * findRejectedPart(const EditablePolygonDocument & document, const std::string & expectedError)
+{
+  PolygonProblem complete = toProblem(document);
+  for (std::size_t index = 0; index < complete.parts.size(); ++index)
+  {
+    PolygonProblem probe = complete;
+    probe.parts = {complete.parts[index]};
+    std::string error;
+    if (!PolygonEnvironment::Create(probe, error) && error == expectedError)
+      return &document.parts[index];
+  }
+  return document.parts.empty() ? nullptr : &document.parts.front();
+}
+
+/// Связывает устойчивые причины точной нормализации с ближайшими сущностями редактируемого документа.
+DocumentDiagnostic exactGeometryDiagnostic(const EditablePolygonDocument & document, const std::string & error)
+{
+  DocumentDiagnostic result{DocumentDiagnosticCode::ExactGeometryRejected, DiagnosticSeverity::Error, document.sheet.id,
+                            "Точная проверка геометрии отклонила документ: " + error};
+  const auto contains = [&](std::string_view fragment)
+  {
+    return error.find(fragment) != std::string::npos;
+  };
+  const EditablePart * part = findRejectedPart(document, error);
+  const EditablePath * outer = part && part->outer ? &*part->outer : nullptr;
+  const EditablePath * hole = part && !part->holes.empty() ? &part->holes.front() : nullptr;
+
+  if (contains("outer ring is degenerate or self-intersecting"))
+  {
+    result.code = DocumentDiagnosticCode::SelfIntersectingPath;
+    if (outer)
+    {
+      result.entity = outer->id;
+      appendPathEntities(*outer, result.relatedEntities);
+    }
+  }
+  else if (contains("hole must be simple and strictly inside outer ring"))
+  {
+    result.code = DocumentDiagnosticCode::InvalidHolePlacement;
+    if (hole)
+    {
+      result.entity = hole->id;
+      appendPathEntities(*hole, result.relatedEntities);
+      if (outer)
+        result.relatedEntities.push_back(outer->id);
+    }
+  }
+  else if (contains("holes must be disjoint"))
+  {
+    result.code = DocumentDiagnosticCode::IntersectingHoles;
+    if (hole)
+    {
+      result.entity = hole->id;
+      for (const EditablePath & candidate : part->holes)
+        result.relatedEntities.push_back(candidate.id);
+    }
+  }
+  else if (contains("coordinate") || contains("extent") || contains("sheet is outside"))
+  {
+    result.code = DocumentDiagnosticCode::CoordinateLimitExceeded;
+    if (!contains("sheet is outside") && outer)
+    {
+      result.entity = outer->id;
+      appendPathEntities(*outer, result.relatedEntities);
+    }
+  }
+  else if (contains("vertex budget") || contains("vertex count") || contains("approximation"))
+  {
+    result.code = DocumentDiagnosticCode::RoundingCollapse;
+    if (outer)
+    {
+      result.entity = outer->id;
+      appendPathEntities(*outer, result.relatedEntities);
+    }
+  }
+  return result;
+}
+
 /// Выполняет локальную проверку, точную нормализацию и регистрацию неизменяемого снимка.
 void compileDocument(const std::shared_ptr<PolygonArtifactStore> & store, PolygonEditableDocumentLoadResult & result)
 {
@@ -271,8 +369,7 @@ void compileDocument(const std::shared_ptr<PolygonArtifactStore> & store, Polygo
   std::unique_ptr<PolygonEnvironment> created = PolygonEnvironment::Create(problem, error);
   if (!created)
   {
-    result.diagnostics.push_back({DocumentDiagnosticCode::ExactGeometryRejected, DiagnosticSeverity::Error,
-                                  result.document.sheet.id, "Точная проверка геометрии отклонила документ: " + error});
+    result.diagnostics.push_back(exactGeometryDiagnostic(result.document, error));
     return;
   }
   std::shared_ptr<PolygonEnvironment> environment(std::move(created));
