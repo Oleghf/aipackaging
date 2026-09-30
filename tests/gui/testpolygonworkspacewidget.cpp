@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -5,9 +6,11 @@
 #include <QColor>
 #include <QComboBox>
 #include <QImage>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMouseEvent>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -17,6 +20,7 @@
 #include <stdexcept>
 #include <utility>
 
+#include <aipackaging/editor/polygon_editor_commands.h>
 #include <gtest/gtest.h>
 #include <polygoncanvaswidget.h>
 #include <polygonworkspacewidget.h>
@@ -35,7 +39,106 @@ QApplication * ensureApplication()
   static auto application = std::make_unique<QApplication>(argumentCount, arguments);
   return application.get();
 }
+
+/// Переводит миллиметровую координату в экранную точку автоматически вписанного тестового листа.
+QPointF canvasPoint(const QSize & size, const PolygonSceneView & scene, const QPointF & sheet)
+{
+  const double scale = std::min((size.width() - 48.0) / scene.sheetWidth, (size.height() - 48.0) / scene.sheetHeight);
+  return {size.width() / 2.0 + (sheet.x() - scene.sheetWidth / 2.0) * scale,
+          size.height() / 2.0 - (sheet.y() - scene.sheetHeight / 2.0) * scale};
+}
+
+/// Доставляет полотну полный щелчок без зависимости от средств имитации ввода Qt.
+void clickCanvas(PolygonCanvasWidget & canvas, const QPointF & position, Qt::KeyboardModifiers modifiers = {})
+{
+  QMouseEvent press(QEvent::MouseButtonPress, position, position, Qt::LeftButton, Qt::LeftButton, modifiers);
+  QApplication::sendEvent(&canvas, &press);
+  QMouseEvent release(QEvent::MouseButtonRelease, position, position, Qt::LeftButton, Qt::NoButton, modifiers);
+  QApplication::sendEvent(&canvas, &release);
+}
 } // namespace
+
+/// Проверяет создание дуги одним жестом и откат одноточечного отверстия через `Esc`.
+TEST(PolygonWorkspaceWidget, DrawsAndCancelsInteractiveGeometry)
+{
+  using namespace aipackaging::editor;
+  ensureApplication();
+  EditablePolygonDocument document;
+  document.problemId = "canvas-editor";
+  document.sheet.id = {1};
+  document.sheet.width = 100.0;
+  document.sheet.height = 80.0;
+  EditablePart part;
+  part.id = {2};
+  part.partId = "detail";
+  part.quantity = 1;
+  part.allowedRotations = {0};
+  document.parts.push_back(std::move(part));
+  document.restoreNextEntityId(3);
+  PolygonEditorSession session(document, false);
+
+  PolygonCanvasWidget canvas;
+  canvas.resize(600, 500);
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.canEdit = true;
+  snapshot.state = PolygonWorkspaceState::Ready;
+  snapshot.problemId = document.problemId;
+  snapshot.document.sourceIdentifier = "memory";
+  snapshot.scene.sheetWidth = 100.0;
+  snapshot.scene.sheetHeight = 80.0;
+  snapshot.editableDocument = session.document();
+  const auto publish = [&]()
+  {
+    snapshot.editableDocument = session.document();
+    snapshot.documentRevision = session.history().revision;
+    canvas.setSnapshot(snapshot);
+  };
+  PolygonWorkspaceActions actions;
+  actions.beginEditGesture = [&]()
+  {
+    return session.beginGesture();
+  };
+  actions.editDocument = [&](const EditorCommandBatch & batch)
+  {
+    const EditorCommandResult result = session.execute(batch);
+    EXPECT_TRUE(result.accepted) << result.error;
+    publish();
+  };
+  actions.cancelEditGesture = [&](std::uint64_t gesture)
+  {
+    const EditorCommandResult result = session.cancelGesture(gesture);
+    EXPECT_TRUE(result.accepted) << result.error;
+    publish();
+  };
+  actions.finishEditGesture = [&](std::uint64_t gesture)
+  {
+    session.finishGesture(gesture);
+  };
+  canvas.setEditorActions(std::move(actions));
+  publish();
+  canvas.setCanvasMode(PolygonCanvasMode::Source);
+  canvas.selectEditorEntity(2);
+  canvas.setEditorTool(PolygonCanvasTool::OuterPath);
+
+  clickCanvas(canvas, canvasPoint(canvas.size(), snapshot.scene, {10.0, 10.0}));
+  ASSERT_TRUE(session.document().parts.front().outer.has_value());
+  canvas.setEditorTool(PolygonCanvasTool::Arc);
+  clickCanvas(canvas, canvasPoint(canvas.size(), snapshot.scene, {20.0, 10.0}));
+  clickCanvas(canvas, canvasPoint(canvas.size(), snapshot.scene, {30.0, 10.0}));
+  const auto & outer = *session.document().parts.front().outer;
+  ASSERT_EQ(outer.segments.size(), 1U);
+  EXPECT_EQ(outer.segments.front().kind, EditableSegmentKind::Arc);
+  EXPECT_DOUBLE_EQ(outer.segments.front().center.x, 20.0);
+  EXPECT_DOUBLE_EQ(outer.vertices.back().x, 30.0);
+
+  canvas.selectEditorEntity(2);
+  canvas.setEditorTool(PolygonCanvasTool::Hole);
+  clickCanvas(canvas, canvasPoint(canvas.size(), snapshot.scene, {40.0, 40.0}));
+  ASSERT_EQ(session.document().parts.front().holes.size(), 1U);
+  QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+  QApplication::sendEvent(&canvas, &escape);
+  EXPECT_TRUE(session.document().parts.front().holes.empty());
+}
 
 /// Проверяет, что диспетчер не выполняет функцию синхронно и доставляет её в поток Qt.
 TEST(PolygonWorkspaceWidget, DispatcherQueuesCallbackToQtThread)

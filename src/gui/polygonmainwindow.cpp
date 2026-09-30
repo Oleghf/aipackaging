@@ -181,6 +181,8 @@ void PolygonMainWindow::connectActions()
               actions_.editDocument(batch);
           });
   connect(workspace_, &PolygonWorkspaceWidget::cursorPositionChanged, this, &PolygonMainWindow::showCursorPosition);
+  connect(workspace_, &PolygonWorkspaceWidget::editorInteractionMessage, this,
+          [this](const QString & message) { statusBar()->showMessage(message, 5000); });
   connect(autosaveTimer_, &QTimer::timeout, this,
           [this]()
           {
@@ -309,6 +311,7 @@ void PolygonMainWindow::removeRecentProblem(const QString & path)
 /// Передаёт прикладному слою проверенный панелью запрос текущего режима.
 void PolygonMainWindow::startRun()
 {
+  workspace_->cancelEditorInteraction();
   if (actions_.start)
     actions_.start(workspace_->solverConfig());
 }
@@ -337,6 +340,7 @@ void PolygonMainWindow::showCursorPosition(double x, double y, bool inside)
 void PolygonMainWindow::setPolygonWorkspaceActions(PolygonWorkspaceActions actions)
 {
   actions_ = std::move(actions);
+  workspace_->setEditorActions(actions_);
   const QString remembered = QSettings().value(QStringLiteral("polygon/modelDirectory")).toString();
   if (!remembered.isEmpty() && actions_.openModel)
   {

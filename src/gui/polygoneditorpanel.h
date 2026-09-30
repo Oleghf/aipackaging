@@ -26,12 +26,16 @@ public:
   explicit PolygonEditorPanel(QWidget * parent = nullptr);
   /// Публикует неизменяемый снимок документа и согласует доступность команд.
   void present(const PolygonWorkspaceSnapshot & snapshot);
+  /// Выбирает существующие устойчивые сущности без изменения документа.
+  void selectEntities(const std::vector<std::uint64_t> & entityIds);
 
 signals:
   /// Передаёт атомарный пакет прикладному контроллеру документа.
   void editRequested(const aipackaging::editor::EditorCommandBatch & batch);
   /// Сообщает полотну выбранную устойчивую сущность без изменения прикладного документа.
   void entitySelected(std::uint64_t entityId);
+  /// Сообщает полотну и панели проблем полный устойчивый набор выбранных сущностей.
+  void entitiesSelected(const std::vector<std::uint64_t> & entityIds);
 
 private:
   /// Создаёт элементы форм и связывает их с командами редактора.

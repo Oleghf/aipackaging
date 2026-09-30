@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -11,12 +12,18 @@
 #include <QListWidget>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSettings>
+#include <QTemporaryDir>
 #include <QTreeWidget>
 #include <variant>
 
+#include <aipackaging/editor/polygon_editor_interaction.h>
 #include <gtest/gtest.h>
 #include <polygondocumentpanel.h>
+#include <polygoneditorcanvasinteraction.h>
 #include <polygoneditorpanel.h>
+#include <polygoneditortoolbar.h>
+#include <polygonproblemspanel.h>
 #include <polygonrunpanel.h>
 #include <polygonstatuspanel.h>
 
@@ -25,6 +32,11 @@ namespace
 /// Создаёт единственное приложение Qt либо возвращает экземпляр из другого тестового файла.
 QApplication * ensurePanelApplication()
 {
+  static QTemporaryDir settingsDirectory;
+  QCoreApplication::setOrganizationName(QStringLiteral("AIPackagingTests"));
+  QCoreApplication::setApplicationName(QStringLiteral("AIPackagingGuiPanelTests"));
+  QSettings::setDefaultFormat(QSettings::IniFormat);
+  QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDirectory.path());
   if (auto * application = qobject_cast<QApplication *>(QCoreApplication::instance()))
     return application;
   static int argumentCount = 1;
@@ -33,7 +45,99 @@ QApplication * ensurePanelApplication()
   static auto application = std::make_unique<QApplication>(argumentCount, arguments);
   return application.get();
 }
+
+/// Создаёт идентифицированную цепочку с дугой для проверки выбора и привязок.
+aipackaging::editor::EditablePolygonDocument interactiveDocument()
+{
+  using namespace aipackaging::editor;
+  EditablePolygonDocument document;
+  document.problemId = "interactive";
+  document.sheet.id = {1};
+  document.sheet.width = 100.0;
+  document.sheet.height = 80.0;
+  EditablePart part;
+  part.id = {2};
+  part.partId = "detail";
+  part.outer.emplace();
+  part.outer->id = {3};
+  part.outer->closed = true;
+  part.outer->vertices = {{{4}, 0.0, 0.0}, {{5}, 20.0, 0.0}, {{6}, 20.0, 20.0}, {{7}, 0.0, 20.0}};
+  part.outer->segments = {{{8}, EditableSegmentKind::Arc, {{12}, 10.0, 0.0}, {}, {}, false},
+                          {{9}, EditableSegmentKind::Line},
+                          {{10}, EditableSegmentKind::Line},
+                          {{11}, EditableSegmentKind::Line}};
+  document.parts.push_back(std::move(part));
+  document.restoreNextEntityId(13);
+  return document;
+}
 } // namespace
+
+/// Проверяет экранный приоритет точки, устойчивую привязку и выбор рамкой.
+TEST(PolygonCanvasInteraction, SelectsAndSnapsEditorEntitiesDeterministically)
+{
+  using namespace aipackaging::editor;
+  const EditablePolygonDocument document = interactiveDocument();
+  const auto vertex = findEditableEntity(document, QPointF(0.1, 0.1), 1.0, {}, {2});
+  ASSERT_TRUE(vertex.has_value());
+  EXPECT_EQ(vertex->entity, EntityId{4});
+  EXPECT_EQ(vertex->kind, EditorEntityKind::Point);
+
+  PolygonCanvasSnapSettings settings;
+  settings.geometryEnabled = true;
+  settings.gridEnabled = true;
+  settings.gridStepMm = 10.0;
+  const auto endpoint = snapEditablePoint(document, QPointF(0.2, 0.2), 1.0, settings, {2}, {}, {4});
+  EXPECT_EQ(endpoint.kind, PolygonSnapKind::ClosingVertex);
+  EXPECT_EQ(endpoint.entity, EntityId{4});
+  const auto grid = snapEditablePoint(document, QPointF(0.2, 0.2), 1.0, settings, {2}, {{4}}, {});
+  EXPECT_EQ(grid.kind, PolygonSnapKind::Grid);
+
+  const auto enclosed = findEditableEntities(document, QRectF(-1.0, -11.0, 22.0, 32.0), false, {2});
+  EXPECT_NE(std::find(enclosed.begin(), enclosed.end(), EntityId{3}), enclosed.end());
+  EXPECT_NE(std::find(enclosed.begin(), enclosed.end(), EntityId{8}), enclosed.end());
+}
+
+/// Проверяет значения сетки по умолчанию и их сохранение в устойчивых ключах Qt.
+TEST(PolygonEditorToolBar, PersistsGridAndSnapSettings)
+{
+  ensurePanelApplication();
+  QSettings settings;
+  settings.remove(QStringLiteral("editor"));
+  {
+    PolygonEditorToolBar toolbar;
+    const PolygonCanvasSnapSettings initial = toolbar.snapSettings();
+    EXPECT_TRUE(initial.gridVisible);
+    EXPECT_DOUBLE_EQ(initial.gridStepMm, 10.0);
+    EXPECT_TRUE(initial.geometryEnabled);
+    EXPECT_FALSE(initial.gridEnabled);
+    auto * gridSnap = toolbar.findChild<QCheckBox *>(QStringLiteral("editorGridSnap"));
+    ASSERT_NE(gridSnap, nullptr);
+    gridSnap->setChecked(true);
+  }
+  settings.sync();
+  EXPECT_TRUE(settings.value(QStringLiteral("editor/snapGrid")).toBool());
+  PolygonEditorToolBar restored;
+  EXPECT_TRUE(restored.snapSettings().gridEnabled);
+  settings.remove(QStringLiteral("editor"));
+}
+
+/// Проверяет выбор проблемы по связанному идентификатору без применения изменения.
+TEST(PolygonProblemsPanel, SelectsDiagnosticByRelatedEntity)
+{
+  ensurePanelApplication();
+  PolygonProblemsPanel panel;
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.documentDiagnostics.push_back({aipackaging::editor::DocumentDiagnosticCode::DegenerateSegment,
+                                          aipackaging::editor::DiagnosticSeverity::Error,
+                                          {7},
+                                          "Сегмент вырожден",
+                                          {{8}, {9}}});
+  panel.present(snapshot);
+  panel.selectEntities({9});
+  const auto * list = panel.findChild<QListWidget *>(QStringLiteral("polygonProblemsList"));
+  ASSERT_NE(list, nullptr);
+  EXPECT_EQ(list->currentRow(), 0);
+}
 
 /// Проверяет независимую публикацию документа и выбор строки дерева деталей.
 TEST(PolygonDocumentPanel, PresentsDocumentAndSelection)

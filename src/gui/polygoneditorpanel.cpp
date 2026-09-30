@@ -176,6 +176,7 @@ void PolygonEditorPanel::buildUi()
   pointY_->setObjectName(QStringLiteral("editorPointY"));
   tree_->setObjectName(QStringLiteral("editorEntityTree"));
   tree_->setHeaderLabel(tr("Структура документа"));
+  tree_->setSelectionMode(QAbstractItemView::ExtendedSelection);
   tree_->header()->setStretchLastSection(true);
   diagnostics_->setObjectName(QStringLiteral("editorDiagnostics"));
   diagnostics_->setMinimumHeight(90);
@@ -395,7 +396,9 @@ void PolygonEditorPanel::buildUi()
 /// Копирует снимок, обновляет формы документа и перестраивает дерево устойчивых сущностей.
 void PolygonEditorPanel::present(const PolygonWorkspaceSnapshot & snapshot)
 {
-  const std::uint64_t selected = tree_->currentItem() ? tree_->currentItem()->data(0, ENTITY_ID_ROLE).toULongLong() : 0;
+  std::vector<std::uint64_t> selected;
+  for (const QTreeWidgetItem * item : tree_->selectedItems())
+    selected.push_back(item->data(0, ENTITY_ID_ROLE).toULongLong());
   snapshot_ = snapshot;
   updating_ = true;
   commandArea_->setEnabled(snapshot.canEdit);
@@ -410,21 +413,34 @@ void PolygonEditorPanel::present(const PolygonWorkspaceSnapshot & snapshot)
     tolerance_->setValue(snapshot.editableDocument->manufacturing.curveTolerance);
   }
   rebuildTree();
-  if (selected)
-  {
-    const auto items = tree_->findItems(QString(), Qt::MatchContains | Qt::MatchRecursive);
-    for (QTreeWidgetItem * item : items)
-      if (item->data(0, ENTITY_ID_ROLE).toULongLong() == selected)
-      {
-        tree_->setCurrentItem(item);
-        break;
-      }
-  }
+  selectEntities(selected);
   diagnostics_->clear();
   for (const DocumentDiagnostic & diagnostic : snapshot.documentDiagnostics)
     diagnostics_->addItem(QString::fromStdString(diagnostic.message));
   updating_ = false;
   presentSelection();
+}
+
+/// Сопоставляет идентификаторы новым элементам дерева после каждой публикации снимка.
+void PolygonEditorPanel::selectEntities(const std::vector<std::uint64_t> & entityIds)
+{
+  const bool previous = updating_;
+  updating_ = true;
+  tree_->clearSelection();
+  QTreeWidgetItem * current = nullptr;
+  const auto items = tree_->findItems(QString(), Qt::MatchContains | Qt::MatchRecursive);
+  for (QTreeWidgetItem * item : items)
+    if (std::find(entityIds.begin(), entityIds.end(), item->data(0, ENTITY_ID_ROLE).toULongLong()) != entityIds.end())
+    {
+      item->setSelected(true);
+      if (!current)
+        current = item;
+    }
+  if (current)
+    tree_->setCurrentItem(current);
+  updating_ = previous;
+  if (!updating_)
+    presentSelection();
 }
 
 /// Создаёт иерархию часть–контур–вершина/сегмент, записывая принадлежность в роли Qt.
@@ -494,7 +510,10 @@ void PolygonEditorPanel::presentSelection()
   if (updating_ || !snapshot_.editableDocument || !tree_->currentItem())
   {
     if (!updating_)
+    {
       emit entitySelected(0);
+      emit entitiesSelected({});
+    }
     return;
   }
   const EntityId partId = selectedPart();
@@ -509,6 +528,10 @@ void PolygonEditorPanel::presentSelection()
   }
   const EntityId selected{tree_->currentItem()->data(0, ENTITY_ID_ROLE).toULongLong()};
   emit entitySelected(selected.value);
+  std::vector<std::uint64_t> selectedIds;
+  for (const QTreeWidgetItem * item : tree_->selectedItems())
+    selectedIds.push_back(item->data(0, ENTITY_ID_ROLE).toULongLong());
+  emit entitiesSelected(selectedIds);
   if (const EditablePoint * point = findPoint(*snapshot_.editableDocument, selected))
   {
     pointX_->setValue(point->x);

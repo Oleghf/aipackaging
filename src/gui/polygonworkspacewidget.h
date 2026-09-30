@@ -11,6 +11,8 @@ class QAction;
 class PolygonCanvasWidget;
 class PolygonDocumentPanel;
 class PolygonEditorPanel;
+class PolygonEditorToolBar;
+class PolygonProblemsPanel;
 class PolygonRunPanel;
 class PolygonStatusPanel;
 class QSplitter;
@@ -29,6 +31,10 @@ public:
   bool settingsValid() const;
   /// Передаёт согласованный снимок профильным панелям и полотну.
   void present(const PolygonWorkspaceSnapshot & snapshot);
+  /// Передаёт полотну существующие действия редактора, не создавая отдельного прикладного порта.
+  void setEditorActions(PolygonWorkspaceActions actions);
+  /// Отменяет незавершённый жест перед запуском или заменой документа.
+  void cancelEditorInteraction();
   /// Возвращает команду запуска для размещения на панели главного окна.
   QAction * startAction() const;
   /// Возвращает команду отмены для размещения на панели главного окна.
@@ -67,11 +73,15 @@ signals:
   void cursorPositionChanged(double x, double y, bool inside);
   /// Передаёт атомарное изменение активного документа главному окну.
   void requestEditDocument(const aipackaging::editor::EditorCommandBatch & batch);
+  /// Передаёт краткую диагностику интерактивного инструмента строке состояния окна.
+  void editorInteractionMessage(const QString & message);
 
 private:
   PolygonDocumentPanel * documentPanel_;
   PolygonCanvasWidget * canvas_;
+  PolygonEditorToolBar * editorToolBar_;
   PolygonEditorPanel * editorPanel_;
+  PolygonProblemsPanel * problemsPanel_;
   PolygonRunPanel * runPanel_;
   QTabWidget * rightTabs_;
   PolygonStatusPanel * statusPanel_;

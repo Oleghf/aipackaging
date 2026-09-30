@@ -2,10 +2,13 @@
 #include <QSplitter>
 #include <QTabWidget>
 #include <QVBoxLayout>
+#include <QWidget>
 
 #include <polygoncanvaswidget.h>
 #include <polygondocumentpanel.h>
 #include <polygoneditorpanel.h>
+#include <polygoneditortoolbar.h>
+#include <polygonproblemspanel.h>
 #include <polygonrunpanel.h>
 #include <polygonstatuspanel.h>
 #include <polygonworkspacewidget.h>
@@ -15,7 +18,9 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   : QWidget(parent)
   , documentPanel_(new PolygonDocumentPanel(this))
   , canvas_(new PolygonCanvasWidget(this))
+  , editorToolBar_(new PolygonEditorToolBar(this))
   , editorPanel_(new PolygonEditorPanel(this))
+  , problemsPanel_(new PolygonProblemsPanel(this))
   , runPanel_(new PolygonRunPanel(this))
   , rightTabs_(new QTabWidget(this))
   , statusPanel_(new PolygonStatusPanel(this))
@@ -24,12 +29,18 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   setObjectName("polygonWorkspace");
   canvas_->setObjectName("polygonCanvas");
   canvas_->setAccessibleName(tr("Полотно раскладки"));
+  auto * canvasContainer = new QWidget(this);
+  auto * canvasLayout = new QVBoxLayout(canvasContainer);
+  canvasLayout->setContentsMargins(0, 0, 0, 0);
+  canvasLayout->addWidget(editorToolBar_);
+  canvasLayout->addWidget(canvas_, 1);
   splitter_->setObjectName(QStringLiteral("workspaceSplitter"));
   splitter_->addWidget(documentPanel_);
-  splitter_->addWidget(canvas_);
+  splitter_->addWidget(canvasContainer);
   rightTabs_->setObjectName(QStringLiteral("workspaceRightTabs"));
   rightTabs_->addTab(editorPanel_, tr("Редактор"));
   rightTabs_->addTab(runPanel_, tr("Раскрой"));
+  rightTabs_->addTab(problemsPanel_, tr("Проблемы"));
   splitter_->addWidget(rightTabs_);
   splitter_->setStretchFactor(0, 0);
   splitter_->setStretchFactor(1, 1);
@@ -52,6 +63,26 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   connect(canvas_, &PolygonCanvasWidget::partSelected, documentPanel_, &PolygonDocumentPanel::showSelectedPart);
   connect(editorPanel_, &PolygonEditorPanel::editRequested, this, &PolygonWorkspaceWidget::requestEditDocument);
   connect(editorPanel_, &PolygonEditorPanel::entitySelected, canvas_, &PolygonCanvasWidget::selectEditorEntity);
+  connect(editorPanel_, &PolygonEditorPanel::entitiesSelected, canvas_, &PolygonCanvasWidget::selectEditorEntities);
+  connect(editorPanel_, &PolygonEditorPanel::entitiesSelected, problemsPanel_, &PolygonProblemsPanel::selectEntities);
+  connect(canvas_, &PolygonCanvasWidget::editorEntitiesSelected, editorPanel_, &PolygonEditorPanel::selectEntities);
+  connect(canvas_, &PolygonCanvasWidget::editorEntitiesSelected, problemsPanel_, &PolygonProblemsPanel::selectEntities);
+  connect(problemsPanel_, &PolygonProblemsPanel::entitiesSelected, editorPanel_, &PolygonEditorPanel::selectEntities);
+  connect(problemsPanel_, &PolygonProblemsPanel::entitiesSelected, canvas_, &PolygonCanvasWidget::selectEditorEntities);
+  connect(problemsPanel_, &PolygonProblemsPanel::fixRequested, this, &PolygonWorkspaceWidget::requestEditDocument);
+  connect(editorToolBar_, &PolygonEditorToolBar::toolChanged, canvas_, &PolygonCanvasWidget::setEditorTool);
+  connect(editorToolBar_, &PolygonEditorToolBar::snapSettingsChanged, canvas_, &PolygonCanvasWidget::setSnapSettings);
+  connect(editorToolBar_, &PolygonEditorToolBar::arcDirectionChanged, canvas_, &PolygonCanvasWidget::setArcClockwise);
+  connect(canvas_, &PolygonCanvasWidget::editorToolChangeRequested, editorToolBar_, &PolygonEditorToolBar::selectTool);
+  connect(canvas_, &PolygonCanvasWidget::editorInteractionMessage, this, &PolygonWorkspaceWidget::editorInteractionMessage);
+  connect(rightTabs_, &QTabWidget::currentChanged, this,
+          [this](int index)
+          {
+            const bool source = index != 1;
+            editorToolBar_->setVisible(source);
+            canvas_->setCanvasMode(source ? PolygonCanvasMode::Source : PolygonCanvasMode::Solution);
+          });
+  canvas_->setSnapSettings(editorToolBar_->snapSettings());
   present({});
 }
 
@@ -80,9 +111,25 @@ void PolygonWorkspaceWidget::present(const PolygonWorkspaceSnapshot & snapshot)
     rightTabs_->setCurrentWidget(runPanel_);
   documentPanel_->present(snapshot);
   editorPanel_->present(snapshot);
+  problemsPanel_->present(snapshot);
   runPanel_->present(snapshot);
   statusPanel_->present(snapshot);
   canvas_->setSnapshot(snapshot);
+  editorToolBar_->setEditingEnabled(snapshot.canEdit);
+  rightTabs_->setTabText(2, snapshot.documentDiagnostics.empty() ? tr("Проблемы")
+                                                                 : tr("Проблемы (%1)").arg(snapshot.documentDiagnostics.size()));
+}
+
+/// Копирует функции редактора в полотно для синхронных жестов владельца окна.
+void PolygonWorkspaceWidget::setEditorActions(PolygonWorkspaceActions actions)
+{
+  canvas_->setEditorActions(std::move(actions));
+}
+
+/// Делегирует безопасный откат временного состояния полотну.
+void PolygonWorkspaceWidget::cancelEditorInteraction()
+{
+  canvas_->cancelEditorInteraction();
 }
 
 /// Возвращает действие запуска панели запуска.
