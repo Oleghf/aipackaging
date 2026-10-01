@@ -95,6 +95,14 @@
             }
         },
         {
+            "name": "windows-editor-performance",
+            "displayName": "Windows Editor Performance",
+            "inherits": "windows-headless-tests",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
             "name": "unix-base",
             "hidden": true,
             "generator": "Unix Makefiles",
@@ -196,12 +204,20 @@
             }
         },
         {
-            "name": "linux-nesting-sanitized",
-            "displayName": "Linux Sanitized Nesting Tests",
-            "inherits": "linux-nesting-tests",
+            "name": "linux-headless-sanitized",
+            "displayName": "Linux Sanitized Headless Tests",
+            "inherits": "linux-headless-tests",
             "cacheVariables": {
                 "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer",
                 "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+            }
+        },
+        {
+            "name": "linux-editor-performance",
+            "displayName": "Linux Editor Performance",
+            "inherits": "linux-headless-tests",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
             }
         }
     ],
@@ -275,6 +291,16 @@
             "name": "build-windows-desktop-no-onnx-tests",
             "configurePreset": "windows-desktop-no-onnx-tests",
             "configuration": "Debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "build-windows-editor-performance",
+            "configurePreset": "windows-editor-performance",
+            "configuration": "Release",
             "condition": {
                 "type": "equals",
                 "lhs": "${hostSystemName}",
@@ -370,9 +396,19 @@
             }
         },
         {
-            "name": "build-linux-nesting-sanitized",
-            "configurePreset": "linux-nesting-sanitized",
+            "name": "build-linux-headless-sanitized",
+            "configurePreset": "linux-headless-sanitized",
             "configuration": "Debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "build-linux-editor-performance",
+            "configurePreset": "linux-editor-performance",
+            "configuration": "Release",
             "condition": {
                 "type": "equals",
                 "lhs": "${hostSystemName}",

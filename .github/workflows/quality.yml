@@ -81,9 +81,9 @@ jobs:
       - uses: actions/checkout@v6
       - name: Настройка, сборка и тестирование
         run: |
-          cmake --preset linux-nesting-sanitized
-          cmake --build --preset build-linux-nesting-sanitized --parallel 2
-          ctest --test-dir build/linux-nesting-sanitized -C Debug --output-on-failure
+          cmake --preset linux-headless-sanitized
+          cmake --build --preset build-linux-headless-sanitized --parallel 2
+          ctest --test-dir build/linux-headless-sanitized -C Debug --output-on-failure
 
   python:
     name: Python 3.13

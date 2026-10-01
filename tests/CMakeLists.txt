@@ -91,11 +91,26 @@ if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
   target_link_libraries(AIPackaging_EditorTests PRIVATE AIPackaging_Editor)
   set_tests_properties(AIPackaging_EditorTests PROPERTIES LABELS "app;editor")
 
+  # Измерительный исполняемый файл не регистрируется в `CTest` и запускается отдельной проверкой `Release`.
+  add_executable(AIPackaging_EditorPerformanceProbe "editor/editorperformanceprobe.cpp")
+  target_include_directories(AIPackaging_EditorPerformanceProbe PRIVATE
+    "${CMAKE_SOURCE_DIR}/src/infrastructure/desktop"
+  )
+  target_link_libraries(AIPackaging_EditorPerformanceProbe PRIVATE
+    AIPackaging_Editor AIPackaging_DesktopInfrastructure AIPackaging_PolygonCore
+  )
+  if (WIN32)
+    target_link_libraries(AIPackaging_EditorPerformanceProbe PRIVATE psapi)
+  endif()
+
   aipackaging_add_test_executable(AIPackaging_EditorPersistenceTests
     "editor/testpolygondraftio.cpp"
   )
   target_link_libraries(AIPackaging_EditorPersistenceTests PRIVATE
     AIPackaging_EditorPersistence nlohmann_json::nlohmann_json
+  )
+  target_compile_definitions(AIPackaging_EditorPersistenceTests PRIVATE
+    AIPACKAGING_EDITOR_EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples/editor"
   )
   set_tests_properties(AIPackaging_EditorPersistenceTests PROPERTIES LABELS "app;editor;io;contract")
 

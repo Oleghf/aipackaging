@@ -90,6 +90,20 @@ TEST(PolygonDraftIo, RoundTripProducesIdenticalCanonicalBytes)
   EXPECT_EQ(loaded.metadata.baseFingerprint, original.metadata.baseFingerprint);
 }
 
+/// Проверяет строгую загрузку демонстрационных черновиков, не участвующих в эталонах CLI.
+TEST(PolygonDraftIo, LoadsEditorDemonstrationDrafts)
+{
+  for (const std::string & name : {"demo-open-path.aipdraft.json", "demo-part-with-hole.aipdraft.json"})
+  {
+    PolygonDraft draft;
+    std::string error;
+    const std::filesystem::path path = std::filesystem::path(AIPACKAGING_EDITOR_EXAMPLES_DIR) / name;
+    ASSERT_TRUE(loadPolygonDraftFromFile(path.string(), draft, error)) << name << ": " << error;
+    EXPECT_FALSE(draft.document.problemId.empty());
+    EXPECT_FALSE(draft.document.parts.empty());
+  }
+}
+
 /// Проверяет сохранение открытого временно некорректного контура в черновике.
 TEST(PolygonDraftIo, PreservesLocallyInvalidEditableState)
 {

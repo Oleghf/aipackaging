@@ -1,0 +1,60 @@
+{
+  "format": "aipackaging.polygon_draft",
+  "version": 1,
+  "metadata": {
+    "sourceKind": "untitled",
+    "sourceIdentifier": "",
+    "savedAtUtc": "2026-10-01T00:00:00Z",
+    "generation": 1,
+    "baseFingerprint": null
+  },
+  "nextEntityId": 21,
+  "document": {
+    "problemId": "editor-demo-part-with-hole",
+    "sheet": {"entityId": 1, "width": 300.0, "height": 200.0, "unit": "mm"},
+    "manufacturing": {"sheetMargin": 5.0, "partSpacing": 2.0, "kerf": 0.0, "curveTolerance": 0.05},
+    "parts": [
+      {
+        "entityId": 2,
+        "partId": "frame",
+        "quantity": 2,
+        "outer": {
+          "entityId": 3,
+          "closed": true,
+          "vertices": [
+            {"entityId": 4, "x": 0.0, "y": 0.0},
+            {"entityId": 5, "x": 100.0, "y": 0.0},
+            {"entityId": 6, "x": 100.0, "y": 80.0},
+            {"entityId": 7, "x": 0.0, "y": 80.0}
+          ],
+          "segments": [
+            {"entityId": 8, "type": "line"},
+            {"entityId": 9, "type": "line"},
+            {"entityId": 10, "type": "line"},
+            {"entityId": 11, "type": "line"}
+          ]
+        },
+        "holes": [
+          {
+            "entityId": 12,
+            "closed": true,
+            "vertices": [
+              {"entityId": 13, "x": 25.0, "y": 20.0},
+              {"entityId": 14, "x": 25.0, "y": 60.0},
+              {"entityId": 15, "x": 75.0, "y": 60.0},
+              {"entityId": 16, "x": 75.0, "y": 20.0}
+            ],
+            "segments": [
+              {"entityId": 17, "type": "line"},
+              {"entityId": 18, "type": "line"},
+              {"entityId": 19, "type": "line"},
+              {"entityId": 20, "type": "line"}
+            ]
+          }
+        ],
+        "allowedRotations": [0, 90, 180, 270]
+      }
+    ],
+    "objective": {"type": "minimize_used_length", "version": 1}
+  }
+}

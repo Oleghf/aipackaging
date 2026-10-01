@@ -161,6 +161,45 @@ def python_checks() -> int:
     return run([sys.executable, "-m", "pytest"])
 
 
+def editor_performance_checks() -> int:
+    """Собирает Release-пробу редактора и проверяет измеримые пределы M8.3."""
+
+    system = platform.system()
+    if system == "Windows":
+        preset = "windows-editor-performance"
+        executable = ROOT / "build" / preset / "tests" / "AIPackaging_EditorPerformanceProbe.exe"
+    elif system == "Linux":
+        preset = "linux-editor-performance"
+        executable = ROOT / "build" / preset / "tests" / "AIPackaging_EditorPerformanceProbe"
+    else:
+        print(f"Для ОС {system} нет измерительной предустановки редактора.", file=sys.stderr)
+        return 1
+    command = [str(executable)]
+    if os.environ.get("CI"):
+        command.append("--ci")
+    shared_dependencies = ROOT / "build" / (
+        "windows-headless-tests" if system == "Windows" else "linux-headless-tests"
+    ) / "_deps"
+    configure = ["cmake", "--preset", preset]
+    dependency_sources = {
+        "NLOHMANN_JSON": shared_dependencies / "nlohmann_json-src",
+        "CLIPPER2": shared_dependencies / "clipper2-src",
+        "GOOGLETEST": ROOT / "build" / "windows-tests" / "_deps" / "googletest-src"
+        if system == "Windows"
+        else shared_dependencies / "googletest-src",
+    }
+    for name, path in dependency_sources.items():
+        if path.is_dir():
+            configure.append(f"-DFETCHCONTENT_SOURCE_DIR_{name}={path}")
+    return run_sequence(
+        [
+            configure,
+            ["cmake", "--build", "--preset", f"build-{preset}", "--target", "AIPackaging_EditorPerformanceProbe"],
+            command,
+        ]
+    )
+
+
 def desktop_checks(qt_dir: str | None, *, with_onnx: bool = True) -> int:
     """Проверяет настольное приложение Windows с выбранной внутренней реализацией."""
 
@@ -200,6 +239,7 @@ def main() -> int:
             "nesting",
             "headless",
             "python",
+            "editor-performance",
             "desktop",
             "desktop-no-onnx",
             "all",
@@ -216,6 +256,7 @@ def main() -> int:
         "nesting": nesting_checks,
         "headless": headless_checks,
         "python": python_checks,
+        "editor-performance": editor_performance_checks,
         "desktop": lambda: desktop_checks(arguments.qt_dir),
         "desktop-no-onnx": lambda: desktop_checks(arguments.qt_dir, with_onnx=False),
     }
@@ -229,6 +270,7 @@ def main() -> int:
         "nesting",
         "headless",
         "python",
+        "editor-performance",
         "desktop-no-onnx",
         "desktop",
     ):
