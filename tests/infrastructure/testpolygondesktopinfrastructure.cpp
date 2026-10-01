@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 #include <aipackaging/nesting/polygon_environment.h>
 #include <aipackaging/nesting/polygon_io.h>
@@ -17,6 +18,7 @@
 #include <polygon_artifact_store.h>
 #include <polygon_backends.h>
 #include <polygon_document_gateway.h>
+#include <polygon_draft_jobs.h>
 #include <polygon_editable_document_gateway.h>
 #include <polygon_model_jobs.h>
 
@@ -254,6 +256,81 @@ public:
   std::atomic<std::size_t> releasedSolutions = 0;
   std::atomic<std::uint64_t> lastReleasedSolution = 0;
 };
+
+/// Управляемо задерживает первую запись и запоминает поколения последовательного автосохранения.
+class DraftGateway final : public IPolygonEditableDocumentGateway
+{
+public:
+  /// Не используется в тестах фонового автосохранения.
+  PolygonEditableDocumentLoadResult load(const std::string &) override { return {}; }
+  /// Не используется в тестах фонового автосохранения.
+  PolygonEditableDocumentLoadResult loadRecovery(const std::string &) override { return {}; }
+  /// Не используется в тестах фонового автосохранения.
+  PolygonEditableDocumentLoadResult compileImported(aipackaging::editor::EditablePolygonDocument, const std::string &,
+                                                    std::optional<PolygonSourceFingerprint>) override
+  {
+    return {};
+  }
+  /// Не используется в тестах фонового автосохранения.
+  PolygonDocumentOperationResult saveProblem(const std::string &, const aipackaging::editor::EditablePolygonDocument &) override
+  {
+    return {};
+  }
+  /// Ожидает разрешения первой записи и сохраняет порядок поколений.
+  PolygonDocumentOperationResult saveDraft(const std::string &, const aipackaging::editor::EditablePolygonDocument &,
+                                           PolygonDocumentSource, const std::string &, std::uint64_t generation,
+                                           std::optional<PolygonSourceFingerprint>) override
+  {
+    {
+      std::unique_lock lock(mutex);
+      entered = true;
+      changed.notify_all();
+      if (blockFirst && generations.empty())
+        changed.wait(lock, [this]() { return released; });
+      generations.push_back(generation);
+    }
+    return {true, {}};
+  }
+  /// Не используется в тестах фонового автосохранения.
+  std::optional<PolygonSourceFingerprint> sourceFingerprint(const std::string &) override { return std::nullopt; }
+  /// Не используется в тестах фонового автосохранения.
+  PolygonRecoveryCandidate inspectRecovery(const std::string &) override { return {}; }
+  /// Не используется в тестах фонового автосохранения.
+  PolygonDocumentOperationResult removeRecovery(const std::string &) override { return {}; }
+
+  /// Ожидает входа рабочего потока в первую запись.
+  bool waitEntered()
+  {
+    std::unique_lock lock(mutex);
+    return changed.wait_for(lock, std::chrono::seconds(3), [this]() { return entered; });
+  }
+
+  /// Разрешает завершить задержанную запись.
+  void release()
+  {
+    std::lock_guard lock(mutex);
+    released = true;
+    changed.notify_all();
+  }
+
+  std::mutex mutex;
+  std::condition_variable changed;
+  bool blockFirst = true;
+  bool entered = false;
+  bool released = false;
+  std::vector<std::uint64_t> generations;
+};
+
+/// Создаёт минимальный неизменяемый запрос автоматического сохранения заданного поколения.
+PolygonDraftSaveRequest draftRequest(std::uint64_t generation)
+{
+  PolygonDraftSaveRequest request;
+  request.filePath = "autosave.aipdraft.json";
+  request.document = std::make_shared<const aipackaging::editor::EditablePolygonDocument>();
+  request.source = PolygonDocumentSource::Untitled;
+  request.generation = generation;
+  return request;
+}
 
 /// Немедленно возвращает результат или заданную ошибку для проверки жизненного цикла потока.
 class ImmediateBackend final : public IPolygonNestingBackend
@@ -535,6 +612,76 @@ TEST(PolygonDesktopInfrastructure, LoadsAndSavesValidatedSolutionThroughGateway)
 #endif
 
 #ifdef AIPACKAGING_DESKTOP_JOB_TESTS
+/// Сохраняет выполняющееся и только последнее ожидающее поколение в строгом порядке.
+TEST(PolygonDesktopInfrastructure, DraftRunnerCoalescesPendingGenerations)
+{
+  auto gateway = std::make_shared<DraftGateway>();
+  auto dispatcher = std::make_shared<QueueDispatcher>();
+  StdThreadPolygonDraftJobRunner runner(gateway, dispatcher);
+  std::vector<std::uint64_t> completed;
+  auto callback = [&completed](PolygonDraftJobHandle, std::uint64_t generation, const PolygonDocumentOperationResult & result)
+  {
+    if (result.success)
+      completed.push_back(generation);
+  };
+  std::string error;
+  ASSERT_TRUE(runner.submit(draftRequest(1), callback, error).has_value()) << error;
+  ASSERT_TRUE(gateway->waitEntered());
+  ASSERT_TRUE(runner.submit(draftRequest(2), callback, error).has_value()) << error;
+  ASSERT_TRUE(runner.submit(draftRequest(3), callback, error).has_value()) << error;
+  gateway->release();
+  runner.flush();
+
+  {
+    std::lock_guard lock(gateway->mutex);
+    ASSERT_EQ(gateway->generations, (std::vector<std::uint64_t>{1, 3}));
+  }
+  EXPECT_EQ(dispatcher->drain(), 2U);
+  EXPECT_EQ(completed, (std::vector<std::uint64_t>{1, 3}));
+}
+
+/// Завершает запись и продолжает работу после отказа итоговой доставки.
+TEST(PolygonDesktopInfrastructure, DraftRunnerSurvivesRejectedCompletion)
+{
+  auto gateway = std::make_shared<DraftGateway>();
+  gateway->blockFirst = false;
+  auto dispatcher = std::make_shared<RejectingDispatcher>();
+  {
+    StdThreadPolygonDraftJobRunner runner(gateway, dispatcher);
+    std::string error;
+    const auto callback = [](PolygonDraftJobHandle, std::uint64_t, const PolygonDocumentOperationResult &) {};
+    ASSERT_TRUE(runner.submit(draftRequest(1), callback, error).has_value()) << error;
+    runner.flush();
+    ASSERT_TRUE(runner.submit(draftRequest(2), {}, error).has_value()) << error;
+    runner.flush();
+  }
+  EXPECT_EQ(dispatcher->attempts.load(), 1U);
+  std::lock_guard lock(gateway->mutex);
+  EXPECT_EQ(gateway->generations, (std::vector<std::uint64_t>{1, 2}));
+}
+
+/// Подавляет исключение итогового обработчика и продолжает принимать поколения.
+TEST(PolygonDesktopInfrastructure, DraftRunnerContinuesAfterCallbackException)
+{
+  auto gateway = std::make_shared<DraftGateway>();
+  gateway->blockFirst = false;
+  auto dispatcher = std::make_shared<QueueDispatcher>();
+  StdThreadPolygonDraftJobRunner runner(gateway, dispatcher);
+  std::string error;
+  ASSERT_TRUE(runner
+                .submit(
+                  draftRequest(1), [](PolygonDraftJobHandle, std::uint64_t, const PolygonDocumentOperationResult &)
+                  { throw std::runtime_error("искусственная ошибка обработчика черновика"); }, error)
+                .has_value())
+    << error;
+  runner.flush();
+  EXPECT_EQ(dispatcher->drain(), 1U);
+  ASSERT_TRUE(runner.submit(draftRequest(2), {}, error).has_value()) << error;
+  runner.flush();
+  std::lock_guard lock(gateway->mutex);
+  EXPECT_EQ(gateway->generations, (std::vector<std::uint64_t>{1, 2}));
+}
+
 /// Проверяет асинхронную доставку результата только через очередь диспетчера.
 TEST(PolygonDesktopInfrastructure, DeliversCompletionThroughDispatcherQueue)
 {

@@ -290,8 +290,9 @@ bool finalizeRing(const PolygonPointMm & current, const PolygonPointMm & start, 
 
 /// Аппроксимирует один исходный путь с заданной ошибкой и общим пределом вершин детали.
 bool flattenPath(const PolygonPath & path, double tolerance, PolygonRing64 & result, std::size_t & remainingVertices,
-                 std::string & error)
+                 std::string & error, std::optional<std::size_t> & failedSegment)
 {
+  failedSegment.reset();
   if (path.segments.empty())
   {
     error = "polygon path is empty";
@@ -308,14 +309,18 @@ bool flattenPath(const PolygonPath & path, double tolerance, PolygonRing64 & res
     return false;
   }
   PolygonPointMm current = path.start;
-  for (const PolygonSegment & segment : path.segments)
+  for (std::size_t segmentIndex = 0; segmentIndex < path.segments.size(); ++segmentIndex)
   {
+    const PolygonSegment & segment = path.segments[segmentIndex];
     const bool appended = segment.kind == PolygonSegmentKind::Line ? appendLineSegment(segment, result, remainingVertices, error)
                         : segment.kind == PolygonSegmentKind::Arc
                           ? appendArcSegment(current, segment, tolerance, result, remainingVertices, error)
                           : appendBezierSegment(current, segment, tolerance, result, remainingVertices, error);
     if (!appended)
+    {
+      failedSegment = segmentIndex;
       return false;
+    }
     current = segment.end;
   }
   return finalizeRing(current, path.start, result, remainingVertices, error);
@@ -449,14 +454,16 @@ struct NormalizedPartGeometry
 };
 
 /// Преобразует размеры листа и производственные параметры в проверенные микроны.
-bool normalizeSheetParameters(const PolygonProblem & problem, NormalizedSheetParameters & result, std::string & error)
+bool normalizeSheetParameters(const PolygonProblem & problem, NormalizedSheetParameters & result,
+                              PolygonNormalizationError & error)
 {
   if (!toMicrons(problem.sheet.width, result.width) || !toMicrons(problem.sheet.height, result.height) ||
       !toMicrons(problem.manufacturing.sheetMargin, result.margin) ||
       !toMicrons(problem.manufacturing.partSpacing, result.spacing) || result.width <= 0 || result.height <= 0 ||
       result.width > MAX_SHEET_UM || result.height > MAX_SHEET_UM)
   {
-    error = "sheet is outside normalized M4 limits";
+    error.code = PolygonNormalizationErrorCode::SheetOutOfRange;
+    error.message = "sheet is outside normalized M4 limits";
     return false;
   }
   return true;
@@ -464,18 +471,32 @@ bool normalizeSheetParameters(const PolygonProblem & problem, NormalizedSheetPar
 
 /// Аппроксимирует все кольца детали в пределах общего бюджета вершин.
 bool flattenPartRings(const PolygonPart & part, double tolerance, NormalizedPartGeometry & result, std::size_t & vertexCount,
-                      std::string & error)
+                      std::size_t partIndex, PolygonNormalizationError & error)
 {
   std::size_t remainingVertices = MAX_VERTICES;
-  if (!flattenPath(part.outer, tolerance, result.outer, remainingVertices, error))
+  std::optional<std::size_t> failedSegment;
+  if (!flattenPath(part.outer, tolerance, result.outer, remainingVertices, error.message, failedSegment))
+  {
+    error.code = PolygonNormalizationErrorCode::PathApproximation;
+    error.partIndex = partIndex;
+    error.ringIndex = 0;
+    error.segmentIndex = failedSegment;
     return false;
+  }
 
   vertexCount = result.outer.size();
-  for (const PolygonPath & path : part.holes)
+  for (std::size_t holeIndex = 0; holeIndex < part.holes.size(); ++holeIndex)
   {
+    const PolygonPath & path = part.holes[holeIndex];
     PolygonRing64 hole;
-    if (!flattenPath(path, tolerance, hole, remainingVertices, error))
+    if (!flattenPath(path, tolerance, hole, remainingVertices, error.message, failedSegment))
+    {
+      error.code = PolygonNormalizationErrorCode::PathApproximation;
+      error.partIndex = partIndex;
+      error.ringIndex = holeIndex + 1;
+      error.segmentIndex = failedSegment;
       return false;
+    }
     vertexCount += hole.size();
     result.holes.push_back(std::move(hole));
   }
@@ -483,12 +504,15 @@ bool flattenPartRings(const PolygonPart & part, double tolerance, NormalizedPart
 }
 
 /// Проверяет внешнее кольцо и приводит его к положительной ориентации.
-bool normalizeOuterRing(PolygonRing64 & outer, std::string & error)
+bool normalizeOuterRing(PolygonRing64 & outer, std::size_t partIndex, PolygonNormalizationError & error)
 {
   if (!simpleRing(outer) || signedDoubleArea(outer) == 0)
   {
-    if (error.empty())
-      error = "outer ring is degenerate or self-intersecting";
+    if (error.message.empty())
+      error.message = "outer ring is degenerate or self-intersecting";
+    error.code = PolygonNormalizationErrorCode::OuterRingInvalid;
+    error.partIndex = partIndex;
+    error.ringIndex = 0;
     return false;
   }
   if (signedDoubleArea(outer) < 0)
@@ -497,23 +521,35 @@ bool normalizeOuterRing(PolygonRing64 & outer, std::string & error)
 }
 
 /// Проверяет отверстия относительно внешнего кольца и друг друга и направляет их по часовой стрелке.
-bool normalizeHoleRings(const PolygonRing64 & outer, std::vector<PolygonRing64> & holes, std::string & error)
+bool normalizeHoleRings(const PolygonRing64 & outer, std::vector<PolygonRing64> & holes, std::size_t partIndex,
+                        PolygonNormalizationError & error)
 {
   std::vector<PolygonRing64> acceptedHoles;
-  for (PolygonRing64 & hole : holes)
+  for (std::size_t holeIndex = 0; holeIndex < holes.size(); ++holeIndex)
   {
+    PolygonRing64 & hole = holes[holeIndex];
     if (!simpleRing(hole) || signedDoubleArea(hole) == 0 || !ringsDisjoint(outer, hole) || pointInRing(hole.front(), outer) != 1)
     {
-      if (error.empty())
-        error = "hole must be simple and strictly inside outer ring";
+      if (error.message.empty())
+        error.message = "hole must be simple and strictly inside outer ring";
+      error.code = PolygonNormalizationErrorCode::HoleInvalid;
+      error.partIndex = partIndex;
+      error.ringIndex = holeIndex + 1;
       return false;
     }
-    for (const PolygonRing64 & previous : acceptedHoles)
+    for (std::size_t previousIndex = 0; previousIndex < acceptedHoles.size(); ++previousIndex)
+    {
+      const PolygonRing64 & previous = acceptedHoles[previousIndex];
       if (!ringsDisjoint(previous, hole) || pointInRing(hole.front(), previous) >= 0 || pointInRing(previous.front(), hole) >= 0)
       {
-        error = "holes must be disjoint";
+        error.code = PolygonNormalizationErrorCode::HolesIntersect;
+        error.message = "holes must be disjoint";
+        error.partIndex = partIndex;
+        error.ringIndex = holeIndex + 1;
+        error.relatedRingIndex = previousIndex + 1;
         return false;
       }
+    }
     if (signedDoubleArea(hole) > 0)
       std::reverse(hole.begin(), hole.end());
     acceptedHoles.push_back(std::move(hole));
@@ -523,19 +559,22 @@ bool normalizeHoleRings(const PolygonRing64 & outer, std::vector<PolygonRing64> 
 }
 
 /// Аппроксимирует кольца детали, локализует их и проверяет взаимную топологию.
-bool normalizePartGeometry(const PolygonPart & part, double tolerance, NormalizedPartGeometry & result, std::string & error)
+bool normalizePartGeometry(const PolygonPart & part, double tolerance, NormalizedPartGeometry & result, std::size_t partIndex,
+                           PolygonNormalizationError & error)
 {
   std::size_t vertexCount = 0;
-  if (!flattenPartRings(part, tolerance, result, vertexCount, error))
+  if (!flattenPartRings(part, tolerance, result, vertexCount, partIndex, error))
     return false;
   if (vertexCount > MAX_VERTICES || !localizeRings(result.outer, result.holes))
   {
-    error = "polygon part extent or vertex count is outside M4 limits";
+    error.code = PolygonNormalizationErrorCode::PartExtent;
+    error.message = "polygon part extent or vertex count is outside M4 limits";
+    error.partIndex = partIndex;
     return false;
   }
-  if (!normalizeOuterRing(result.outer, error))
+  if (!normalizeOuterRing(result.outer, partIndex, error))
     return false;
-  if (!normalizeHoleRings(result.outer, result.holes, error))
+  if (!normalizeHoleRings(result.outer, result.holes, partIndex, error))
     return false;
   return true;
 }
@@ -543,7 +582,7 @@ bool normalizePartGeometry(const PolygonPart & part, double tolerance, Normalize
 /// Строит уникальные ориентации детали и стабильный список её экземпляров.
 bool appendPartOrientations(const PolygonPart & part, std::size_t partIndex, const NormalizedPartGeometry & geometry,
                             std::vector<std::vector<PolygonOrientation>> & allOrientations,
-                            std::vector<PolygonPartInstance> & instances, std::string & error)
+                            std::vector<PolygonPartInstance> & instances, PolygonNormalizationError & error)
 {
   std::vector<PolygonOrientation> orientations;
   for (int rotation : part.allowedRotations)
@@ -551,7 +590,9 @@ bool appendPartOrientations(const PolygonPart & part, std::size_t partIndex, con
     PolygonOrientation orientation = makeOrientation(geometry.outer, geometry.holes, rotation);
     if (orientation.width > MAX_SHEET_UM || orientation.height > MAX_SHEET_UM || orientation.materialArea == 0)
     {
-      error = "polygon part extent or material area is outside M4 limits";
+      error.code = PolygonNormalizationErrorCode::OrientationInvalid;
+      error.message = "polygon part extent or material area is outside M4 limits";
+      error.partIndex = partIndex;
       return false;
     }
     if (std::none_of(orientations.begin(), orientations.end(),
@@ -573,22 +614,45 @@ using namespace internal;
 /// Создаёт среду с исправленным каталогом, сохраняя прежнюю форму вызова.
 std::unique_ptr<PolygonEnvironment> PolygonEnvironment::Create(const PolygonProblem & problem, std::string & error)
 {
+  PolygonNormalizationError structured;
+  std::unique_ptr<PolygonEnvironment> result = Create(problem, PolygonActionCatalogVersion::Corrected, structured);
+  error = std::move(structured.message);
+  return result;
+}
+
+/// Создаёт среду с исправленным каталогом и сохраняет точное место отказа.
+std::unique_ptr<PolygonEnvironment> PolygonEnvironment::Create(const PolygonProblem & problem, PolygonNormalizationError & error)
+{
   return Create(problem, PolygonActionCatalogVersion::Corrected, error);
+}
+
+/// Сохраняет совместимую строковую диагностику поверх структурированной нормализации.
+std::unique_ptr<PolygonEnvironment> PolygonEnvironment::Create(const PolygonProblem & problem,
+                                                               PolygonActionCatalogVersion catalogVersion, std::string & error)
+{
+  PolygonNormalizationError structured;
+  std::unique_ptr<PolygonEnvironment> result = Create(problem, catalogVersion, structured);
+  error = std::move(structured.message);
+  return result;
 }
 
 /// Нормализует все пути, проверяет топологию и создаёт уникальные ориентации.
 std::unique_ptr<PolygonEnvironment> PolygonEnvironment::Create(const PolygonProblem & problem,
-                                                               PolygonActionCatalogVersion catalogVersion, std::string & error)
+                                                               PolygonActionCatalogVersion catalogVersion,
+                                                               PolygonNormalizationError & error)
 {
+  error = {};
   if (catalogVersion != PolygonActionCatalogVersion::Legacy && catalogVersion != PolygonActionCatalogVersion::Corrected)
   {
-    error = "неподдерживаемая версия полигонального каталога действий";
+    error.code = PolygonNormalizationErrorCode::UnsupportedCatalog;
+    error.message = "неподдерживаемая версия полигонального каталога действий";
     return nullptr;
   }
   const ValidationResult basic = validatePolygonProblem(problem);
   if (!basic.success)
   {
-    error = basic.error;
+    error.code = PolygonNormalizationErrorCode::InvalidProblem;
+    error.message = basic.error;
     return nullptr;
   }
   NormalizedSheetParameters sheet;
@@ -601,7 +665,7 @@ std::unique_ptr<PolygonEnvironment> PolygonEnvironment::Create(const PolygonProb
   {
     const PolygonPart & part = problem.parts[partIndex];
     NormalizedPartGeometry geometry;
-    if (!normalizePartGeometry(part, problem.manufacturing.curveTolerance, geometry, error))
+    if (!normalizePartGeometry(part, problem.manufacturing.curveTolerance, geometry, partIndex, error))
       return nullptr;
     if (!appendPartOrientations(part, partIndex, geometry, allOrientations, instances, error))
       return nullptr;

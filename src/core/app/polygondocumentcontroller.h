@@ -6,6 +6,7 @@
 #include <string>
 
 #include <aipackaging/editor/polygon_editor_commands.h>
+#include <polygondraftcontracts.h>
 #include <polygoneditablecontracts.h>
 #include <polygonworkspaceports.h>
 
@@ -18,7 +19,8 @@ public:
   /// Связывает модель документа с файловым шлюзом, рабочей областью и путём автосохранения.
   PolygonDocumentController(std::shared_ptr<IPolygonEditableDocumentGateway> gateway,
                             std::shared_ptr<PolygonWorkspaceController> workspace,
-                            std::shared_ptr<ActivePolygonDocument> activeDocument, std::string autosavePath);
+                            std::shared_ptr<ActivePolygonDocument> activeDocument, std::string autosavePath,
+                            std::shared_ptr<IPolygonDraftJobRunner> draftJobs = {});
   /// Завершает контроллер, оставляя автоматический черновик доступным следующему запуску.
   ~PolygonDocumentController();
   /// Подменяет документные действия совместимого набора функциями этого контроллера.
@@ -59,16 +61,22 @@ private:
   void acceptLoaded(PolygonEditableDocumentLoadResult loaded, bool recovered);
   /// Удаляет автоматический черновик после успешного пользовательского сохранения.
   bool clearRecoveryAfterSave(const std::string & savedPath);
+  /// Принимает только итог последнего запрошенного поколения автоматического черновика.
+  void finishAutosave(PolygonDraftJobHandle job, std::uint64_t generation, const PolygonDocumentOperationResult & result);
   /// Компилирует текущее состояние сессии и публикует его как изменение документа.
-  void publishEdited(const aipackaging::editor::EditorCommandResult & result, aipackaging::editor::PolygonEditorSession previous);
+  void publishEdited(const aipackaging::editor::EditorCommandResult & result,
+                     aipackaging::editor::PolygonEditorSession candidate);
 
   std::shared_ptr<IPolygonEditableDocumentGateway> gateway_;
   std::shared_ptr<PolygonWorkspaceController> workspace_;
   std::shared_ptr<ActivePolygonDocument> activeDocument_;
+  std::shared_ptr<IPolygonDraftJobRunner> draftJobs_;
   std::string autosavePath_;
   std::optional<aipackaging::editor::PolygonEditorSession> session_;
   std::optional<PolygonSourceFingerprint> baseFingerprint_;
   std::uint64_t generation_ = 0;
+  std::uint64_t requestedGeneration_ = 0;
+  std::optional<PolygonDraftJobHandle> activeDraftJob_;
 };
 
 #endif

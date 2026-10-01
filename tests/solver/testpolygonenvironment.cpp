@@ -175,6 +175,32 @@ TEST(PolygonEnvironment, RejectsInvalidTopology)
   EXPECT_EQ(PolygonEnvironment::Create(value, error), nullptr);
 }
 
+/// Возвращает исходные индексы детали, кольца и сегмента без разбора текста диагностики.
+TEST(PolygonEnvironment, ReportsStructuredNormalizationLocation)
+{
+  PolygonProblem value = problem();
+  value.parts[0].quantity = 1;
+  value.parts[0].outer.start = {0.0, 0.0};
+  value.parts[0].outer.segments = {{PolygonSegmentKind::Line, {20.0, 20.0}},
+                                   {PolygonSegmentKind::Line, {0.0, 20.0}},
+                                   {PolygonSegmentKind::Line, {20.0, 0.0}},
+                                   {PolygonSegmentKind::Line, {0.0, 0.0}}};
+  PolygonNormalizationError error;
+  EXPECT_EQ(PolygonEnvironment::Create(value, error), nullptr);
+  EXPECT_EQ(error.code, PolygonNormalizationErrorCode::OuterRingInvalid);
+  EXPECT_EQ(error.partIndex, 0U);
+  EXPECT_EQ(error.ringIndex, 0U);
+  EXPECT_EQ(error.message, "outer ring is degenerate or self-intersecting");
+
+  value = problem();
+  value.parts[0].outer.segments[1].end.x = 1e308;
+  error = {};
+  EXPECT_EQ(PolygonEnvironment::Create(value, error), nullptr);
+  EXPECT_EQ(error.code, PolygonNormalizationErrorCode::PathApproximation);
+  EXPECT_EQ(error.partIndex, 0U);
+  EXPECT_EQ(error.ringIndex, 0U);
+}
+
 /// Проверяет детерминированность вариантов NFP и точные основные компоненты.
 TEST(PolygonEnvironment, GeneratesStableNfpCandidatesAndObjective)
 {

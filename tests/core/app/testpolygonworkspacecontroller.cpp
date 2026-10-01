@@ -1,5 +1,6 @@
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include <activepolygondocument.h>
 #include <gtest/gtest.h>
@@ -184,6 +185,41 @@ public:
   std::optional<PolygonSourceFingerprint> savedBaseFingerprint;
   std::optional<PolygonSourceFingerprint> savedFingerprint = PolygonSourceFingerprint{77, 88};
   PolygonRecoveryCandidate recovery{true, true, false, {}, "original.json", "2026-09-26T12:00:00Z", {}};
+};
+
+/// Имитирует последовательную очередь автосохранения с ручной доставкой запоздалых итогов.
+class DraftJobRunnerStub final : public IPolygonDraftJobRunner
+{
+public:
+  /// Сохраняет поколение и обработчик, не выполняя файловую запись.
+  std::optional<PolygonDraftJobHandle> submit(PolygonDraftSaveRequest request, PolygonDraftJobCallback callback,
+                                              std::string &) override
+  {
+    const PolygonDraftJobHandle handle{nextJob++};
+    jobs.push_back({handle, request.generation, std::move(callback)});
+    return handle;
+  }
+
+  /// Запоминает ожидание очереди без блокировки тестового потока.
+  void flush() noexcept override { ++flushCount; }
+
+  /// Доставляет итог выбранной ранее работы.
+  void complete(std::size_t index, PolygonDocumentOperationResult result)
+  {
+    jobs.at(index).callback(jobs.at(index).handle, jobs.at(index).generation, result);
+  }
+
+  /// Хранит один принятый тестовый запрос.
+  struct Job
+  {
+    PolygonDraftJobHandle handle;
+    std::uint64_t generation = 0;
+    PolygonDraftJobCallback callback;
+  };
+
+  std::uint64_t nextJob = 1;
+  int flushCount = 0;
+  std::vector<Job> jobs;
 };
 
 /// Имитирует средство запуска с ручной доставкой событий.
@@ -695,6 +731,35 @@ TEST(PolygonDocumentController, KeepsDirtyStateAfterAutosaveFailure)
   EXPECT_NE(output->snapshot.statusText.find("Ошибка автосохранения"), std::string::npos);
 }
 
+/// Проверяет фильтрацию запоздалой ошибки и продолжение поколений после актуального фонового сохранения.
+TEST(PolygonDocumentController, IgnoresStaleDraftCompletion)
+{
+  auto output = std::make_shared<OutputStub>();
+  auto documents = std::make_shared<DocumentGatewayStub>();
+  auto editable = std::make_shared<EditableDocumentGatewayStub>();
+  auto jobs = std::make_shared<JobRunnerStub>();
+  auto drafts = std::make_shared<DraftJobRunnerStub>();
+  auto active = std::make_shared<ActivePolygonDocument>();
+  auto workspace = std::make_shared<PolygonWorkspaceController>(output, documents, jobs, nullptr, active);
+  auto controller = std::make_shared<PolygonDocumentController>(editable, workspace, active, "autosave.aipdraft.json", drafts);
+  PolygonWorkspaceActions actions = workspace->actions();
+  controller->bindActions(actions);
+  actions.restoreRecovery();
+
+  actions.autosaveDocument();
+  actions.autosaveDocument();
+  ASSERT_EQ(drafts->jobs.size(), 2U);
+  EXPECT_EQ(drafts->jobs[0].generation, 5U);
+  EXPECT_EQ(drafts->jobs[1].generation, 6U);
+  drafts->complete(0, {false, "устаревшая ошибка"});
+  EXPECT_EQ(output->snapshot.statusText.find("устаревшая ошибка"), std::string::npos);
+  drafts->complete(1, {true, {}});
+
+  actions.autosaveDocument();
+  ASSERT_EQ(drafts->jobs.size(), 3U);
+  EXPECT_EQ(drafts->jobs.back().generation, 7U);
+}
+
 /// Проверяет сохранение прежнего документа и сцены после ошибки следующего открытия.
 TEST(PolygonDocumentController, KeepsPreviousDocumentAfterLoadFailure)
 {
@@ -725,7 +790,7 @@ TEST(PolygonDocumentController, CreatesEditsAndUndoesDocument)
   controller->bindActions(actions);
 
   actions.createDocument("new-problem", 200.0, 100.0);
-  ASSERT_TRUE(output->snapshot.editableDocument.has_value());
+  ASSERT_TRUE(output->snapshot.editableDocument);
   EXPECT_EQ(output->snapshot.documentSource, PolygonDocumentSource::Untitled);
   EXPECT_TRUE(output->snapshot.documentDirty);
   const std::size_t releasedBefore = documents->releasedDocumentCount;

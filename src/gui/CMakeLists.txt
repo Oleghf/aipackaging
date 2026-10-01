@@ -3,7 +3,7 @@ set(gui_static_lib_name "AIPackaging_GUI")
 add_library(${gui_static_lib_name} STATIC)
 
 target_sources(${gui_static_lib_name} PRIVATE
-"polygoncanvaswidget.cpp" "polygoneditorcanvasinteraction.cpp" "polygoneditortoolbar.cpp" "polygonproblemspanel.cpp"
+"polygoncanvaswidget.cpp" "polygoncanvasrenderer.cpp" "polygoneditorcanvasinteraction.cpp" "polygoneditortoolbar.cpp" "polygonproblemspanel.cpp"
 "polygondocumentpanel.cpp" "polygoneditorpanel.cpp" "polygonrunpanel.cpp" "polygonstatuspanel.cpp"
 "polygonworkspacewidget.cpp" "polygonstartpage.cpp" "qtapplicationdispatcher.cpp" "polygonmainwindow.cpp")
 target_sources(${gui_static_lib_name} PRIVATE "polygondxfimportwizard.cpp")

@@ -6,6 +6,7 @@
 #include <polygon_artifact_store.h>
 #include <polygon_backends.h>
 #include <polygon_document_gateway.h>
+#include <polygon_draft_jobs.h>
 #include <polygon_editable_document_gateway.h>
 #include <polygon_import_jobs.h>
 #include <polygon_model_jobs.h>
@@ -45,6 +46,7 @@ int main(int argc, char * argv[])
   auto polygonJobs = std::make_shared<StdThreadNestingJobRunner>(polygonBackend, polygonDispatcher, polygonDocuments);
   auto importGateway = std::make_shared<LocalPolygonImportGateway>(editableDocuments, polygonDocuments);
   auto importJobs = std::make_shared<StdThreadPolygonImportJobRunner>(importGateway, polygonDispatcher);
+  auto draftJobs = std::make_shared<StdThreadPolygonDraftJobRunner>(editableDocuments, polygonDispatcher);
   auto activeDocument = std::make_shared<ActivePolygonDocument>();
   auto polygonController =
     std::make_shared<PolygonWorkspaceController>(polygonOutput, polygonDocuments, polygonJobs, polygonModels, activeDocument);
@@ -53,7 +55,7 @@ int main(int argc, char * argv[])
   QDir().mkpath(autosaveDirectory);
   const std::string autosavePath = QDir(autosaveDirectory).filePath(QStringLiteral("active.aipdraft.json")).toStdString();
   auto documentController =
-    std::make_shared<PolygonDocumentController>(editableDocuments, polygonController, activeDocument, autosavePath);
+    std::make_shared<PolygonDocumentController>(editableDocuments, polygonController, activeDocument, autosavePath, draftJobs);
   auto importController = std::make_shared<PolygonImportController>(importOutput, importJobs, documentController);
   PolygonWorkspaceActions actions = polygonController->actions();
   documentController->bindActions(actions);

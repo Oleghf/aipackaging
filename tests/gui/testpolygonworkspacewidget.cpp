@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QColor>
 #include <QComboBox>
+#include <QFocusEvent>
 #include <QImage>
 #include <QKeyEvent>
 #include <QLabel>
@@ -86,10 +87,10 @@ TEST(PolygonWorkspaceWidget, DrawsAndCancelsInteractiveGeometry)
   snapshot.document.sourceIdentifier = "memory";
   snapshot.scene.sheetWidth = 100.0;
   snapshot.scene.sheetHeight = 80.0;
-  snapshot.editableDocument = session.document();
+  snapshot.editableDocument = session.snapshot();
   const auto publish = [&]()
   {
-    snapshot.editableDocument = session.document();
+    snapshot.editableDocument = session.snapshot();
     snapshot.documentRevision = session.history().revision;
     canvas.setSnapshot(snapshot);
   };
@@ -137,6 +138,14 @@ TEST(PolygonWorkspaceWidget, DrawsAndCancelsInteractiveGeometry)
   ASSERT_EQ(session.document().parts.front().holes.size(), 1U);
   QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
   QApplication::sendEvent(&canvas, &escape);
+  EXPECT_TRUE(session.document().parts.front().holes.empty());
+
+  canvas.selectEditorEntity(2);
+  canvas.setEditorTool(PolygonCanvasTool::Hole);
+  clickCanvas(canvas, canvasPoint(canvas.size(), snapshot.scene, {45.0, 45.0}));
+  ASSERT_EQ(session.document().parts.front().holes.size(), 1U);
+  QFocusEvent focusOut(QEvent::FocusOut, Qt::OtherFocusReason);
+  QApplication::sendEvent(&canvas, &focusOut);
   EXPECT_TRUE(session.document().parts.front().holes.empty());
 }
 

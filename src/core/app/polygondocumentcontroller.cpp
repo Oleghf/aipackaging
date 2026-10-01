@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <memory>
 #include <utility>
 
@@ -8,16 +9,21 @@
 PolygonDocumentController::PolygonDocumentController(std::shared_ptr<IPolygonEditableDocumentGateway> gateway,
                                                      std::shared_ptr<PolygonWorkspaceController> workspace,
                                                      std::shared_ptr<ActivePolygonDocument> activeDocument,
-                                                     std::string autosavePath)
+                                                     std::string autosavePath, std::shared_ptr<IPolygonDraftJobRunner> draftJobs)
   : gateway_(std::move(gateway))
   , workspace_(std::move(workspace))
   , activeDocument_(std::move(activeDocument))
+  , draftJobs_(std::move(draftJobs))
   , autosavePath_(std::move(autosavePath))
 {
 }
 
 /// Не удаляет восстановительные данные: решение о них принимает только пользовательский сценарий.
-PolygonDocumentController::~PolygonDocumentController() = default;
+PolygonDocumentController::~PolygonDocumentController()
+{
+  if (draftJobs_)
+    draftJobs_->flush();
+}
 
 /// Формирует слабые обработчики, не продлевающие время жизни контроллера после закрытия окна.
 void PolygonDocumentController::bindActions(PolygonWorkspaceActions & actions)
@@ -131,6 +137,8 @@ void PolygonDocumentController::saveDocument(const std::string & filePath, bool 
 {
   if (filePath.empty() || !session_ || activeDocument_->state().running)
     return;
+  if (draftJobs_)
+    draftJobs_->flush();
   PolygonDocumentOperationResult result;
   if (asDraft)
   {
@@ -157,7 +165,7 @@ void PolygonDocumentController::saveDocument(const std::string & filePath, bool 
   }
   baseFingerprint_ = gateway_->sourceFingerprint(filePath);
   session_->markSaved();
-  workspace_->presentEditorHistory(session_->document(), session_->history());
+  workspace_->presentEditorHistory(session_->snapshot(), session_->history());
   if (!clearRecoveryAfterSave(filePath))
     return;
   workspace_->reportDocumentOperation(asDraft ? "Черновик сохранён" : "Задача сохранена");
@@ -169,8 +177,36 @@ void PolygonDocumentController::autosave()
 {
   if (!session_ || !activeDocument_->state().dirty || autosavePath_.empty())
     return;
-  const std::uint64_t nextGeneration = generation_ + 1;
+  const std::uint64_t nextGeneration = std::max(generation_, requestedGeneration_) + 1;
   const auto & state = activeDocument_->state();
+  if (draftJobs_)
+  {
+    PolygonDraftSaveRequest request;
+    request.filePath = autosavePath_;
+    request.document = session_->snapshot();
+    request.source = state.source;
+    request.sourceIdentifier = state.sourceIdentifier;
+    request.generation = nextGeneration;
+    request.baseFingerprint = baseFingerprint_;
+    const std::weak_ptr<PolygonDocumentController> weak = weak_from_this();
+    std::string error;
+    const auto job = draftJobs_->submit(
+      std::move(request),
+      [weak](PolygonDraftJobHandle handle, std::uint64_t generation, const PolygonDocumentOperationResult & result)
+      {
+        if (const auto self = weak.lock())
+          self->finishAutosave(handle, generation, result);
+      },
+      error);
+    if (!job)
+    {
+      workspace_->reportDocumentOperation("Ошибка автосохранения: " + error);
+      return;
+    }
+    requestedGeneration_ = nextGeneration;
+    activeDraftJob_ = *job;
+    return;
+  }
   const PolygonDocumentOperationResult result = gateway_->saveDraft(autosavePath_, session_->document(), state.source,
                                                                     state.sourceIdentifier, nextGeneration, baseFingerprint_);
   if (!result.success)
@@ -179,6 +215,7 @@ void PolygonDocumentController::autosave()
     return;
   }
   generation_ = nextGeneration;
+  requestedGeneration_ = nextGeneration;
   inspectRecovery();
 }
 
@@ -199,12 +236,30 @@ void PolygonDocumentController::restoreRecovery()
 /// Удаляет файл только через шлюз и сохраняет карточку с ошибкой при отказе.
 void PolygonDocumentController::deleteRecovery()
 {
+  if (draftJobs_)
+    draftJobs_->flush();
   const PolygonDocumentOperationResult result = gateway_->removeRecovery(autosavePath_);
   if (!result.success)
   {
     workspace_->reportDocumentOperation("Ошибка удаления черновика: " + result.error);
     return;
   }
+  inspectRecovery();
+}
+
+/// Игнорирует запоздалые итоги и обновляет карточку только для последнего поколения.
+void PolygonDocumentController::finishAutosave(PolygonDraftJobHandle job, std::uint64_t generation,
+                                               const PolygonDocumentOperationResult & result)
+{
+  if (!activeDraftJob_ || *activeDraftJob_ != job || generation != requestedGeneration_)
+    return;
+  activeDraftJob_.reset();
+  if (!result.success)
+  {
+    workspace_->reportDocumentOperation("Ошибка автосохранения: " + result.error);
+    return;
+  }
+  generation_ = generation;
   inspectRecovery();
 }
 
@@ -245,16 +300,16 @@ void PolygonDocumentController::acceptLoaded(PolygonEditableDocumentLoadResult l
   }
   const bool dirty =
     recovered || loaded.source == PolygonDocumentSource::Imported || loaded.source == PolygonDocumentSource::Untitled;
-  session_.emplace(loaded.document, !dirty);
+  session_.emplace(std::move(loaded.document), !dirty);
   baseFingerprint_ = loaded.baseFingerprint;
   generation_ = loaded.generation;
+  requestedGeneration_ = generation_;
   if (recovered)
   {
     loaded.source = PolygonDocumentSource::RecoveredDraft;
   }
   const bool sourceChanged = loaded.sourceChanged;
-  workspace_->acceptEditableDocument(std::move(loaded), dirty);
-  workspace_->presentEditorHistory(session_->document(), session_->history());
+  workspace_->acceptEditableDocument(std::move(loaded), dirty, session_->snapshot(), session_->history());
   if (recovered && sourceChanged)
     workspace_->reportDocumentOperation(
       "Черновик восстановлен; исходный файл изменился, поэтому требуется новый путь сохранения");
@@ -265,8 +320,9 @@ void PolygonDocumentController::editDocument(const aipackaging::editor::EditorCo
 {
   if (!session_ || activeDocument_->state().running)
     return;
-  aipackaging::editor::PolygonEditorSession previous = *session_;
-  publishEdited(session_->execute(batch), std::move(previous));
+  aipackaging::editor::PolygonEditorSession candidate = *session_;
+  const aipackaging::editor::EditorCommandResult result = candidate.execute(batch);
+  publishEdited(result, std::move(candidate));
 }
 
 /// Восстанавливает предыдущее состояние через тот же путь локальной и точной проверки.
@@ -274,8 +330,9 @@ void PolygonDocumentController::undo()
 {
   if (!session_ || activeDocument_->state().running)
     return;
-  aipackaging::editor::PolygonEditorSession previous = *session_;
-  publishEdited(session_->undo(), std::move(previous));
+  aipackaging::editor::PolygonEditorSession candidate = *session_;
+  const aipackaging::editor::EditorCommandResult result = candidate.undo();
+  publishEdited(result, std::move(candidate));
 }
 
 /// Восстанавливает повторённое состояние через тот же путь локальной и точной проверки.
@@ -283,8 +340,9 @@ void PolygonDocumentController::redo()
 {
   if (!session_ || activeDocument_->state().running)
     return;
-  aipackaging::editor::PolygonEditorSession previous = *session_;
-  publishEdited(session_->redo(), std::move(previous));
+  aipackaging::editor::PolygonEditorSession candidate = *session_;
+  const aipackaging::editor::EditorCommandResult result = candidate.redo();
+  publishEdited(result, std::move(candidate));
 }
 
 /// Выдаёт служебный идентификатор только пока редактирование текущего документа разрешено.
@@ -300,8 +358,9 @@ void PolygonDocumentController::cancelGesture(std::uint64_t gestureId)
 {
   if (!session_ || activeDocument_->state().running)
     return;
-  aipackaging::editor::PolygonEditorSession previous = *session_;
-  publishEdited(session_->cancelGesture(gestureId), std::move(previous));
+  aipackaging::editor::PolygonEditorSession candidate = *session_;
+  const aipackaging::editor::EditorCommandResult result = candidate.cancelGesture(gestureId);
+  publishEdited(result, std::move(candidate));
 }
 
 /// Закрывает возможность дальнейшего объединения с завершённым жестом.
@@ -313,7 +372,7 @@ void PolygonDocumentController::finishGesture(std::uint64_t gestureId)
 
 /// Повторяет точную компиляцию принятой редакции и сохраняет ошибочную геометрию как черновик.
 void PolygonDocumentController::publishEdited(const aipackaging::editor::EditorCommandResult & result,
-                                              aipackaging::editor::PolygonEditorSession previous)
+                                              aipackaging::editor::PolygonEditorSession candidate)
 {
   if (!result.accepted || !session_)
   {
@@ -323,16 +382,16 @@ void PolygonDocumentController::publishEdited(const aipackaging::editor::EditorC
   }
   const auto & state = activeDocument_->state();
   PolygonEditableDocumentLoadResult loaded =
-    gateway_->compileImported(session_->document(), state.sourceIdentifier, baseFingerprint_);
+    gateway_->compileImported(candidate.document(), state.sourceIdentifier, baseFingerprint_);
   if (!loaded.success)
   {
-    *session_ = std::move(previous);
     workspace_->reportDocumentOperation("Изменение не выполнено: " + loaded.error);
     return;
   }
   loaded.source = state.source;
   loaded.sourceIdentifier = state.sourceIdentifier;
-  workspace_->acceptEditedDocument(std::move(loaded), result.history);
+  session_ = std::move(candidate);
+  workspace_->acceptEditedDocument(std::move(loaded), result.history, session_->snapshot());
 }
 
 /// Удаляет восстановительный файл после записи пользователем и обновляет карточку.

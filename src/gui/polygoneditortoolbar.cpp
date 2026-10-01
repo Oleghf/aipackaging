@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cmath>
 #include <QAction>
 #include <QActionGroup>
 #include <QCheckBox>
@@ -82,7 +84,9 @@ PolygonEditorToolBar::PolygonEditorToolBar(QWidget * parent)
 
   QSettings settings;
   gridVisible_->setChecked(settings.value(QStringLiteral("editor/gridVisible"), true).toBool());
-  gridStep_->setValue(settings.value(QStringLiteral("editor/gridStepMm"), 10.0).toDouble());
+  bool validStep = false;
+  const double storedStep = settings.value(QStringLiteral("editor/gridStepMm"), 10.0).toDouble(&validStep);
+  gridStep_->setValue(validStep && std::isfinite(storedStep) ? std::clamp(storedStep, 0.001, 1.0e6) : 10.0);
   geometrySnap_->setChecked(settings.value(QStringLiteral("editor/snapGeometry"), true).toBool());
   gridSnap_->setChecked(settings.value(QStringLiteral("editor/snapGrid"), false).toBool());
 

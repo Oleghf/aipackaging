@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -17,15 +18,46 @@ enum class PolygonActionCatalogVersion : int
   Corrected = 2
 };
 
+/// Классифицирует этап, на котором точная нормализация отклонила исходную геометрию.
+enum class PolygonNormalizationErrorCode : std::uint8_t
+{
+  None,
+  UnsupportedCatalog,
+  InvalidProblem,
+  SheetOutOfRange,
+  PathApproximation,
+  PartExtent,
+  OuterRingInvalid,
+  HoleInvalid,
+  HolesIntersect,
+  OrientationInvalid
+};
+
+/// Сохраняет прежний текст ошибки и исходные индексы отклонённой сущности.
+struct PolygonNormalizationError
+{
+  PolygonNormalizationErrorCode code = PolygonNormalizationErrorCode::None;
+  std::string message;
+  std::optional<std::size_t> partIndex;
+  std::optional<std::size_t> ringIndex;
+  std::optional<std::size_t> segmentIndex;
+  std::optional<std::size_t> relatedRingIndex;
+};
+
 /// Детерминированная среда раскроя нормализованных полигональных деталей.
 class PolygonEnvironment
 {
 public:
   /// Создаёт среду с исправленным каталогом действий либо возвращает ошибку.
   static std::unique_ptr<PolygonEnvironment> Create(const PolygonProblem & problem, std::string & error);
+  /// Создаёт среду и возвращает структурированное место отказа точной нормализации.
+  static std::unique_ptr<PolygonEnvironment> Create(const PolygonProblem & problem, PolygonNormalizationError & error);
   /// Создаёт среду с явно выбранной версией каталога действий.
   static std::unique_ptr<PolygonEnvironment> Create(const PolygonProblem & problem, PolygonActionCatalogVersion catalogVersion,
                                                     std::string & error);
+  /// Создаёт среду выбранной версии и возвращает структурированное место отказа.
+  static std::unique_ptr<PolygonEnvironment> Create(const PolygonProblem & problem, PolygonActionCatalogVersion catalogVersion,
+                                                    PolygonNormalizationError & error);
 
   /// Возвращает исходную проверенную задачу.
   const PolygonProblem & problem() const { return problem_; }

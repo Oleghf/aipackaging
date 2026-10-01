@@ -13,6 +13,7 @@
 #include <unordered_set>
 
 #include <aipackaging/editor/polygon_editor_interaction.h>
+#include <polygoncanvasrenderer.h>
 #include <polygoncanvaswidget.h>
 
 using namespace aipackaging::editor;
@@ -168,7 +169,12 @@ void PolygonCanvasWidget::setSnapshot(const PolygonWorkspaceSnapshot & snapshot)
   const QString identity =
     QString::fromStdString(snapshot.problemId) + QLatin1Char('|') + QString::fromStdString(snapshot.document.sourceIdentifier);
   const bool replaced = !documentIdentity_.isEmpty() && identity != documentIdentity_;
+  const bool revisionChanged = spatialIndex_.document() != snapshot.editableDocument;
+  if ((replaced || !snapshot.canEdit) && (dragging_ || provisionalPathGesture_.has_value() || !drawingStagePoints_.empty()))
+    cancelEditorInteraction();
   snapshot_ = snapshot;
+  if (revisionChanged)
+    spatialIndex_.rebuild(snapshot_.editableDocument);
   documentIdentity_ = identity;
   diagnosticEntities_ = diagnosticEntities(snapshot_);
   if (replaced || !snapshot_.editableDocument)
@@ -304,6 +310,9 @@ bool PolygonCanvasWidget::event(QEvent * event)
 {
   if (event->type() == QEvent::UngrabMouse && dragging_)
     finishDrag(true);
+  else if ((event->type() == QEvent::WindowDeactivate || event->type() == QEvent::ApplicationDeactivate) &&
+           (dragging_ || provisionalPathGesture_.has_value() || !drawingStagePoints_.empty()))
+    cancelEditorInteraction();
   return QWidget::event(event);
 }
 
@@ -311,29 +320,7 @@ bool PolygonCanvasWidget::event(QEvent * event)
 void PolygonCanvasWidget::paintEvent(QPaintEvent * event)
 {
   QWidget::paintEvent(event);
-  QPainter painter(this);
-  painter.setRenderHint(QPainter::Antialiasing);
-  painter.fillRect(rect(), QColor("#F7FAFC"));
-  const PolygonSceneView & scene = snapshot_.scene;
-  if (scene.sheetWidth <= 0.0 || scene.sheetHeight <= 0.0)
-  {
-    painter.setPen(QColor("#718096"));
-    painter.drawText(rect(), Qt::AlignCenter, tr("Откройте polygon_problem v1 или создайте задачу"));
-    return;
-  }
-  applySceneTransform(painter, scene);
-  drawSheet(painter, scene);
-  if (mode_ == PolygonCanvasMode::Source)
-    drawGrid(painter, scene);
-  drawMargin(painter, scene);
-  if (mode_ == PolygonCanvasMode::Source)
-    drawEditableDocument(painter);
-  else
-  {
-    drawRemnant(painter, scene);
-    drawPlacements(painter, scene);
-  }
-  drawInteractionOverlay(painter);
+  PolygonCanvasRenderer::paint(*this);
 }
 
 /// Вычисляет масштаб вписывания, применяет масштаб пользователя и инвертирует экранную ось Y.
@@ -673,8 +660,7 @@ void PolygonCanvasWidget::mousePressEvent(QMouseEvent * event)
     return;
   }
 
-  const auto hit =
-    findEditableEntity(*snapshot_.editableDocument, sheet, HIT_TOLERANCE_PX / sceneScale(), selectedEditorEntities_, activePart_);
+  const auto hit = spatialIndex_.find(sheet, HIT_TOLERANCE_PX / sceneScale(), selectedEditorEntities_, activePart_);
   if (!hit)
   {
     if (!(event->modifiers() & Qt::ControlModifier))
@@ -765,7 +751,7 @@ void PolygonCanvasWidget::mouseReleaseEvent(QMouseEvent * event)
     const QPointF first = mapToSheet(selectionStartScreen_);
     const QPointF second = mapToSheet(selectionCurrentScreen_);
     const bool crossing = selectionCurrentScreen_.x() < selectionStartScreen_.x();
-    std::vector<EntityId> found = findEditableEntities(*snapshot_.editableDocument, QRectF(first, second), crossing, activePart_);
+    std::vector<EntityId> found = spatialIndex_.findInRectangle(QRectF(first, second), crossing, activePart_);
     if (event->modifiers() & Qt::ControlModifier)
     {
       std::vector<EntityId> merged = selectedEditorEntities_;
@@ -839,8 +825,8 @@ void PolygonCanvasWidget::keyReleaseEvent(QKeyEvent * event)
 void PolygonCanvasWidget::focusOutEvent(QFocusEvent * event)
 {
   spacePressed_ = false;
-  if (dragging_)
-    finishDrag(true);
+  if (dragging_ || provisionalPathGesture_.has_value() || !drawingStagePoints_.empty())
+    cancelEditorInteraction();
   QWidget::focusOutEvent(event);
 }
 
@@ -919,8 +905,7 @@ PolygonCanvasSnapResult PolygonCanvasWidget::snapped(const QPointF & raw, Qt::Ke
 {
   if (!snapshot_.editableDocument || (modifiers & Qt::AltModifier))
     return {raw};
-  return snapEditablePoint(*snapshot_.editableDocument, raw, SNAP_TOLERANCE_PX / sceneScale(), snapSettings_, activePart_,
-                           dragPointIds_, closingVertex);
+  return spatialIndex_.snap(raw, SNAP_TOLERANCE_PX / sceneScale(), snapSettings_, activePart_, dragPointIds_, closingVertex);
 }
 
 /// Дедуплицирует выбор, выводит его активную деталь и синхронизирует остальные панели.

@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -168,7 +169,7 @@ struct PolygonWorkspaceSnapshot
   std::string undoLabel;
   std::string redoLabel;
   PolygonDocumentSource documentSource = PolygonDocumentSource::None;
-  std::optional<aipackaging::editor::EditablePolygonDocument> editableDocument;
+  std::shared_ptr<const aipackaging::editor::EditablePolygonDocument> editableDocument;
   std::vector<aipackaging::editor::DocumentDiagnostic> documentDiagnostics;
   PolygonRecoveryCandidate recovery;
   NestingProgress progress;

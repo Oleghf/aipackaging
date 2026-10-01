@@ -396,6 +396,7 @@ void PolygonEditorPanel::buildUi()
 /// Копирует снимок, обновляет формы документа и перестраивает дерево устойчивых сущностей.
 void PolygonEditorPanel::present(const PolygonWorkspaceSnapshot & snapshot)
 {
+  const bool documentChanged = treeDocument_ != snapshot.editableDocument;
   std::vector<std::uint64_t> selected;
   for (const QTreeWidgetItem * item : tree_->selectedItems())
     selected.push_back(item->data(0, ENTITY_ID_ROLE).toULongLong());
@@ -412,7 +413,11 @@ void PolygonEditorPanel::present(const PolygonWorkspaceSnapshot & snapshot)
     kerf_->setValue(snapshot.editableDocument->manufacturing.kerf);
     tolerance_->setValue(snapshot.editableDocument->manufacturing.curveTolerance);
   }
-  rebuildTree();
+  if (documentChanged)
+  {
+    treeDocument_ = snapshot.editableDocument;
+    rebuildTree();
+  }
   selectEntities(selected);
   diagnostics_->clear();
   for (const DocumentDiagnostic & diagnostic : snapshot.documentDiagnostics)

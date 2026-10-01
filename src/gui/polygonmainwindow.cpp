@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <QCloseEvent>
 #include <QCoreApplication>
 #include <QDebug>
@@ -8,10 +9,13 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QGuiApplication>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPushButton>
+#include <QScreen>
 #include <QSettings>
 #include <QStackedWidget>
 #include <QStatusBar>
@@ -27,11 +31,21 @@
 namespace
 {
 constexpr qsizetype MAX_RECENT_PROBLEMS = 8;
+constexpr int MINIMUM_WINDOW_WIDTH = 1280;
+constexpr int MINIMUM_WINDOW_HEIGHT = 720;
 
 /// Возвращает каталог поставляемых примеров рядом с исполняемым файлом.
 QString exampleDirectory()
 {
   return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("examples/polygon"));
+}
+
+/// Возвращает `true`, если окно хотя бы частично видно на одном доступном экране.
+bool intersectsAvailableScreen(const QRect & geometry)
+{
+  const QList<QScreen *> screens = QGuiApplication::screens();
+  return std::any_of(screens.begin(), screens.end(),
+                     [&geometry](const QScreen * screen) { return screen && screen->availableGeometry().intersects(geometry); });
 }
 } // namespace
 
@@ -67,7 +81,7 @@ void PolygonMainWindow::buildWindow()
 {
   setObjectName(QStringLiteral("polygonMainWindow"));
   setWindowTitle(tr("AIPackaging — полигональный раскрой"));
-  setMinimumSize(1280, 720);
+  setMinimumSize(MINIMUM_WINDOW_WIDTH, MINIMUM_WINDOW_HEIGHT);
   pages_->setObjectName(QStringLiteral("mainPages"));
   pages_->addWidget(startPage_);
   pages_->addWidget(workspace_);
@@ -213,6 +227,8 @@ void PolygonMainWindow::createDocument()
   width->setObjectName(QStringLiteral("newSheetWidth"));
   height->setObjectName(QStringLiteral("newSheetHeight"));
   auto * buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+  buttons->button(QDialogButtonBox::Ok)->setText(tr("Создать"));
+  buttons->button(QDialogButtonBox::Cancel)->setText(tr("Отменить"));
   auto * form = new QFormLayout(&dialog);
   form->addRow(tr("Идентификатор задачи"), identifier);
   form->addRow(tr("Ширина листа"), width);
@@ -562,8 +578,18 @@ void PolygonMainWindow::rememberProblem(const QString & path)
 void PolygonMainWindow::restoreUiState()
 {
   QSettings settings;
-  restoreGeometry(settings.value(QStringLiteral("ui/mainWindowGeometry")).toByteArray());
-  restoreState(settings.value(QStringLiteral("ui/mainWindowState")).toByteArray());
+  const QByteArray geometry = settings.value(QStringLiteral("ui/mainWindowGeometry")).toByteArray();
+  if (geometry.isEmpty() || !restoreGeometry(geometry) || !intersectsAvailableScreen(frameGeometry()))
+  {
+    resize(MINIMUM_WINDOW_WIDTH, MINIMUM_WINDOW_HEIGHT);
+    if (QScreen * screen = QGuiApplication::primaryScreen())
+      move(screen->availableGeometry().center() - rect().center());
+  }
+  if (width() < MINIMUM_WINDOW_WIDTH || height() < MINIMUM_WINDOW_HEIGHT)
+    resize(std::max(width(), MINIMUM_WINDOW_WIDTH), std::max(height(), MINIMUM_WINDOW_HEIGHT));
+  const QByteArray state = settings.value(QStringLiteral("ui/mainWindowState")).toByteArray();
+  if (!state.isEmpty())
+    restoreState(state);
   recentProblems_ = settings.value(QStringLiteral("files/recentProblems")).toStringList();
   while (recentProblems_.size() > MAX_RECENT_PROBLEMS)
     recentProblems_.removeLast();

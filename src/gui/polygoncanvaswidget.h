@@ -19,6 +19,7 @@ class QMouseEvent;
 class QPainter;
 class QPaintEvent;
 class QWheelEvent;
+class PolygonCanvasRenderer;
 
 /// Показывает исходную геометрию или раскладку и преобразует жесты редактора в прикладные команды.
 class PolygonCanvasWidget : public QWidget
@@ -82,6 +83,8 @@ protected:
   void focusOutEvent(QFocusEvent * event) override;
 
 private:
+  friend class PolygonCanvasRenderer;
+
   /// Настраивает преобразование миллиметровых координат листа в экранные координаты.
   void applySceneTransform(QPainter & painter, const PolygonSceneView & scene) const;
   /// Рисует границу и материал листа.
@@ -131,6 +134,7 @@ private:
   void clearDrawingPreview(bool cancelProvisionalPath);
 
   PolygonWorkspaceSnapshot snapshot_;
+  PolygonCanvasSpatialIndex spatialIndex_;
   PolygonWorkspaceActions editorActions_;
   PolygonCanvasMode mode_ = PolygonCanvasMode::Solution;
   PolygonCanvasTool tool_ = PolygonCanvasTool::Select;

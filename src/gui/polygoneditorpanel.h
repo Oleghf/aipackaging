@@ -2,6 +2,7 @@
 #define AIPACKAGING_GUI_POLYGONEDITORPANEL_H
 
 #include <cstdint>
+#include <memory>
 #include <QWidget>
 #include <string>
 #include <vector>
@@ -58,6 +59,7 @@ private:
   void submit(std::string label, std::vector<aipackaging::editor::EditorCommand> commands);
 
   PolygonWorkspaceSnapshot snapshot_;
+  std::shared_ptr<const aipackaging::editor::EditablePolygonDocument> treeDocument_;
   QTreeWidget * tree_;
   QLineEdit * problemId_;
   QDoubleSpinBox * sheetWidth_;

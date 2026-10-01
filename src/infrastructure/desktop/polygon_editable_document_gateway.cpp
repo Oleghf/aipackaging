@@ -6,7 +6,6 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
-#include <string_view>
 #include <utility>
 
 #include <aipackaging/editor/polygon_draft_io.h>
@@ -273,80 +272,77 @@ void appendPathEntities(const EditablePath & path, std::vector<EntityId> & relat
   }
 }
 
-/// Повторяет точную проверку по одной детали, чтобы не связывать ошибку с соседней геометрией.
-const EditablePart * findRejectedPart(const EditablePolygonDocument & document, const std::string & expectedError)
+/// Возвращает исходную деталь, на которую указывает структурированный отказ нормализации.
+const EditablePart * rejectedPart(const EditablePolygonDocument & document, const PolygonNormalizationError & error)
 {
-  PolygonProblem complete = toProblem(document);
-  for (std::size_t index = 0; index < complete.parts.size(); ++index)
-  {
-    PolygonProblem probe = complete;
-    probe.parts = {complete.parts[index]};
-    std::string error;
-    if (!PolygonEnvironment::Create(probe, error) && error == expectedError)
-      return &document.parts[index];
-  }
-  return document.parts.empty() ? nullptr : &document.parts.front();
+  return error.partIndex && *error.partIndex < document.parts.size() ? &document.parts[*error.partIndex] : nullptr;
 }
 
-/// Связывает устойчивые причины точной нормализации с ближайшими сущностями редактируемого документа.
-DocumentDiagnostic exactGeometryDiagnostic(const EditablePolygonDocument & document, const std::string & error)
+/// Возвращает исходный контур по нулевому индексу внешнего кольца и последующим индексам отверстий.
+const EditablePath * rejectedPath(const EditablePart * part, const PolygonNormalizationError & error)
+{
+  if (!part || !error.ringIndex)
+    return nullptr;
+  if (*error.ringIndex == 0)
+    return part->outer ? &*part->outer : nullptr;
+  const std::size_t holeIndex = *error.ringIndex - 1;
+  return holeIndex < part->holes.size() ? &part->holes[holeIndex] : nullptr;
+}
+
+/// Связывает структурированную причину нормализации с устойчивыми идентификаторами редактора.
+DocumentDiagnostic exactGeometryDiagnostic(const EditablePolygonDocument & document, const PolygonNormalizationError & error)
 {
   DocumentDiagnostic result{DocumentDiagnosticCode::ExactGeometryRejected, DiagnosticSeverity::Error, document.sheet.id,
-                            "Точная проверка геометрии отклонила документ: " + error};
-  const auto contains = [&](std::string_view fragment)
+                            "Точная проверка геометрии отклонила документ: " + error.message};
+  const EditablePart * part = rejectedPart(document, error);
+  const EditablePath * path = rejectedPath(part, error);
+  if (part)
+    result.entity = part->id;
+  if (path)
   {
-    return error.find(fragment) != std::string::npos;
-  };
-  const EditablePart * part = findRejectedPart(document, error);
-  const EditablePath * outer = part && part->outer ? &*part->outer : nullptr;
-  const EditablePath * hole = part && !part->holes.empty() ? &part->holes.front() : nullptr;
+    result.entity = path->id;
+    appendPathEntities(*path, result.relatedEntities);
+    if (error.segmentIndex && *error.segmentIndex < path->segments.size())
+    {
+      result.entity = path->segments[*error.segmentIndex].id;
+      result.relatedEntities.push_back(path->id);
+    }
+  }
 
-  if (contains("outer ring is degenerate or self-intersecting"))
+  switch (error.code)
   {
-    result.code = DocumentDiagnosticCode::SelfIntersectingPath;
-    if (outer)
-    {
-      result.entity = outer->id;
-      appendPathEntities(*outer, result.relatedEntities);
-    }
+    case PolygonNormalizationErrorCode::OuterRingInvalid:
+      result.code = DocumentDiagnosticCode::SelfIntersectingPath;
+      break;
+    case PolygonNormalizationErrorCode::HoleInvalid:
+      result.code = DocumentDiagnosticCode::InvalidHolePlacement;
+      if (part && part->outer)
+        result.relatedEntities.push_back(part->outer->id);
+      break;
+    case PolygonNormalizationErrorCode::HolesIntersect:
+      result.code = DocumentDiagnosticCode::IntersectingHoles;
+      if (part && error.relatedRingIndex && *error.relatedRingIndex > 0 && *error.relatedRingIndex <= part->holes.size())
+        result.relatedEntities.push_back(part->holes[*error.relatedRingIndex - 1].id);
+      break;
+    case PolygonNormalizationErrorCode::SheetOutOfRange:
+    case PolygonNormalizationErrorCode::PartExtent:
+    case PolygonNormalizationErrorCode::OrientationInvalid:
+      result.code = DocumentDiagnosticCode::CoordinateLimitExceeded;
+      break;
+    case PolygonNormalizationErrorCode::PathApproximation:
+      result.code = DocumentDiagnosticCode::RoundingCollapse;
+      break;
+    case PolygonNormalizationErrorCode::None:
+    case PolygonNormalizationErrorCode::UnsupportedCatalog:
+    case PolygonNormalizationErrorCode::InvalidProblem:
+      break;
   }
-  else if (contains("hole must be simple and strictly inside outer ring"))
+  if (part && error.code == PolygonNormalizationErrorCode::PartExtent)
   {
-    result.code = DocumentDiagnosticCode::InvalidHolePlacement;
-    if (hole)
+    if (part->outer)
     {
-      result.entity = hole->id;
-      appendPathEntities(*hole, result.relatedEntities);
-      if (outer)
-        result.relatedEntities.push_back(outer->id);
-    }
-  }
-  else if (contains("holes must be disjoint"))
-  {
-    result.code = DocumentDiagnosticCode::IntersectingHoles;
-    if (hole)
-    {
-      result.entity = hole->id;
-      for (const EditablePath & candidate : part->holes)
-        result.relatedEntities.push_back(candidate.id);
-    }
-  }
-  else if (contains("coordinate") || contains("extent") || contains("sheet is outside"))
-  {
-    result.code = DocumentDiagnosticCode::CoordinateLimitExceeded;
-    if (!contains("sheet is outside") && outer)
-    {
-      result.entity = outer->id;
-      appendPathEntities(*outer, result.relatedEntities);
-    }
-  }
-  else if (contains("vertex budget") || contains("vertex count") || contains("approximation"))
-  {
-    result.code = DocumentDiagnosticCode::RoundingCollapse;
-    if (outer)
-    {
-      result.entity = outer->id;
-      appendPathEntities(*outer, result.relatedEntities);
+      result.entity = part->outer->id;
+      appendPathEntities(*part->outer, result.relatedEntities);
     }
   }
   return result;
@@ -365,7 +361,7 @@ void compileDocument(const std::shared_ptr<PolygonArtifactStore> & store, Polygo
   if (hasDocumentErrors(result.diagnostics))
     return;
   PolygonProblem problem = toProblem(result.document);
-  std::string error;
+  PolygonNormalizationError error;
   std::unique_ptr<PolygonEnvironment> created = PolygonEnvironment::Create(problem, error);
   if (!created)
   {

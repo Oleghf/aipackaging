@@ -42,11 +42,14 @@ public:
   /// Отменяет текущий поиск и выполняет замену документа только после итогового события.
   void requestDocumentReplacement(std::function<void()> replacement);
   /// Публикует успешно загруженный редактируемый документ и его необязательный точный снимок.
-  void acceptEditableDocument(PolygonEditableDocumentLoadResult loaded, bool dirty);
+  void acceptEditableDocument(PolygonEditableDocumentLoadResult loaded, bool dirty,
+                              std::shared_ptr<const aipackaging::editor::EditablePolygonDocument> document,
+                              const aipackaging::editor::EditorHistoryState & history);
   /// Публикует изменённый документ, не удаляя прежнее решение из режима просмотра.
-  void acceptEditedDocument(PolygonEditableDocumentLoadResult loaded, const aipackaging::editor::EditorHistoryState & history);
+  void acceptEditedDocument(PolygonEditableDocumentLoadResult loaded, const aipackaging::editor::EditorHistoryState & history,
+                            std::shared_ptr<const aipackaging::editor::EditablePolygonDocument> document);
   /// Обновляет доступность отмены и повтора после сохранения без замены документа.
-  void presentEditorHistory(const aipackaging::editor::EditablePolygonDocument & document,
+  void presentEditorHistory(std::shared_ptr<const aipackaging::editor::EditablePolygonDocument> document,
                             const aipackaging::editor::EditorHistoryState & history);
   /// Публикует состояние найденного автоматического черновика.
   void presentRecovery(PolygonRecoveryCandidate recovery);

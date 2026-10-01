@@ -1,3 +1,4 @@
+#include <limits>
 #include <memory>
 #include <QAction>
 #include <QApplication>
@@ -159,10 +160,14 @@ TEST(PolygonMainWindow, CreatesDocumentAndForwardsHistoryActions)
     {
       auto * dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
       ASSERT_NE(dialog, nullptr);
+      const auto * buttons = dialog->findChild<QDialogButtonBox *>();
+      ASSERT_NE(buttons, nullptr);
+      EXPECT_EQ(buttons->button(QDialogButtonBox::Ok)->text(), QStringLiteral("Создать"));
+      EXPECT_EQ(buttons->button(QDialogButtonBox::Cancel)->text(), QStringLiteral("Отменить"));
       dialog->findChild<QLineEdit *>(QStringLiteral("newProblemId"))->setText(QStringLiteral("созданная-задача"));
       dialog->findChild<QDoubleSpinBox *>(QStringLiteral("newSheetWidth"))->setValue(250.0);
       dialog->findChild<QDoubleSpinBox *>(QStringLiteral("newSheetHeight"))->setValue(125.0);
-      dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok)->click();
+      buttons->button(QDialogButtonBox::Ok)->click();
     });
   window.findChild<QAction *>(QStringLiteral("createDocumentAction"))->trigger();
   EXPECT_EQ(problemId, "созданная-задача");
@@ -287,6 +292,26 @@ TEST(PolygonMainWindow, RestoresWorkspaceSettingsAndMarksMissingRecentFiles)
   EXPECT_EQ(workspace->selectedPreset(), 1);
   ASSERT_EQ(recentList->count(), 8);
   EXPECT_TRUE(recentList->item(0)->text().contains(QStringLiteral("файл недоступен")));
+}
+
+/// Проверяет ограничение повреждённых размеров, положения панелей и режима запуска безопасными значениями.
+TEST(PolygonMainWindow, RejectsCorruptedWindowSettings)
+{
+  application();
+  QSettings settings;
+  settings.clear();
+  settings.setValue(QStringLiteral("ui/mainWindowGeometry"), QByteArray("повреждено"));
+  settings.setValue(QStringLiteral("ui/mainWindowState"), QByteArray("повреждено"));
+  settings.setValue(QStringLiteral("ui/workspaceSplitter"), QByteArray("повреждено"));
+  settings.setValue(QStringLiteral("ui/runPreset"), std::numeric_limits<int>::max());
+  settings.sync();
+
+  PolygonMainWindow window;
+  auto * workspace = window.findChild<PolygonWorkspaceWidget *>();
+  ASSERT_NE(workspace, nullptr);
+  EXPECT_GE(window.width(), 1280);
+  EXPECT_GE(window.height(), 720);
+  EXPECT_EQ(workspace->selectedPreset(), 3);
 }
 
 /// Проверяет доступность основных элементов при минимальном рабочем размере и системном масштабе.

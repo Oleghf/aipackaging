@@ -4,6 +4,7 @@ add_library(AIPackaging_DesktopInfrastructure STATIC
   "polygon_artifact_store.cpp"
   "polygon_backends.cpp"
   "polygon_document_gateway.cpp"
+  "polygon_draft_jobs.cpp"
   "polygon_editable_document_gateway.cpp"
   "polygon_import_jobs.cpp"
   "polygon_model_jobs.cpp"

@@ -285,7 +285,10 @@ void PolygonWorkspaceController::requestDocumentReplacement(std::function<void()
 }
 
 /// Заменяет задачу и сцену одним согласованным обновлением после успешной загрузки редактируемой модели.
-void PolygonWorkspaceController::acceptEditableDocument(PolygonEditableDocumentLoadResult loaded, bool dirty)
+void PolygonWorkspaceController::acceptEditableDocument(
+  PolygonEditableDocumentLoadResult loaded, bool dirty,
+  std::shared_ptr<const aipackaging::editor::EditablePolygonDocument> editableDocument,
+  const aipackaging::editor::EditorHistoryState & history)
 {
   if (activeJob_ || !loaded.success)
     return;
@@ -322,17 +325,23 @@ void PolygonWorkspaceController::acceptEditableDocument(PolygonEditableDocumentL
   snapshot_.document = std::move(loaded.summary);
   snapshot_.document.sourceIdentifier = loaded.sourceIdentifier;
   snapshot_.documentDiagnostics = std::move(loaded.diagnostics);
-  snapshot_.editableDocument = loaded.document;
+  snapshot_.editableDocument = std::move(editableDocument);
   snapshot_.scene = std::move(loaded.scene);
   snapshot_.unplacedInstances = std::move(loaded.unplacedInstances);
   snapshot_.statusText =
     valid ? (dirty ? "Черновик восстановлен" : "Документ загружен") : "Черновик загружен; исправьте ошибки перед запуском";
+  snapshot_.documentRevision = history.revision;
+  snapshot_.canUndo = history.canUndo;
+  snapshot_.canRedo = history.canRedo;
+  snapshot_.undoLabel = history.undoLabel;
+  snapshot_.redoLabel = history.redoLabel;
   publish();
 }
 
 /// Заменяет снимок решателя после изменения и сохраняет прежнюю сцену результата для просмотра.
-void PolygonWorkspaceController::acceptEditedDocument(PolygonEditableDocumentLoadResult loaded,
-                                                      const aipackaging::editor::EditorHistoryState & history)
+void PolygonWorkspaceController::acceptEditedDocument(
+  PolygonEditableDocumentLoadResult loaded, const aipackaging::editor::EditorHistoryState & history,
+  std::shared_ptr<const aipackaging::editor::EditablePolygonDocument> document)
 {
   if (activeJob_ || !loaded.success)
     return;
@@ -352,7 +361,7 @@ void PolygonWorkspaceController::acceptEditedDocument(PolygonEditableDocumentLoa
   snapshot_.document = std::move(loaded.summary);
   snapshot_.document.sourceIdentifier = loaded.sourceIdentifier;
   snapshot_.documentDiagnostics = std::move(loaded.diagnostics);
-  snapshot_.editableDocument = std::move(loaded.document);
+  snapshot_.editableDocument = std::move(document);
   snapshot_.unplacedInstances = std::move(loaded.unplacedInstances);
   if (!document_->state().hasSolution)
     snapshot_.scene = std::move(loaded.scene);
@@ -367,10 +376,11 @@ void PolygonWorkspaceController::acceptEditedDocument(PolygonEditableDocumentLoa
 }
 
 /// Копирует представление документа и истории после изменения чистой точки.
-void PolygonWorkspaceController::presentEditorHistory(const aipackaging::editor::EditablePolygonDocument & document,
-                                                      const aipackaging::editor::EditorHistoryState & history)
+void PolygonWorkspaceController::presentEditorHistory(
+  std::shared_ptr<const aipackaging::editor::EditablePolygonDocument> document,
+  const aipackaging::editor::EditorHistoryState & history)
 {
-  snapshot_.editableDocument = document;
+  snapshot_.editableDocument = std::move(document);
   snapshot_.documentRevision = history.revision;
   snapshot_.canUndo = history.canUndo;
   snapshot_.canRedo = history.canRedo;

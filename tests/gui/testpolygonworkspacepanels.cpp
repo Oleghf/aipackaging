@@ -97,6 +97,37 @@ TEST(PolygonCanvasInteraction, SelectsAndSnapsEditorEntitiesDeterministically)
   EXPECT_NE(std::find(enclosed.begin(), enclosed.end(), EntityId{8}), enclosed.end());
 }
 
+/// Проверяет совпадение временного индекса с последовательным поиском и повторное использование одной редакции.
+TEST(PolygonCanvasInteraction, SpatialIndexPreservesSelectionAndSnappingSemantics)
+{
+  using namespace aipackaging::editor;
+  auto document = std::make_shared<EditablePolygonDocument>(interactiveDocument());
+  PolygonCanvasSpatialIndex index;
+  index.rebuild(document);
+  EXPECT_EQ(index.document(), document);
+
+  const QPointF point(0.2, 0.2);
+  const auto sequentialHit = findEditableEntity(*document, point, 1.0, {}, {2});
+  const auto indexedHit = index.find(point, 1.0, {}, {2});
+  ASSERT_TRUE(sequentialHit.has_value());
+  ASSERT_TRUE(indexedHit.has_value());
+  EXPECT_EQ(indexedHit->entity, sequentialHit->entity);
+  EXPECT_EQ(indexedHit->kind, sequentialHit->kind);
+
+  const QRectF rectangle(-1.0, -11.0, 22.0, 32.0);
+  EXPECT_EQ(index.findInRectangle(rectangle, false, {2}), findEditableEntities(*document, rectangle, false, {2}));
+
+  PolygonCanvasSnapSettings settings;
+  settings.geometryEnabled = true;
+  settings.gridEnabled = true;
+  settings.gridStepMm = 10.0;
+  const auto sequentialSnap = snapEditablePoint(*document, point, 1.0, settings, {2}, {}, {4});
+  const auto indexedSnap = index.snap(point, 1.0, settings, {2}, {}, {4});
+  EXPECT_EQ(indexedSnap.kind, sequentialSnap.kind);
+  EXPECT_EQ(indexedSnap.entity, sequentialSnap.entity);
+  EXPECT_EQ(indexedSnap.point, sequentialSnap.point);
+}
+
 /// Проверяет значения сетки по умолчанию и их сохранение в устойчивых ключах Qt.
 TEST(PolygonEditorToolBar, PersistsGridAndSnapSettings)
 {
@@ -118,6 +149,20 @@ TEST(PolygonEditorToolBar, PersistsGridAndSnapSettings)
   EXPECT_TRUE(settings.value(QStringLiteral("editor/snapGrid")).toBool());
   PolygonEditorToolBar restored;
   EXPECT_TRUE(restored.snapSettings().gridEnabled);
+  settings.remove(QStringLiteral("editor"));
+}
+
+/// Проверяет безопасный возврат к значениям по умолчанию после повреждения настроек сетки.
+TEST(PolygonEditorToolBar, RejectsCorruptedGridSettings)
+{
+  ensurePanelApplication();
+  QSettings settings;
+  settings.remove(QStringLiteral("editor"));
+  settings.setValue(QStringLiteral("editor/gridStepMm"), QStringLiteral("nan"));
+  settings.sync();
+
+  PolygonEditorToolBar toolbar;
+  EXPECT_DOUBLE_EQ(toolbar.snapSettings().gridStepMm, 10.0);
   settings.remove(QStringLiteral("editor"));
 }
 
@@ -281,10 +326,11 @@ TEST(PolygonEditorPanel, BuildsDocumentAndPartCommands)
   PolygonWorkspaceSnapshot snapshot;
   snapshot.canEdit = true;
   snapshot.documentValid = false;
-  snapshot.editableDocument.emplace();
-  snapshot.editableDocument->problemId = "draft";
-  snapshot.editableDocument->sheet.width = 100.0;
-  snapshot.editableDocument->sheet.height = 80.0;
+  auto document = std::make_shared<aipackaging::editor::EditablePolygonDocument>();
+  document->problemId = "draft";
+  document->sheet.width = 100.0;
+  document->sheet.height = 80.0;
+  snapshot.editableDocument = std::move(document);
   panel.present(snapshot);
 
   std::vector<aipackaging::editor::EditorCommandBatch> commands;
@@ -309,15 +355,16 @@ TEST(PolygonEditorPanel, BuildsDirectedArcCommand)
   PolygonEditorPanel panel;
   PolygonWorkspaceSnapshot snapshot;
   snapshot.canEdit = true;
-  snapshot.editableDocument.emplace();
+  auto document = std::make_shared<aipackaging::editor::EditablePolygonDocument>();
   aipackaging::editor::EditablePart part;
   part.id = {1};
   part.partId = "arc";
   part.outer.emplace();
   part.outer->id = {2};
   part.outer->vertices.push_back({{3}, 0.0, 0.0});
-  snapshot.editableDocument->parts.push_back(std::move(part));
-  snapshot.editableDocument->restoreNextEntityId(4);
+  document->parts.push_back(std::move(part));
+  document->restoreNextEntityId(4);
+  snapshot.editableDocument = std::move(document);
   panel.present(snapshot);
 
   auto * tree = panel.findChild<QTreeWidget *>(QStringLiteral("editorEntityTree"));

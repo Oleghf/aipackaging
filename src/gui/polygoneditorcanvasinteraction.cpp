@@ -95,6 +95,181 @@ QPainterPath editablePainterPath(const EditablePath & source)
   return path;
 }
 
+/// Вычисляет точки, сегменты и контуры новой редакции ровно один раз.
+void PolygonCanvasSpatialIndex::rebuild(std::shared_ptr<const EditablePolygonDocument> document)
+{
+  document_ = std::move(document);
+  points_.clear();
+  segments_.clear();
+  paths_.clear();
+  if (!document_)
+    return;
+  std::size_t order = 0;
+  for (const EditablePart & part : document_->parts)
+    visitPaths(
+      part,
+      [&](const EditablePath & path)
+      {
+        for (const EditablePoint & point : path.vertices)
+          points_.push_back({{point.x, point.y}, point.id, part.id, path.id, PolygonSnapKind::Endpoint, order++});
+        for (const EditableSegment & segment : path.segments)
+        {
+          if (segment.kind == EditableSegmentKind::Arc)
+            points_.push_back(
+              {{segment.center.x, segment.center.y}, segment.center.id, part.id, path.id, PolygonSnapKind::ArcCenter, order++});
+          else if (segment.kind == EditableSegmentKind::CubicBezier)
+          {
+            points_.push_back(
+              {{segment.control1.x, segment.control1.y}, segment.control1.id, part.id, path.id, PolygonSnapKind::None, order++});
+            points_.push_back(
+              {{segment.control2.x, segment.control2.y}, segment.control2.id, part.id, path.id, PolygonSnapKind::None, order++});
+          }
+        }
+        const QPainterPath geometry = editablePainterPath(path);
+        paths_.push_back({path.id, part.id, geometry, geometry.boundingRect(), path.closed, order++});
+        const std::size_t count = std::min(path.segments.size(), path.vertices.size());
+        QPainterPathStroker selectionStroker;
+        selectionStroker.setWidth(1.0e-6);
+        for (std::size_t index = 0; index < count; ++index)
+        {
+          QPainterPath segmentPath(QPointF(path.vertices[index].x, path.vertices[index].y));
+          const EditablePoint & end = path.vertices[index + 1 < path.vertices.size() ? index + 1 : 0];
+          appendSegment(segmentPath, path.vertices[index], end, path.segments[index]);
+          segments_.push_back({path.segments[index].id, part.id, path.id, segmentPath,
+                               selectionStroker.createStroke(segmentPath).boundingRect(), order++});
+        }
+      });
+}
+
+/// Возвращает удерживаемую индексом неизменяемую редакцию.
+const std::shared_ptr<const EditablePolygonDocument> & PolygonCanvasSpatialIndex::document() const noexcept
+{
+  return document_;
+}
+
+/// Отбирает кандидатов по габаритам и применяет прежний устойчивый приоритет.
+std::optional<PolygonCanvasEntityHit> PolygonCanvasSpatialIndex::find(const QPointF & point, double toleranceMm,
+                                                                      const std::vector<EntityId> & selected,
+                                                                      EntityId activePart) const
+{
+  /// Сопоставляет найденную сущность с приоритетом и устойчивым порядком документа.
+  struct Candidate
+  {
+    PolygonCanvasEntityHit hit;
+    int priority = 0;
+    std::size_t order = 0;
+  };
+  std::vector<Candidate> candidates;
+  std::unordered_set<std::uint64_t> selectedValues;
+  for (EntityId id : selected)
+    selectedValues.insert(id.value);
+  for (const PointEntry & entry : points_)
+  {
+    const double distance = std::sqrt(distanceSquared(point, entry.point));
+    if (distance <= toleranceMm)
+      candidates.push_back(
+        {{entry.entity, EditorEntityKind::Point, entry.part, entry.path, distance},
+         (activePart && entry.part != activePart ? 10 : 0) + (selectedValues.contains(entry.entity.value) ? 0 : 1),
+         entry.order});
+  }
+  QPainterPathStroker stroker;
+  stroker.setWidth(toleranceMm * 2.0);
+  for (const SegmentEntry & entry : segments_)
+  {
+    const QRectF search = entry.bounds.adjusted(-toleranceMm, -toleranceMm, toleranceMm, toleranceMm);
+    if (search.contains(point) && stroker.createStroke(entry.geometry).contains(point))
+      candidates.push_back({{entry.entity, EditorEntityKind::Segment, entry.part, entry.path, 0.0},
+                            (activePart && entry.part != activePart ? 10 : 0) + 2,
+                            entry.order});
+  }
+  for (const PathEntry & entry : paths_)
+    if (entry.closed && entry.bounds.contains(point) && entry.geometry.contains(point))
+      candidates.push_back({{entry.entity, EditorEntityKind::Path, entry.part, entry.entity, 0.0},
+                            (activePart && entry.part != activePart ? 10 : 0) + 3,
+                            entry.order});
+  if (candidates.empty())
+    return std::nullopt;
+  return std::min_element(
+           candidates.begin(), candidates.end(), [](const Candidate & lhs, const Candidate & rhs)
+           { return std::tie(lhs.priority, lhs.hit.distance, lhs.order) < std::tie(rhs.priority, rhs.hit.distance, rhs.order); })
+    ->hit;
+}
+
+/// Использует габариты индекса для рамочного выбора без повторного построения путей.
+std::vector<EntityId> PolygonCanvasSpatialIndex::findInRectangle(const QRectF & rectangle, bool crossing,
+                                                                 EntityId activePart) const
+{
+  const QRectF area = rectangle.normalized();
+  std::vector<std::pair<std::size_t, EntityId>> ordered;
+  std::unordered_set<std::uint64_t> seen;
+  const auto append = [&](EntityId id, std::size_t order)
+  {
+    if (id && seen.insert(id.value).second)
+      ordered.emplace_back(order, id);
+  };
+  for (const PointEntry & entry : points_)
+    if ((!activePart || entry.part == activePart) && area.contains(entry.point))
+      append(entry.entity, entry.order);
+  for (const SegmentEntry & entry : segments_)
+    if ((!activePart || entry.part == activePart) && (crossing ? entry.bounds.intersects(area) : area.contains(entry.bounds)))
+      append(entry.entity, entry.order);
+  for (const PathEntry & entry : paths_)
+    if ((!activePart || entry.part == activePart) &&
+        (crossing ? entry.geometry.intersects(area) || area.contains(entry.bounds) : area.contains(entry.bounds)))
+      append(entry.entity, entry.order);
+  std::sort(ordered.begin(), ordered.end(), [](const auto & lhs, const auto & rhs) { return lhs.first < rhs.first; });
+  std::vector<EntityId> result;
+  result.reserve(ordered.size());
+  for (const auto & orderedEntity : ordered)
+    result.push_back(orderedEntity.second);
+  return result;
+}
+
+/// Вычисляет ближайшую цель только по индексированным точкам активной детали.
+PolygonCanvasSnapResult PolygonCanvasSpatialIndex::snap(const QPointF & point, double toleranceMm,
+                                                        const PolygonCanvasSnapSettings & settings, EntityId activePart,
+                                                        const std::vector<EntityId> & excluded, EntityId closingVertex) const
+{
+  PolygonCanvasSnapResult best{point};
+  double bestDistance = std::numeric_limits<double>::infinity();
+  int bestPriority = std::numeric_limits<int>::max();
+  std::unordered_set<std::uint64_t> excludedValues;
+  for (EntityId id : excluded)
+    excludedValues.insert(id.value);
+  if (settings.geometryEnabled)
+    for (const PointEntry & entry : points_)
+    {
+      if (entry.snapKind == PolygonSnapKind::None || (activePart && entry.part != activePart) ||
+          excludedValues.contains(entry.entity.value))
+        continue;
+      const double distance = std::sqrt(distanceSquared(point, entry.point));
+      if (distance > toleranceMm)
+        continue;
+      const bool closing = closingVertex && entry.entity == closingVertex;
+      const int priority = closing ? 0 : entry.snapKind == PolygonSnapKind::Endpoint ? 1 : 2;
+      if (priority < bestPriority ||
+          (priority == bestPriority &&
+           (distance < bestDistance || (distance == bestDistance && entry.entity.value < best.entity.value))))
+      {
+        best = {entry.point, closing ? PolygonSnapKind::ClosingVertex : entry.snapKind, entry.entity,
+                closing                                       ? QObject::tr("Первая вершина")
+                : entry.snapKind == PolygonSnapKind::Endpoint ? QObject::tr("Конечная точка")
+                                                              : QObject::tr("Центр дуги")};
+        bestPriority = priority;
+        bestDistance = distance;
+      }
+    }
+  if (settings.gridEnabled && settings.gridStepMm > 0.0 && std::isfinite(settings.gridStepMm))
+  {
+    const QPointF grid(std::round(point.x() / settings.gridStepMm) * settings.gridStepMm,
+                       std::round(point.y() / settings.gridStepMm) * settings.gridStepMm);
+    const double distance = std::sqrt(distanceSquared(point, grid));
+    if (distance <= toleranceMm && (3 < bestPriority || (3 == bestPriority && distance < bestDistance)))
+      best = {grid, PolygonSnapKind::Grid, {}, QObject::tr("Сетка")};
+  }
+  return best;
+}
+
 /// Сначала проверяет точки, затем границы сегментов и только после них заполнение контура.
 std::optional<PolygonCanvasEntityHit> findEditableEntity(const EditablePolygonDocument & document, const QPointF & point,
                                                          double toleranceMm, const std::vector<EntityId> & selected,
