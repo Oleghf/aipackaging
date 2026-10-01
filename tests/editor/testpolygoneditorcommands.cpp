@@ -1,3 +1,5 @@
+#include <random>
+
 #include <aipackaging/editor/polygon_editor_commands.h>
 #include <aipackaging/editor/polygon_editor_interaction.h>
 #include <gtest/gtest.h>
@@ -176,6 +178,54 @@ TEST(PolygonEditorCommands, LimitsHistoryToTwoHundredTransactions)
   while (session.undo().accepted)
     ++undone;
   EXPECT_EQ(undone, 200);
+}
+
+/// Удерживает старые редакции неизменяемыми и восстанавливает каноническое содержимое после отмены и повтора.
+TEST(PolygonEditorCommands, SharesImmutableRevisionSnapshots)
+{
+  PolygonEditorSession session = rectangleSession();
+  const auto original = session.snapshot();
+  ASSERT_TRUE(original);
+  const std::string originalId = original->problemId;
+  ASSERT_TRUE(execute(session, SetProblemIdCommand{"changed"}).accepted);
+  const auto changed = session.snapshot();
+  ASSERT_NE(original, changed);
+  EXPECT_EQ(original->problemId, originalId);
+  EXPECT_EQ(changed->problemId, "changed");
+  ASSERT_TRUE(session.undo().accepted);
+  EXPECT_EQ(session.document().problemId, originalId);
+  ASSERT_TRUE(session.redo().accepted);
+  EXPECT_EQ(session.document().problemId, changed->problemId);
+}
+
+/// Проверяет инварианты истории на пятидесяти воспроизводимых последовательностях по пятьсот команд.
+TEST(PolygonEditorCommands, PreservesInvariantsAcrossRandomCommandSequences)
+{
+  for (std::uint32_t seed = 42; seed < 92; ++seed)
+  {
+    std::mt19937 generator(seed);
+    PolygonEditorSession session;
+    std::uint64_t previousRevision = session.history().revision;
+    for (int index = 0; index < 500; ++index)
+    {
+      const unsigned action = generator() % 3;
+      EditorCommand command = action == 0 ? EditorCommand{SetProblemIdCommand{"random-" + std::to_string(generator())}}
+                            : action == 1
+                              ? EditorCommand{SetSheetCommand{1.0 + generator() % 1000, 1.0 + generator() % 1000}}
+                              : EditorCommand{SetManufacturingCommand{static_cast<double>(generator() % 10),
+                                                                      static_cast<double>(generator() % 10), 0.0, 0.05}};
+      const EditorCommandResult result = execute(session, std::move(command), "Случайная команда");
+      ASSERT_TRUE(result.accepted) << result.error;
+      EXPECT_GT(result.history.revision, previousRevision);
+      previousRevision = result.history.revision;
+      EXPECT_NE(session.document().nextEntityId(), 0U);
+      if (index % 17 == 0)
+      {
+        ASSERT_TRUE(session.undo().accepted);
+        ASSERT_TRUE(session.redo().accepted);
+      }
+    }
+  }
 }
 
 /// Проверяет раскрытие разных уровней выбора в уникальные перемещаемые точки.

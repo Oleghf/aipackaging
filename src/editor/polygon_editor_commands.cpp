@@ -472,6 +472,12 @@ PolygonEditorSession::PolygonEditorSession(EditablePolygonDocument document, boo
 /// Возвращает ссылку, действительную до следующей изменяющей операции сессии.
 const EditablePolygonDocument & PolygonEditorSession::document() const noexcept
 {
+  return *document_;
+}
+
+/// Возвращает тот же снимок без копирования геометрии и истории.
+std::shared_ptr<const EditablePolygonDocument> PolygonEditorSession::snapshot() const noexcept
+{
   return document_;
 }
 
@@ -500,7 +506,7 @@ EditorCommandResult PolygonEditorSession::execute(const EditorCommandBatch & bat
     result.history = history();
     return result;
   }
-  EditablePolygonDocument candidate = document_;
+  EditablePolygonDocument candidate = *document_;
   try
   {
     for (const EditorCommand & command : batch.commands)
@@ -522,9 +528,10 @@ EditorCommandResult PolygonEditorSession::execute(const EditorCommandBatch & bat
   const std::uint64_t next = nextRevision_++;
   const bool coalesce = batch.gestureId && position_ > 0 && position_ == entries_.size() &&
                         entries_.back().gestureId == batch.gestureId && finishedGesture_ != batch.gestureId;
+  auto accepted = std::make_shared<const EditablePolygonDocument>(std::move(candidate));
   if (coalesce)
   {
-    entries_.back().after = candidate;
+    entries_.back().after = accepted;
     entries_.back().afterRevision = next;
     if (!batch.label.empty())
       entries_.back().label = batch.label;
@@ -532,19 +539,19 @@ EditorCommandResult PolygonEditorSession::execute(const EditorCommandBatch & bat
   else
   {
     entries_.push_back(
-      {batch.label.empty() ? "Изменение документа" : batch.label, document_, candidate, currentRevision_, next, batch.gestureId});
+      {batch.label.empty() ? "Изменение документа" : batch.label, document_, accepted, currentRevision_, next, batch.gestureId});
     ++position_;
   }
-  document_ = std::move(candidate);
+  document_ = std::move(accepted);
   currentRevision_ = next;
-  identifierHighWater_ = std::max(identifierHighWater_, document_.nextEntityId());
+  identifierHighWater_ = std::max(identifierHighWater_, document_->nextEntityId());
   if (entries_.size() > MAX_HISTORY_ENTRIES)
   {
     entries_.erase(entries_.begin());
     --position_;
   }
   result.accepted = true;
-  result.diagnostics = validateEditableDocument(document_);
+  result.diagnostics = validateEditableDocument(*document_);
   result.history = history();
   return result;
 }
@@ -560,12 +567,13 @@ EditorCommandResult PolygonEditorSession::undo()
     return result;
   }
   const HistoryEntry & entry = entries_[position_ - 1];
-  document_ = entry.before;
-  document_.restoreNextEntityId(identifierHighWater_);
+  EditablePolygonDocument restored = *entry.before;
+  restored.restoreNextEntityId(identifierHighWater_);
+  document_ = std::make_shared<const EditablePolygonDocument>(std::move(restored));
   currentRevision_ = entry.beforeRevision;
   --position_;
   result.accepted = true;
-  result.diagnostics = validateEditableDocument(document_);
+  result.diagnostics = validateEditableDocument(*document_);
   result.history = history();
   return result;
 }
@@ -581,12 +589,13 @@ EditorCommandResult PolygonEditorSession::redo()
     return result;
   }
   const HistoryEntry & entry = entries_[position_];
-  document_ = entry.after;
-  document_.restoreNextEntityId(identifierHighWater_);
+  EditablePolygonDocument restored = *entry.after;
+  restored.restoreNextEntityId(identifierHighWater_);
+  document_ = std::make_shared<const EditablePolygonDocument>(std::move(restored));
   currentRevision_ = entry.afterRevision;
   ++position_;
   result.accepted = true;
-  result.diagnostics = validateEditableDocument(document_);
+  result.diagnostics = validateEditableDocument(*document_);
   result.history = history();
   return result;
 }
@@ -609,13 +618,14 @@ EditorCommandResult PolygonEditorSession::cancelGesture(std::uint64_t gestureId)
     result.history = history();
     return result;
   }
-  document_ = entries_.back().before;
-  document_.restoreNextEntityId(identifierHighWater_);
+  EditablePolygonDocument restored = *entries_.back().before;
+  restored.restoreNextEntityId(identifierHighWater_);
+  document_ = std::make_shared<const EditablePolygonDocument>(std::move(restored));
   currentRevision_ = entries_.back().beforeRevision;
   entries_.pop_back();
   --position_;
   result.accepted = true;
-  result.diagnostics = validateEditableDocument(document_);
+  result.diagnostics = validateEditableDocument(*document_);
   result.history = history();
   return result;
 }
@@ -635,12 +645,12 @@ void PolygonEditorSession::markSaved() noexcept
 /// Начинает независимую историю и сохраняет следующий идентификатор как глобальную верхнюю границу.
 void PolygonEditorSession::reset(EditablePolygonDocument document, bool clean)
 {
-  document_ = std::move(document);
+  document_ = std::make_shared<const EditablePolygonDocument>(std::move(document));
   entries_.clear();
   position_ = 0;
   currentRevision_ = nextRevision_++;
   cleanRevision_ = clean ? std::optional<std::uint64_t>{currentRevision_} : std::nullopt;
-  identifierHighWater_ = document_.nextEntityId();
+  identifierHighWater_ = document_->nextEntityId();
   nextGestureId_ = 1;
   finishedGesture_.reset();
 }

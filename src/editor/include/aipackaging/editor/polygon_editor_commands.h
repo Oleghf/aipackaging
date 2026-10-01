@@ -2,6 +2,7 @@
 #define AIPACKAGING_EDITOR_POLYGON_EDITOR_COMMANDS_H
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <variant>
@@ -186,6 +187,8 @@ public:
 
   /// Возвращает неизменяемый текущий документ.
   const EditablePolygonDocument & document() const noexcept;
+  /// Возвращает совместно используемый неизменяемый снимок текущей редакции.
+  std::shared_ptr<const EditablePolygonDocument> snapshot() const noexcept;
   /// Возвращает доступность истории и текущую редакцию.
   EditorHistoryState history() const;
   /// Применяет пакет полностью либо сохраняет прежнее состояние.
@@ -210,14 +213,14 @@ private:
   struct HistoryEntry
   {
     std::string label;
-    EditablePolygonDocument before;
-    EditablePolygonDocument after;
+    std::shared_ptr<const EditablePolygonDocument> before;
+    std::shared_ptr<const EditablePolygonDocument> after;
     std::uint64_t beforeRevision = 0;
     std::uint64_t afterRevision = 0;
     std::optional<std::uint64_t> gestureId;
   };
 
-  EditablePolygonDocument document_;
+  std::shared_ptr<const EditablePolygonDocument> document_;
   std::vector<HistoryEntry> entries_;
   std::size_t position_ = 0;
   std::uint64_t nextRevision_ = 1;
