@@ -59,6 +59,7 @@ public:
   void refreshDocumentState();
 
 private:
+  std::uint64_t nextEditableDocumentIdentity_ = 0;
   /// Публикует состояние и вычисляет доступность действий.
   void publish();
   /// Принимает сообщение о ходе актуальной работы.

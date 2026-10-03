@@ -288,6 +288,8 @@ public:
       if (blockFirst && generations.empty())
         changed.wait(lock, [this]() { return released; });
       generations.push_back(generation);
+      if (throwOnSave)
+        throw std::runtime_error("Проверочный отказ записи");
     }
     return {true, {}};
   }
@@ -295,8 +297,13 @@ public:
   std::optional<PolygonSourceFingerprint> sourceFingerprint(const std::string &) override { return std::nullopt; }
   /// Не используется в тестах фонового автосохранения.
   PolygonRecoveryCandidate inspectRecovery(const std::string &) override { return {}; }
-  /// Не используется в тестах фонового автосохранения.
-  PolygonDocumentOperationResult removeRecovery(const std::string &) override { return {}; }
+  /// Фиксирует удаление как нулевой элемент последовательности операций.
+  PolygonDocumentOperationResult removeRecovery(const std::string &) override
+  {
+    std::lock_guard lock(mutex);
+    generations.push_back(0);
+    return {true, {}};
+  }
 
   /// Ожидает входа рабочего потока в первую запись.
   bool waitEntered()
@@ -316,6 +323,7 @@ public:
   std::mutex mutex;
   std::condition_variable changed;
   bool blockFirst = true;
+  bool throwOnSave = false;
   bool entered = false;
   bool released = false;
   std::vector<std::uint64_t> generations;
@@ -680,6 +688,76 @@ TEST(PolygonDesktopInfrastructure, DraftRunnerContinuesAfterCallbackException)
   runner.flush();
   std::lock_guard lock(gateway->mutex);
   EXPECT_EQ(gateway->generations, (std::vector<std::uint64_t>{1, 2}));
+}
+
+/// Проверяет барьер удаления между выполняющейся записью и новым поколением.
+TEST(PolygonDesktopInfrastructure, InvalidatesDraftBeforeNewWrite)
+{
+  auto gateway = std::make_shared<DraftGateway>();
+  auto dispatcher = std::make_shared<QueueDispatcher>();
+  StdThreadPolygonDraftJobRunner runner(gateway, dispatcher);
+  std::string error;
+  EXPECT_TRUE(runner.submit(draftRequest(1), {}, error));
+  EXPECT_TRUE(gateway->waitEntered());
+  EXPECT_TRUE(runner.submit(draftRequest(2), {}, error));
+  EXPECT_TRUE(runner.invalidate({"autosave.aipdraft.json", 3}, {}, error));
+  EXPECT_TRUE(runner.submit(draftRequest(4), {}, error));
+  gateway->release();
+  runner.flush();
+  EXPECT_EQ(gateway->generations, (std::vector<std::uint64_t>{1, 0, 4}));
+}
+
+/// Проверяет, что очередь не удаляет найденный на диске чужой черновик.
+TEST(PolygonDesktopInfrastructure, DoesNotInvalidateForeignDraft)
+{
+  auto gateway = std::make_shared<DraftGateway>();
+  auto dispatcher = std::make_shared<QueueDispatcher>();
+  StdThreadPolygonDraftJobRunner runner(gateway, dispatcher);
+  std::string error;
+  EXPECT_TRUE(runner.invalidate({"autosave.aipdraft.json", 1, 9}, {}, error));
+  runner.flush();
+  EXPECT_TRUE(gateway->generations.empty());
+}
+
+/// Старая отмена не удаляет ожидающую запись другого документа даже по тому же пути.
+TEST(PolygonDesktopInfrastructure, KeepsNewDocumentDuringStaleInvalidation)
+{
+  auto gateway = std::make_shared<DraftGateway>();
+  auto dispatcher = std::make_shared<RejectingDispatcher>();
+  StdThreadPolygonDraftJobRunner runner(gateway, dispatcher);
+  std::string error;
+  auto oldRequest = draftRequest(1);
+  oldRequest.documentIdentity = 1;
+  EXPECT_TRUE(runner.submit(oldRequest, {}, error));
+  EXPECT_TRUE(gateway->waitEntered());
+  auto newRequest = draftRequest(2);
+  newRequest.documentIdentity = 2;
+  EXPECT_TRUE(runner.submit(newRequest, {}, error));
+  EXPECT_TRUE(runner.invalidate({newRequest.filePath, 3, 1}, {}, error));
+  gateway->release();
+  runner.flush();
+  std::lock_guard lock(gateway->mutex);
+  EXPECT_EQ(gateway->generations, (std::vector<std::uint64_t>{1, 2}));
+}
+
+/// Отказ записи не даёт владения чужим файлом, даже если итоговое событие отклонено.
+TEST(PolygonDesktopInfrastructure, FailedDraftWriteDoesNotClaimRecovery)
+{
+  auto gateway = std::make_shared<DraftGateway>();
+  gateway->blockFirst = false;
+  gateway->throwOnSave = true;
+  auto dispatcher = std::make_shared<RejectingDispatcher>();
+  {
+    StdThreadPolygonDraftJobRunner runner(gateway, dispatcher);
+    std::string error;
+    EXPECT_TRUE(runner.submit(draftRequest(1), {}, error));
+    runner.flush();
+    EXPECT_TRUE(runner.invalidate(
+      {"autosave.aipdraft.json", 2}, [](PolygonDraftJobHandle, std::uint64_t, const PolygonDocumentOperationResult &) {}, error));
+  }
+  EXPECT_EQ(dispatcher->attempts.load(), 1U);
+  std::lock_guard lock(gateway->mutex);
+  EXPECT_EQ(gateway->generations, (std::vector<std::uint64_t>{1}));
 }
 
 /// Проверяет асинхронную доставку результата только через очередь диспетчера.

@@ -63,6 +63,8 @@ private:
   bool clearRecoveryAfterSave(const std::string & savedPath);
   /// Принимает только итог последнего запрошенного поколения автоматического черновика.
   void finishAutosave(PolygonDraftJobHandle job, std::uint64_t generation, const PolygonDocumentOperationResult & result);
+  /// Инвалидирует только восстановительный файл, опубликованный текущим документом.
+  void invalidateOwnedRecovery();
   /// Компилирует текущее состояние сессии и публикует его как изменение документа.
   void publishEdited(const aipackaging::editor::EditorCommandResult & result,
                      aipackaging::editor::PolygonEditorSession candidate);
@@ -77,6 +79,8 @@ private:
   std::uint64_t generation_ = 0;
   std::uint64_t requestedGeneration_ = 0;
   std::optional<PolygonDraftJobHandle> activeDraftJob_;
+  std::uint64_t documentIdentity_ = 0;
+  bool ownsRecovery_ = false;
 };
 
 #endif

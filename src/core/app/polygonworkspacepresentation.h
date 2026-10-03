@@ -166,6 +166,7 @@ struct PolygonWorkspaceSnapshot
   bool documentValid = false;
   bool solutionStale = false;
   std::uint64_t documentRevision = 0;
+  std::uint64_t documentIdentity = 0;
   std::string undoLabel;
   std::string redoLabel;
   PolygonDocumentSource documentSource = PolygonDocumentSource::None;

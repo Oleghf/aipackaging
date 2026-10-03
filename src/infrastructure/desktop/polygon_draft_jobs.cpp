@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <exception>
 #include <utility>
 
@@ -30,7 +31,27 @@ StdThreadPolygonDraftJobRunner::~StdThreadPolygonDraftJobRunner()
 std::optional<PolygonDraftJobHandle> StdThreadPolygonDraftJobRunner::submit(PolygonDraftSaveRequest request,
                                                                             PolygonDraftJobCallback callback, std::string & error)
 {
-  if (!gateway_ || !dispatcher_ || !request.document || request.filePath.empty() || request.generation == 0)
+  return enqueue(std::move(request), std::move(callback), false, error);
+}
+
+/// Представляет удаление отдельной операцией той же последовательной очереди.
+std::optional<PolygonDraftJobHandle> StdThreadPolygonDraftJobRunner::invalidate(PolygonDraftInvalidationRequest request,
+                                                                                PolygonDraftJobCallback callback,
+                                                                                std::string & error)
+{
+  PolygonDraftSaveRequest operation;
+  operation.filePath = std::move(request.filePath);
+  operation.generation = request.generation;
+  operation.documentIdentity = request.documentIdentity;
+  return enqueue(std::move(operation), std::move(callback), true, error);
+}
+
+/// Заменяет ожидающие записи, но сохраняет порядок удаления и более новых поколений.
+std::optional<PolygonDraftJobHandle> StdThreadPolygonDraftJobRunner::enqueue(PolygonDraftSaveRequest request,
+                                                                             PolygonDraftJobCallback callback, bool invalidation,
+                                                                             std::string & error)
+{
+  if (!gateway_ || !dispatcher_ || (!invalidation && !request.document) || request.filePath.empty() || request.generation == 0)
   {
     error = "Запрос автосохранения неполон";
     return std::nullopt;
@@ -44,8 +65,20 @@ std::optional<PolygonDraftJobHandle> StdThreadPolygonDraftJobRunner::submit(Poly
       return std::nullopt;
     }
     const PolygonDraftJobHandle handle{nextJob_++};
-    auto pending = std::make_shared<PendingJob>(PendingJob{handle, std::move(request), std::move(callback)});
-    pending_ = std::move(pending);
+    auto pending = std::make_shared<PendingJob>(PendingJob{handle, std::move(request), std::move(callback), invalidation});
+    // Сначала выделяем новую очередь: отказ выделения не должен терять уже принятую работу.
+    auto queue = pending_;
+    if (invalidation)
+      std::erase_if(queue,
+                    [&pending](const auto & item)
+                    {
+                      return !item->invalidation && item->request.filePath == pending->request.filePath &&
+                             item->request.documentIdentity == pending->request.documentIdentity;
+                    });
+    else if (!queue.empty() && !queue.back()->invalidation && queue.back()->request.filePath == pending->request.filePath)
+      queue.pop_back();
+    queue.push_back(std::move(pending));
+    pending_.swap(queue);
     condition_.notify_one();
     return handle;
   }
@@ -66,7 +99,7 @@ void StdThreadPolygonDraftJobRunner::flush() noexcept
   try
   {
     std::unique_lock lock(mutex_);
-    condition_.wait(lock, [this]() { return !active_ && !pending_; });
+    condition_.wait(lock, [this]() { return !active_ && pending_.empty(); });
   }
   catch (...)
   {
@@ -94,15 +127,16 @@ void StdThreadPolygonDraftJobRunner::runLoop(const std::stop_token & stopToken)
   {
     {
       std::unique_lock lock(mutex_);
-      condition_.wait(lock, [this, &stopToken]() { return stopToken.stop_requested() || pending_; });
-      if (stopToken.stop_requested() && !pending_)
+      condition_.wait(lock, [this, &stopToken]() { return stopToken.stop_requested() || !pending_.empty(); });
+      if (stopToken.stop_requested() && pending_.empty())
         return;
     }
 
     std::shared_ptr<PendingJob> job;
     {
       std::lock_guard lock(mutex_);
-      job = std::move(pending_);
+      job = std::move(pending_.front());
+      pending_.pop_front();
       active_ = true;
     }
 
@@ -110,8 +144,37 @@ void StdThreadPolygonDraftJobRunner::runLoop(const std::stop_token & stopToken)
     try
     {
       const PolygonDraftSaveRequest & request = job->request;
-      result = gateway_->saveDraft(request.filePath, *request.document, request.source, request.sourceIdentifier,
-                                   request.generation, request.baseFingerprint);
+      if (job->invalidation)
+      {
+        const auto owner = publishedOwners_.find(request.filePath);
+        result = {true, {}};
+        if (owner != publishedOwners_.end() && owner->second == request.documentIdentity)
+        {
+          result = gateway_->removeRecovery(request.filePath);
+          if (result.success)
+            publishedOwners_.erase(owner);
+        }
+      }
+      else
+      {
+        // Резервируем запись владельца до файлового эффекта; чужой файл не становится нашим при отказе.
+        const auto [owner, inserted] = publishedOwners_.try_emplace(request.filePath, 0);
+        try
+        {
+          result = gateway_->saveDraft(request.filePath, *request.document, request.source, request.sourceIdentifier,
+                                       request.generation, request.baseFingerprint);
+        }
+        catch (...)
+        {
+          if (inserted)
+            publishedOwners_.erase(owner);
+          throw;
+        }
+        if (result.success)
+          owner->second = request.documentIdentity;
+        else if (inserted)
+          publishedOwners_.erase(owner);
+      }
     }
     catch (const std::exception & exception)
     {
@@ -156,7 +219,7 @@ void StdThreadPolygonDraftJobRunner::abandonJobs() noexcept
   {
     std::lock_guard lock(mutex_);
     active_ = false;
-    pending_.reset();
+    pending_.clear();
   }
   catch (...)
   {

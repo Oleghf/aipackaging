@@ -2,10 +2,12 @@
 #define AIPACKAGING_INFRASTRUCTURE_POLYGON_DRAFT_JOBS_H
 
 #include <condition_variable>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <thread>
+#include <unordered_map>
 
 #include <polygondraftcontracts.h>
 #include <polygonworkspaceview.h>
@@ -22,6 +24,9 @@ public:
   /// Атомарно заменяет ещё не начатый запрос более новым поколением.
   std::optional<PolygonDraftJobHandle> submit(PolygonDraftSaveRequest request, PolygonDraftJobCallback callback,
                                               std::string & error) override;
+  /// Ставит удаление после активной операции и убирает ожидающие старые записи этого пути.
+  std::optional<PolygonDraftJobHandle> invalidate(PolygonDraftInvalidationRequest request, PolygonDraftJobCallback callback,
+                                                  std::string & error) override;
   /// Ожидает опустошения очереди, не выбрасывая исключений.
   void flush() noexcept override;
 
@@ -32,7 +37,12 @@ private:
     PolygonDraftJobHandle handle;
     PolygonDraftSaveRequest request;
     PolygonDraftJobCallback callback;
+    bool invalidation = false;
   };
+
+  /// Публикует операцию с сохранением барьера между удалением и последующей записью.
+  std::optional<PolygonDraftJobHandle> enqueue(PolygonDraftSaveRequest request, PolygonDraftJobCallback callback,
+                                               bool invalidation, std::string & error);
 
   /// Последовательно извлекает последнее поколение, записывает его и публикует итог.
   void run(const std::stop_token & stopToken) noexcept;
@@ -45,9 +55,10 @@ private:
   std::shared_ptr<IApplicationDispatcher> dispatcher_;
   std::mutex mutex_;
   std::condition_variable condition_;
-  std::shared_ptr<PendingJob> pending_;
+  std::deque<std::shared_ptr<PendingJob>> pending_;
   bool active_ = false;
   std::uint64_t nextJob_ = 1;
+  std::unordered_map<std::string, std::uint64_t> publishedOwners_;
   std::jthread worker_;
 };
 

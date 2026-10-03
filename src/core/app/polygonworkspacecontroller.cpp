@@ -167,7 +167,9 @@ void PolygonWorkspaceController::openProblem(const std::string & filePath)
   const std::string modelStatus = snapshot_.modelStatusText;
   const PolygonModelState modelState = snapshot_.modelState;
   const PolygonRecoveryCandidate recovery = snapshot_.recovery;
+  const std::uint64_t documentIdentity = ++nextEditableDocumentIdentity_;
   snapshot_ = {};
+  snapshot_.documentIdentity = documentIdentity;
   snapshot_.modelReady = model_.has_value();
   snapshot_.modelId = modelId;
   snapshot_.modelSha256 = modelSha256;
@@ -314,6 +316,7 @@ void PolygonWorkspaceController::acceptEditableDocument(
   const PolygonModelState modelState = snapshot_.modelState;
   const PolygonRecoveryCandidate recovery = snapshot_.recovery;
   snapshot_ = {};
+  snapshot_.documentIdentity = ++nextEditableDocumentIdentity_;
   snapshot_.modelReady = model_.has_value();
   snapshot_.modelId = modelId;
   snapshot_.modelSha256 = modelSha256;

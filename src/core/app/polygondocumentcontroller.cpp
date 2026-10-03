@@ -188,13 +188,15 @@ void PolygonDocumentController::autosave()
     request.sourceIdentifier = state.sourceIdentifier;
     request.generation = nextGeneration;
     request.baseFingerprint = baseFingerprint_;
+    request.documentIdentity = documentIdentity_;
     const std::weak_ptr<PolygonDocumentController> weak = weak_from_this();
     std::string error;
     const auto job = draftJobs_->submit(
       std::move(request),
-      [weak](PolygonDraftJobHandle handle, std::uint64_t generation, const PolygonDocumentOperationResult & result)
+      [weak, identity = documentIdentity_](PolygonDraftJobHandle handle, std::uint64_t generation,
+                                           const PolygonDocumentOperationResult & result)
       {
-        if (const auto self = weak.lock())
+        if (const auto self = weak.lock(); self && self->documentIdentity_ == identity)
           self->finishAutosave(handle, generation, result);
       },
       error);
@@ -205,6 +207,7 @@ void PolygonDocumentController::autosave()
     }
     requestedGeneration_ = nextGeneration;
     activeDraftJob_ = *job;
+    ownsRecovery_ = true;
     return;
   }
   const PolygonDocumentOperationResult result = gateway_->saveDraft(autosavePath_, session_->document(), state.source,
@@ -216,7 +219,58 @@ void PolygonDocumentController::autosave()
   }
   generation_ = nextGeneration;
   requestedGeneration_ = nextGeneration;
+  ownsRecovery_ = true;
   inspectRecovery();
+}
+
+/// Ставит удаление после уже принятой записи, не ожидая файловой операции в потоке интерфейса.
+void PolygonDocumentController::invalidateOwnedRecovery()
+{
+  if (!ownsRecovery_)
+    return;
+  const std::uint64_t generation = std::max(generation_, requestedGeneration_) + 1;
+  if (draftJobs_)
+  {
+    const std::weak_ptr<PolygonDocumentController> weak = weak_from_this();
+    std::string error;
+    const auto job = draftJobs_->invalidate(
+      {autosavePath_, generation, documentIdentity_},
+      [weak, identity = documentIdentity_](PolygonDraftJobHandle handle, std::uint64_t value,
+                                           const PolygonDocumentOperationResult & result)
+      {
+        if (const auto self = weak.lock(); self && self->documentIdentity_ == identity)
+        {
+          if (!result.success && self->activeDraftJob_ == handle && self->requestedGeneration_ == value)
+          {
+            self->ownsRecovery_ = true;
+            self->activeDraftJob_.reset();
+            self->workspace_->reportDocumentOperation("Ошибка удаления автоматического черновика: " + result.error);
+            return;
+          }
+          self->finishAutosave(handle, value, result);
+        }
+      },
+      error);
+    if (!job)
+    {
+      workspace_->reportDocumentOperation("Не удалось удалить устаревший автоматический черновик: " + error);
+      return;
+    }
+    requestedGeneration_ = generation;
+    activeDraftJob_ = *job;
+  }
+  else
+  {
+    const auto result = gateway_->removeRecovery(autosavePath_);
+    if (!result.success)
+    {
+      workspace_->reportDocumentOperation("Не удалось удалить устаревший автоматический черновик: " + result.error);
+      return;
+    }
+    generation_ = requestedGeneration_ = generation;
+    inspectRecovery();
+  }
+  ownsRecovery_ = false;
 }
 
 /// Отменяет поиск при необходимости и загружает восстановительный файл как отдельный грязный документ.
@@ -301,8 +355,11 @@ void PolygonDocumentController::acceptLoaded(PolygonEditableDocumentLoadResult l
   const bool dirty =
     recovered || loaded.source == PolygonDocumentSource::Imported || loaded.source == PolygonDocumentSource::Untitled;
   session_.emplace(std::move(loaded.document), !dirty);
+  ++documentIdentity_;
+  ownsRecovery_ = false;
+  activeDraftJob_.reset();
   baseFingerprint_ = loaded.baseFingerprint;
-  generation_ = loaded.generation;
+  generation_ = std::max({generation_, requestedGeneration_, loaded.generation});
   requestedGeneration_ = generation_;
   if (recovered)
   {
@@ -392,6 +449,8 @@ void PolygonDocumentController::publishEdited(const aipackaging::editor::EditorC
   loaded.sourceIdentifier = state.sourceIdentifier;
   session_ = std::move(candidate);
   workspace_->acceptEditedDocument(std::move(loaded), result.history, session_->snapshot());
+  if (!result.history.dirty)
+    invalidateOwnedRecovery();
 }
 
 /// Удаляет восстановительный файл после записи пользователем и обновляет карточку.
@@ -409,5 +468,7 @@ bool PolygonDocumentController::clearRecoveryAfterSave(const std::string & saved
     return false;
   }
   inspectRecovery();
+  ownsRecovery_ = false;
+  activeDraftJob_.reset();
   return true;
 }

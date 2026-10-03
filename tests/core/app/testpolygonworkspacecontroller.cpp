@@ -201,6 +201,16 @@ public:
   }
 
   /// Запоминает ожидание очереди без блокировки тестового потока.
+  std::optional<PolygonDraftJobHandle> invalidate(PolygonDraftInvalidationRequest request, PolygonDraftJobCallback callback,
+                                                  std::string &) override
+  {
+    const PolygonDraftJobHandle handle{nextJob++};
+    jobs.push_back({handle, request.generation, std::move(callback)});
+    ++invalidations;
+    return handle;
+  }
+
+  /// Запоминает ожидание очереди без блокировки тестового потока.
   void flush() noexcept override { ++flushCount; }
 
   /// Доставляет итог выбранной ранее работы.
@@ -219,6 +229,7 @@ public:
 
   std::uint64_t nextJob = 1;
   int flushCount = 0;
+  int invalidations = 0;
   std::vector<Job> jobs;
 };
 
@@ -758,6 +769,37 @@ TEST(PolygonDocumentController, IgnoresStaleDraftCompletion)
   actions.autosaveDocument();
   ASSERT_EQ(drafts->jobs.size(), 3U);
   EXPECT_EQ(drafts->jobs.back().generation, 7U);
+}
+
+/// Проверяет очистку своего черновика при возврате к чистой точке и отсечение событий прежнего документа.
+TEST(PolygonDocumentController, InvalidatesOwnedDraftOnUndo)
+{
+  auto output = std::make_shared<OutputStub>();
+  auto documents = std::make_shared<DocumentGatewayStub>();
+  auto editable = std::make_shared<EditableDocumentGatewayStub>();
+  auto jobs = std::make_shared<JobRunnerStub>();
+  auto drafts = std::make_shared<DraftJobRunnerStub>();
+  auto active = std::make_shared<ActivePolygonDocument>();
+  auto workspace = std::make_shared<PolygonWorkspaceController>(output, documents, jobs, nullptr, active);
+  auto controller = std::make_shared<PolygonDocumentController>(editable, workspace, active, "autosave.aipdraft.json", drafts);
+  PolygonWorkspaceActions actions = workspace->actions();
+  controller->bindActions(actions);
+  actions.openProblem("first.json");
+  actions.editDocument({"Имя", {aipackaging::editor::SetProblemIdCommand{"changed"}}});
+  actions.undoDocument();
+  EXPECT_EQ(drafts->invalidations, 0);
+  actions.redoDocument();
+  actions.autosaveDocument();
+  actions.undoDocument();
+  ASSERT_EQ(drafts->invalidations, 1);
+  EXPECT_FALSE(output->snapshot.documentDirty);
+  drafts->complete(0, {false, "устаревшая запись"});
+  EXPECT_EQ(output->snapshot.statusText.find("устаревшая запись"), std::string::npos);
+  drafts->complete(1, {false, "отказ удаления"});
+  EXPECT_NE(output->snapshot.statusText.find("отказ удаления"), std::string::npos);
+  actions.openProblem("second.json");
+  drafts->complete(1, {false, "чужая ошибка"});
+  EXPECT_EQ(output->snapshot.statusText.find("чужая ошибка"), std::string::npos);
 }
 
 /// Проверяет сохранение прежнего документа и сцены после ошибки следующего открытия.
