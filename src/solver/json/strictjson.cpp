@@ -104,6 +104,9 @@ StrictJsonResult readInt64(const Json & object, const char * key, std::int64_t &
     return {StrictJsonError::WrongType, key};
   try
   {
+    if (object.at(key).is_number_unsigned() &&
+        object.at(key).get<std::uint64_t>() > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+      return {StrictJsonError::OutOfRange, key};
     value = object.at(key).get<std::int64_t>();
     return {};
   }

@@ -27,6 +27,26 @@ TEST(PolygonEnvironment, NormalizesAndDeduplicatesRotations)
   EXPECT_EQ(environment->orientations(0).size(), 2);
 }
 
+/// Независимый валидатор отклоняет нечисловую метрику даже без прохождения через JSON.
+TEST(PolygonEnvironment, RejectsNonFiniteSolutionMetrics)
+{
+  const auto input = problem();
+  std::string error;
+  auto environment = PolygonEnvironment::Create(input, error);
+  ASSERT_TRUE(environment) << error;
+  PolygonSolution solution;
+  solution.problemId = input.problemId;
+  solution.status = SolveStatus::NoSolutionFound;
+  solution.objective = environment->evaluate(environment->initialState());
+  ASSERT_TRUE(validatePolygonSolution(input, solution).success);
+  for (double value : {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity(),
+                       -std::numeric_limits<double>::infinity()})
+  {
+    solution.objective.materialUtilization = value;
+    EXPECT_FALSE(validatePolygonSolution(input, solution).success);
+  }
+}
+
 /// Проверяет, что отверстие сохраняет площадь, но не разрешает вложение детали.
 TEST(PolygonEnvironment, PreservesHoleAndRejectsNestedPlacement)
 {

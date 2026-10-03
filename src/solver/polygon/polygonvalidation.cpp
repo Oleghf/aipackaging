@@ -56,7 +56,8 @@ ValidationResult validatePolygonSolution(const PolygonProblem & problem, const P
       return {false, "solution contains an invalid polygon placement"};
   const PolygonObjectiveComponents actual = environment->evaluate(state);
   const PolygonObjectiveComponents & recorded = solution.objective;
-  if (actual.usedLength != recorded.usedLength || actual.primaryRemnantWidth != recorded.primaryRemnantWidth ||
+  if (!std::isfinite(recorded.materialUtilization) || actual.usedLength != recorded.usedLength ||
+      actual.primaryRemnantWidth != recorded.primaryRemnantWidth ||
       actual.largestExtraRectangleArea != recorded.largestExtraRectangleArea ||
       actual.fragmentationPenalty != recorded.fragmentationPenalty || actual.placedParts != recorded.placedParts ||
       actual.totalParts != recorded.totalParts || actual.placedArea != recorded.placedArea ||

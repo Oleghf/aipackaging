@@ -48,6 +48,11 @@ TEST(StrictJson, ReadsRequiredNumericRanges)
   EXPECT_EQ(unsignedValue, std::numeric_limits<std::uint64_t>::max());
   EXPECT_TRUE(readInt64(value, "int64", signedValue));
   EXPECT_EQ(signedValue, std::numeric_limits<std::int64_t>::min());
+  EXPECT_EQ(readInt64(value, "uint64", signedValue).error, StrictJsonError::OutOfRange);
+  EXPECT_EQ(signedValue, std::numeric_limits<std::int64_t>::min());
+  value["signedMaximum"] = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+  EXPECT_TRUE(readInt64(value, "signedMaximum", signedValue));
+  EXPECT_EQ(signedValue, std::numeric_limits<std::int64_t>::max());
   EXPECT_EQ(readInt(value, "tooWideForInt", intValue).error, StrictJsonError::OutOfRange);
   EXPECT_EQ(readInt(value, "text", intValue).error, StrictJsonError::WrongType);
   EXPECT_EQ(readInt(value, "missing", intValue).error, StrictJsonError::MissingField);
