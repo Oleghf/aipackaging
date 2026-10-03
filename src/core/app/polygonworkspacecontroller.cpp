@@ -170,6 +170,7 @@ void PolygonWorkspaceController::openProblem(const std::string & filePath)
   const std::uint64_t documentIdentity = ++nextEditableDocumentIdentity_;
   snapshot_ = {};
   snapshot_.documentIdentity = documentIdentity;
+  editorHistory_ = {};
   snapshot_.modelReady = model_.has_value();
   snapshot_.modelId = modelId;
   snapshot_.modelSha256 = modelSha256;
@@ -333,11 +334,7 @@ void PolygonWorkspaceController::acceptEditableDocument(
   snapshot_.unplacedInstances = std::move(loaded.unplacedInstances);
   snapshot_.statusText =
     valid ? (dirty ? "Черновик восстановлен" : "Документ загружен") : "Черновик загружен; исправьте ошибки перед запуском";
-  snapshot_.documentRevision = history.revision;
-  snapshot_.canUndo = history.canUndo;
-  snapshot_.canRedo = history.canRedo;
-  snapshot_.undoLabel = history.undoLabel;
-  snapshot_.redoLabel = history.redoLabel;
+  editorHistory_ = history;
   publish();
 }
 
@@ -370,11 +367,7 @@ void PolygonWorkspaceController::acceptEditedDocument(
     snapshot_.scene = std::move(loaded.scene);
   snapshot_.statusText =
     valid ? "Документ изменён; выполните раскрой заново" : "Документ изменён и содержит ошибки; запуск заблокирован";
-  snapshot_.documentRevision = history.revision;
-  snapshot_.canUndo = history.canUndo;
-  snapshot_.canRedo = history.canRedo;
-  snapshot_.undoLabel = history.undoLabel;
-  snapshot_.redoLabel = history.redoLabel;
+  editorHistory_ = history;
   publish();
 }
 
@@ -384,11 +377,7 @@ void PolygonWorkspaceController::presentEditorHistory(
   const aipackaging::editor::EditorHistoryState & history)
 {
   snapshot_.editableDocument = std::move(document);
-  snapshot_.documentRevision = history.revision;
-  snapshot_.canUndo = history.canUndo;
-  snapshot_.canRedo = history.canRedo;
-  snapshot_.undoLabel = history.undoLabel;
-  snapshot_.redoLabel = history.redoLabel;
+  editorHistory_ = history;
   publish();
 }
 
@@ -423,19 +412,30 @@ void PolygonWorkspaceController::publish()
   snapshot_.canLoadModel = !running && !activeModelJob_ && static_cast<bool>(modelJobs_);
   snapshot_.canCancelModelLoad = activeModelJob_.has_value();
   snapshot_.modelReady = model_.has_value();
+  projectDocumentState();
+  if (output_)
+    output_->presentPolygonWorkspace(snapshot_);
+}
+
+/// Пересчитывает производные поля, не используя предыдущие значения снимка как память состояния.
+void PolygonWorkspaceController::projectDocumentState()
+{
   const auto & document = document_->state();
+  const bool running = document.running;
   snapshot_.hasDocument = document.present;
   snapshot_.canSaveDocument = document.present && !running;
   snapshot_.canSaveProblem = document.present && document.valid && !running;
   snapshot_.canEdit = document.present && !running;
-  snapshot_.canUndo = snapshot_.canUndo && !running;
-  snapshot_.canRedo = snapshot_.canRedo && !running;
+  snapshot_.canUndo = editorHistory_.canUndo && !running;
+  snapshot_.canRedo = editorHistory_.canRedo && !running;
+  snapshot_.documentRevision = editorHistory_.revision;
+  snapshot_.undoLabel = editorHistory_.undoLabel;
+  snapshot_.redoLabel = editorHistory_.redoLabel;
+  snapshot_.document.sourceIdentifier = document.sourceIdentifier;
   snapshot_.documentSource = document.source;
   snapshot_.documentDirty = document.dirty;
   snapshot_.documentValid = document.valid;
   snapshot_.solutionStale = document.solutionStale;
-  if (output_)
-    output_->presentPolygonWorkspace(snapshot_);
 }
 
 /// Игнорирует устаревшие сообщения и обновляет ход только текущей работы.

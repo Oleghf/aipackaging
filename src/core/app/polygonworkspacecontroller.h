@@ -62,6 +62,8 @@ private:
   std::uint64_t nextEditableDocumentIdentity_ = 0;
   /// Публикует состояние и вычисляет доступность действий.
   void publish();
+  /// Формирует сведения документа и доступность истории из исходного состояния владельцев.
+  void projectDocumentState();
   /// Принимает сообщение о ходе актуальной работы.
   void acceptProgress(NestingJobHandle job, const NestingProgress & progress);
   /// Принимает подготовленный результат актуальной работы.
@@ -92,6 +94,7 @@ private:
   std::optional<NestingJobHandle> activeJob_;
   std::function<void()> pendingDocumentReplacement_;
   PolygonWorkspaceSnapshot snapshot_;
+  aipackaging::editor::EditorHistoryState editorHistory_;
 };
 
 #endif

@@ -43,6 +43,7 @@ std::optional<PolygonDraftJobHandle> StdThreadPolygonDraftJobRunner::invalidate(
   operation.filePath = std::move(request.filePath);
   operation.generation = request.generation;
   operation.documentIdentity = request.documentIdentity;
+  operation.recoveryFingerprint = request.recoveryFingerprint;
   return enqueue(std::move(operation), std::move(callback), true, error);
 }
 
@@ -148,10 +149,12 @@ void StdThreadPolygonDraftJobRunner::runLoop(const std::stop_token & stopToken)
       {
         const auto owner = publishedOwners_.find(request.filePath);
         result = {true, {}};
-        if (owner != publishedOwners_.end() && owner->second == request.documentIdentity)
+        const bool restoredFile =
+          request.recoveryFingerprint && gateway_->sourceFingerprint(request.filePath) == request.recoveryFingerprint;
+        if (restoredFile || (owner != publishedOwners_.end() && owner->second == request.documentIdentity))
         {
           result = gateway_->removeRecovery(request.filePath);
-          if (result.success)
+          if (result.success && owner != publishedOwners_.end())
             publishedOwners_.erase(owner);
         }
       }

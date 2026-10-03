@@ -81,6 +81,7 @@ private:
   std::optional<PolygonDraftJobHandle> activeDraftJob_;
   std::uint64_t documentIdentity_ = 0;
   bool ownsRecovery_ = false;
+  std::optional<PolygonSourceFingerprint> recoveryFingerprint_;
 };
 
 #endif

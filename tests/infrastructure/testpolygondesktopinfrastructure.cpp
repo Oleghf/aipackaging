@@ -294,7 +294,7 @@ public:
     return {true, {}};
   }
   /// Не используется в тестах фонового автосохранения.
-  std::optional<PolygonSourceFingerprint> sourceFingerprint(const std::string &) override { return std::nullopt; }
+  std::optional<PolygonSourceFingerprint> sourceFingerprint(const std::string &) override { return fingerprint; }
   /// Не используется в тестах фонового автосохранения.
   PolygonRecoveryCandidate inspectRecovery(const std::string &) override { return {}; }
   /// Фиксирует удаление как нулевой элемент последовательности операций.
@@ -323,6 +323,7 @@ public:
   std::mutex mutex;
   std::condition_variable changed;
   bool blockFirst = true;
+  std::optional<PolygonSourceFingerprint> fingerprint;
   bool throwOnSave = false;
   bool entered = false;
   bool released = false;
@@ -739,6 +740,22 @@ TEST(PolygonDesktopInfrastructure, DoesNotInvalidateForeignDraft)
   EXPECT_TRUE(runner.invalidate({"autosave.aipdraft.json", 1, 9}, {}, error));
   runner.flush();
   EXPECT_TRUE(gateway->generations.empty());
+}
+
+/// Удаляет только восстановленный файл с тем же отпечатком, затем защищает изменённый файл.
+TEST(PolygonDesktopInfrastructure, InvalidatesOnlyMatchingRestoredRecovery)
+{
+  auto gateway = std::make_shared<DraftGateway>();
+  gateway->fingerprint = PolygonSourceFingerprint{10, 20};
+  auto dispatcher = std::make_shared<QueueDispatcher>();
+  StdThreadPolygonDraftJobRunner runner(gateway, dispatcher);
+  std::string error;
+  EXPECT_TRUE(runner.invalidate({"autosave.aipdraft.json", 1, 9, gateway->fingerprint}, {}, error));
+  runner.flush();
+  EXPECT_EQ(gateway->generations, (std::vector<std::uint64_t>{0}));
+  EXPECT_TRUE(runner.invalidate({"autosave.aipdraft.json", 2, 9, PolygonSourceFingerprint{11, 20}}, {}, error));
+  runner.flush();
+  EXPECT_EQ(gateway->generations, (std::vector<std::uint64_t>{0}));
 }
 
 /// Старая отмена не удаляет ожидающую запись другого документа даже по тому же пути.

@@ -28,6 +28,7 @@ struct PolygonDraftSaveRequest
   std::uint64_t generation = 0;
   std::optional<PolygonSourceFingerprint> baseFingerprint;
   std::uint64_t documentIdentity = 0;
+  std::optional<PolygonSourceFingerprint> recoveryFingerprint;
 };
 
 /// Доставляет итог одной записи или удаления в поток владельца контроллера.
@@ -39,6 +40,7 @@ struct PolygonDraftInvalidationRequest
   std::string filePath;
   std::uint64_t generation = 0;
   std::uint64_t documentIdentity = 0;
+  std::optional<PolygonSourceFingerprint> recoveryFingerprint;
 };
 
 /// Последовательно записывает поколения автоматического черновика вне потока интерфейса.

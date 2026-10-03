@@ -219,6 +219,7 @@ void PolygonDocumentController::autosave()
   }
   generation_ = nextGeneration;
   requestedGeneration_ = nextGeneration;
+  recoveryFingerprint_.reset();
   ownsRecovery_ = true;
   inspectRecovery();
 }
@@ -234,7 +235,7 @@ void PolygonDocumentController::invalidateOwnedRecovery()
     const std::weak_ptr<PolygonDocumentController> weak = weak_from_this();
     std::string error;
     const auto job = draftJobs_->invalidate(
-      {autosavePath_, generation, documentIdentity_},
+      {autosavePath_, generation, documentIdentity_, recoveryFingerprint_},
       [weak, identity = documentIdentity_](PolygonDraftJobHandle handle, std::uint64_t value,
                                            const PolygonDocumentOperationResult & result)
       {
@@ -261,6 +262,12 @@ void PolygonDocumentController::invalidateOwnedRecovery()
   }
   else
   {
+    if (recoveryFingerprint_ && gateway_->sourceFingerprint(autosavePath_) != recoveryFingerprint_)
+    {
+      ownsRecovery_ = false;
+      inspectRecovery();
+      return;
+    }
     const auto result = gateway_->removeRecovery(autosavePath_);
     if (!result.success)
     {
@@ -333,6 +340,8 @@ void PolygonDocumentController::adoptImported(PolygonEditableDocumentLoadResult 
 /// Выбирает обычную или восстановительную загрузку и сохраняет прежний документ при отказе.
 void PolygonDocumentController::loadAfterStop(const std::string & filePath, bool recovery)
 {
+  if (recovery && draftJobs_)
+    draftJobs_->flush();
   PolygonEditableDocumentLoadResult loaded = recovery ? gateway_->loadRecovery(filePath) : gateway_->load(filePath);
   if (!loaded.success)
   {
@@ -356,7 +365,8 @@ void PolygonDocumentController::acceptLoaded(PolygonEditableDocumentLoadResult l
     recovered || loaded.source == PolygonDocumentSource::Imported || loaded.source == PolygonDocumentSource::Untitled;
   session_.emplace(std::move(loaded.document), !dirty);
   ++documentIdentity_;
-  ownsRecovery_ = false;
+  ownsRecovery_ = recovered;
+  recoveryFingerprint_ = recovered ? gateway_->sourceFingerprint(autosavePath_) : std::nullopt;
   activeDraftJob_.reset();
   baseFingerprint_ = loaded.baseFingerprint;
   generation_ = std::max({generation_, requestedGeneration_, loaded.generation});
@@ -458,6 +468,19 @@ bool PolygonDocumentController::clearRecoveryAfterSave(const std::string & saved
 {
   if (savedPath == autosavePath_)
   {
+    inspectRecovery();
+    return true;
+  }
+  if (!ownsRecovery_)
+    return true;
+  if (draftJobs_)
+  {
+    invalidateOwnedRecovery();
+    return !ownsRecovery_;
+  }
+  if (recoveryFingerprint_ && gateway_->sourceFingerprint(autosavePath_) != recoveryFingerprint_)
+  {
+    ownsRecovery_ = false;
     inspectRecovery();
     return true;
   }

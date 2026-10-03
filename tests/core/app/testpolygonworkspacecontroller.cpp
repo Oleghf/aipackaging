@@ -655,7 +655,62 @@ TEST(PolygonDocumentController, OpensAndSavesWithoutFileSystemTypesInApplication
   EXPECT_EQ(output->snapshot.documentSource, PolygonDocumentSource::ProblemFile);
   actions.saveDocument("saved.json", false);
   EXPECT_EQ(editable->savedProblem, "saved.json");
+  EXPECT_EQ(output->snapshot.document.sourceIdentifier, "saved.json");
+  actions.saveDocument(output->snapshot.document.sourceIdentifier, false);
+  EXPECT_EQ(editable->savedProblem, "saved.json");
+  EXPECT_EQ(editable->removeCount, 0);
+  EXPECT_TRUE(editable->recovery.present);
   EXPECT_FALSE(output->snapshot.documentDirty);
+}
+
+/// Проверяет восстановление доступности истории после каждого способа завершения поиска.
+TEST(PolygonDocumentController, RestoresHistoryAvailabilityAfterSearch)
+{
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<EditableDocumentGatewayStub> editable;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto [workspace, controller] = makeDocumentControllers(output, documents, editable, jobs);
+  auto actions = workspace->actions();
+  controller->bindActions(actions);
+  actions.openProblem("problem.json");
+  actions.editDocument({"Размер листа", {aipackaging::editor::SetSheetCommand{110.0, 80.0}}, std::nullopt});
+  ASSERT_TRUE(output->snapshot.canUndo);
+  actions.start({});
+  EXPECT_FALSE(output->snapshot.canUndo);
+  jobs->complete(solvedResult());
+  EXPECT_TRUE(output->snapshot.canUndo);
+  actions.undoDocument();
+  ASSERT_TRUE(output->snapshot.canRedo);
+  actions.start({});
+  EXPECT_FALSE(output->snapshot.canRedo);
+  NestingRunResult cancelled;
+  cancelled.completion = NestingCompletion::Cancelled;
+  jobs->complete(std::move(cancelled));
+  EXPECT_TRUE(output->snapshot.canRedo);
+}
+
+/// Сохраняет восстановленный документ и удаляет только принадлежащий ему автоматический файл.
+TEST(PolygonDocumentController, ClearsRestoredRecoveryOnlyAfterSuccessfulSave)
+{
+  std::shared_ptr<OutputStub> output;
+  std::shared_ptr<DocumentGatewayStub> documents;
+  std::shared_ptr<EditableDocumentGatewayStub> editable;
+  std::shared_ptr<JobRunnerStub> jobs;
+  const auto [workspace, controller] = makeDocumentControllers(output, documents, editable, jobs);
+  auto actions = workspace->actions();
+  controller->bindActions(actions);
+  actions.restoreRecovery();
+  editable->saveSucceeds = false;
+  actions.saveDocument("saved.json", false);
+  EXPECT_EQ(editable->removeCount, 0);
+  EXPECT_TRUE(output->snapshot.documentDirty);
+  EXPECT_EQ(output->snapshot.document.sourceIdentifier, "original.json");
+  editable->saveSucceeds = true;
+  actions.saveDocument("saved.json", false);
+  EXPECT_EQ(editable->removeCount, 1);
+  EXPECT_FALSE(output->snapshot.documentDirty);
+  EXPECT_EQ(output->snapshot.document.sourceIdentifier, "saved.json");
 }
 
 /// Проверяет отмену текущей работы до загрузки следующего документа.
