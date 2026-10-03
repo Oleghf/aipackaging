@@ -183,6 +183,23 @@ TEST(PolygonCanvasInteraction, SpatialIndexPreservesSelectionAndSnappingSemantic
   EXPECT_EQ(indexedSnap.point, sequentialSnap.point);
 }
 
+/// Габарит диагонали не считается пересечением рамки с самим сегментом.
+TEST(PolygonCanvasInteraction, CrossingRectangleChecksSegmentGeometry)
+{
+  using namespace aipackaging::editor;
+  auto document = std::make_shared<EditablePolygonDocument>(interactiveDocument());
+  auto & path = *document->parts.front().outer;
+  path.closed = false;
+  path.vertices = {{{4}, 0.0, 0.0}, {{5}, 10.0, 10.0}};
+  path.segments = {{{8}, EditableSegmentKind::Line}};
+  PolygonCanvasSpatialIndex index;
+  index.rebuild(document);
+  EXPECT_TRUE(index.findInRectangle(QRectF(0, 8, 2, 2), true, {2}).empty());
+  const auto crossing = index.findInRectangle(QRectF(4, 4, 2, 2), true, {2});
+  EXPECT_NE(std::find(crossing.begin(), crossing.end(), EntityId{8}), crossing.end());
+  EXPECT_TRUE(index.findInRectangle(QRectF(4, 4, 2, 2), false, {2}).empty());
+}
+
 /// Проверяет значения сетки по умолчанию и их сохранение в устойчивых ключах Qt.
 TEST(PolygonEditorToolBar, PersistsGridAndSnapSettings)
 {

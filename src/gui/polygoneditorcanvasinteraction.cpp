@@ -210,12 +210,19 @@ std::vector<EntityId> PolygonCanvasSpatialIndex::findInRectangle(const QRectF & 
   for (const PointEntry & entry : points_)
     if ((!activePart || entry.part == activePart) && area.contains(entry.point))
       append(entry.entity, entry.order);
+  QPainterPathStroker selectionStroker;
+  selectionStroker.setWidth(1.0e-6);
   for (const SegmentEntry & entry : segments_)
-    if ((!activePart || entry.part == activePart) && (crossing ? entry.bounds.intersects(area) : area.contains(entry.bounds)))
+    if ((!activePart || entry.part == activePart) &&
+        (crossing ? entry.bounds.intersects(area) && selectionStroker.createStroke(entry.geometry).intersects(area)
+                  : area.contains(entry.bounds)))
       append(entry.entity, entry.order);
   for (const PathEntry & entry : paths_)
     if ((!activePart || entry.part == activePart) &&
-        (crossing ? entry.geometry.intersects(area) || area.contains(entry.bounds) : area.contains(entry.bounds)))
+        (crossing
+           ? (entry.closed ? entry.geometry.intersects(area) : selectionStroker.createStroke(entry.geometry).intersects(area)) ||
+               area.contains(entry.bounds)
+           : area.contains(entry.bounds)))
       append(entry.entity, entry.order);
   std::sort(ordered.begin(), ordered.end(), [](const auto & lhs, const auto & rhs) { return lhs.first < rhs.first; });
   std::vector<EntityId> result;
