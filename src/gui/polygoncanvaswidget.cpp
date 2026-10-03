@@ -166,8 +166,9 @@ PolygonCanvasWidget::PolygonCanvasWidget(QWidget * parent)
 /// Обновляет документ и удаляет только те временные ссылки, которых больше нет в новой редакции.
 void PolygonCanvasWidget::setSnapshot(const PolygonWorkspaceSnapshot & snapshot)
 {
-  const QString identity =
-    QString::fromStdString(snapshot.problemId) + QLatin1Char('|') + QString::fromStdString(snapshot.document.sourceIdentifier);
+  const QString identity = QString::fromStdString(snapshot.problemId) + QLatin1Char('|') +
+                           QString::fromStdString(snapshot.document.sourceIdentifier) + QLatin1Char('|') +
+                           QString::number(snapshot.documentIdentity);
   const bool replaced = !documentIdentity_.isEmpty() && identity != documentIdentity_;
   const bool revisionChanged = spatialIndex_.document() != snapshot.editableDocument;
   if ((replaced || !snapshot.canEdit) && (dragging_ || provisionalPathGesture_.has_value() || !drawingStagePoints_.empty()))
@@ -672,6 +673,11 @@ void PolygonCanvasWidget::mousePressEvent(QMouseEvent * event)
     return;
   }
   std::vector<EntityId> selection = selectedEditorEntities_;
+  const auto selectedPoints = collectMovablePointIds(*snapshot_.editableDocument, selection);
+  const auto hitPoints = collectMovablePointIds(*snapshot_.editableDocument, {hit->entity});
+  const bool belongsToSelection =
+    !hitPoints.empty() && std::all_of(hitPoints.begin(), hitPoints.end(),
+                                      [&selectedPoints](EntityId point) { return contains(selectedPoints, point); });
   if (event->modifiers() & Qt::ControlModifier)
   {
     const auto found = std::find(selection.begin(), selection.end(), hit->entity);
@@ -680,10 +686,11 @@ void PolygonCanvasWidget::mousePressEvent(QMouseEvent * event)
     else
       selection.erase(found);
   }
-  else if (!contains(selection, hit->entity))
+  else if (!contains(selection, hit->entity) && !belongsToSelection)
     selection = {hit->entity};
   publishSelection(selection);
-  if (snapshot_.canEdit && contains(selectedEditorEntities_, hit->entity))
+  if (snapshot_.canEdit &&
+      (contains(selectedEditorEntities_, hit->entity) || (!(event->modifiers() & Qt::ControlModifier) && belongsToSelection)))
     beginDrag(*hit, sheet);
   event->accept();
 }
@@ -718,9 +725,7 @@ void PolygonCanvasWidget::mouseMoveEvent(QMouseEvent * event)
   }
   if (mode_ == PolygonCanvasMode::Source && tool_ != PolygonCanvasTool::Select && snapshot_.editableDocument)
   {
-    EntityId closing;
-    if (const EditablePath * path = activeOpenPath(); path && path->vertices.size() >= 3)
-      closing = path->vertices.front().id;
+    const EntityId closing = closingTarget();
     currentSnap_ = snapped(sheet, event->modifiers(), closing);
     drawingHover_ = currentSnap_.point;
     update();
@@ -1006,6 +1011,19 @@ void PolygonCanvasWidget::finishDrag(bool cancel)
   update();
 }
 
+/// Исключает привязку управляющих точек к замыканию и допускает двухсегментные криволинейные кольца.
+EntityId PolygonCanvasWidget::closingTarget() const
+{
+  const EditablePath * path = activeOpenPath();
+  if (!path || path->vertices.size() < 2 || (tool_ == PolygonCanvasTool::Arc && drawingStagePoints_.empty()) ||
+      (tool_ == PolygonCanvasTool::CubicBezier && drawingStagePoints_.size() < 2))
+    return {};
+  const bool curved = tool_ == PolygonCanvasTool::Arc || tool_ == PolygonCanvasTool::CubicBezier ||
+                      std::any_of(path->segments.begin(), path->segments.end(),
+                                  [](const EditableSegment & segment) { return segment.kind != EditableSegmentKind::Line; });
+  return path->vertices.size() >= 3 || curved ? path->vertices.front().id : EntityId{};
+}
+
 /// Интерпретирует щелчки в зависимости от выбранного вида сегмента и текущей стадии.
 void PolygonCanvasWidget::handleDrawingClick(const QPointF & sheetPoint, Qt::KeyboardModifiers modifiers)
 {
@@ -1025,7 +1043,7 @@ void PolygonCanvasWidget::handleDrawingClick(const QPointF & sheetPoint, Qt::Key
   }
   drawingPath_ = path->id;
   drawingPart_ = activePart_;
-  const EntityId closing = path->vertices.size() >= 3 ? path->vertices.front().id : EntityId{};
+  const EntityId closing = closingTarget();
   PolygonCanvasSnapResult value = snapped(sheetPoint, modifiers, closing);
   currentSnap_ = value;
   const bool close = closing && value.kind == PolygonSnapKind::ClosingVertex;

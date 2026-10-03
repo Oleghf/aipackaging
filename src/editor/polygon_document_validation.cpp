@@ -90,8 +90,12 @@ void validatePath(const EditablePath & path, std::unordered_set<std::uint64_t> &
         "Число сегментов не соответствует числу вершин и признаку замкнутости");
   if (!path.closed)
     add(result, DocumentDiagnosticCode::OpenPath, path.id, "Контур должен быть замкнут");
-  if (path.closed && path.vertices.size() < 3)
-    add(result, DocumentDiagnosticCode::EmptyPath, path.id, "Замкнутый контур должен содержать не менее трёх вершин");
+  const bool curved = std::any_of(path.segments.begin(), path.segments.end(),
+                                  [](const EditableSegment & segment) { return segment.kind != EditableSegmentKind::Line; });
+  if (path.closed && path.vertices.size() < (curved ? 2U : 3U))
+    add(result, DocumentDiagnosticCode::EmptyPath, path.id,
+        curved ? "Криволинейный контур должен содержать не менее двух вершин"
+               : "Замкнутый линейный контур должен содержать не менее трёх вершин");
 
   const std::size_t inspectCount = std::min(path.segments.size(), path.vertices.size());
   for (std::size_t index = 0; index < inspectCount; ++index)

@@ -483,6 +483,28 @@ TEST(PolygonDesktopInfrastructure, LoadsRunsValidatesAndSaves)
 #endif
 
 #ifdef AIPACKAGING_DESKTOP_GATEWAY_TESTS
+/// Сохраняет поставляемую задачу с двухвершинным криволинейным отверстием через редактируемую модель.
+TEST(PolygonDesktopInfrastructure, RoundTripsShippedCurvesThroughEditableDocument)
+{
+  const auto source =
+    std::filesystem::path(__FILE__).parent_path().parent_path().parent_path() / "examples/polygon/problem-curves-and-hole.json";
+  const auto output = std::filesystem::temp_directory_path() / "aipackaging-gui-fix-curves.json";
+  auto store = std::make_shared<PolygonArtifactStore>();
+  LocalPolygonEditableDocumentGateway gateway(store);
+  const auto loaded = gateway.load(source.string());
+  ASSERT_TRUE(loaded.success) << loaded.error;
+  ASSERT_TRUE(loaded.compiled.has_value());
+  const auto saved = gateway.saveProblem(output.string(), loaded.document);
+  ASSERT_TRUE(saved.success) << saved.error;
+  const auto original = loadPolygonProblemFromFile(source.string());
+  const auto restored = loadPolygonProblemFromFile(output.string());
+  ASSERT_TRUE(original.success);
+  ASSERT_TRUE(restored.success) << restored.error;
+  EXPECT_EQ(savePolygonProblemToText(original.problem), savePolygonProblemToText(restored.problem));
+  EXPECT_TRUE(gateway.load(output.string()).compiled.has_value());
+  std::filesystem::remove(output);
+}
+
 /// Проверяет детерминированное назначение идентификаторов и круговой проход через строгую задачу.
 TEST(PolygonDesktopInfrastructure, ConvertsProblemToEditableDocumentDeterministically)
 {

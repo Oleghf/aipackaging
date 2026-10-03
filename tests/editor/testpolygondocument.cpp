@@ -62,6 +62,28 @@ TEST(EditablePolygonDocument, AcceptsLocallyValidDocument)
   EXPECT_FALSE(hasDocumentErrors(diagnostics));
 }
 
+/// Принимает двухвершинное кольцо с кривой, но сохраняет запрет вырожденного линейного кольца.
+TEST(EditablePolygonDocument, AcceptsTwoArcRingButRejectsTwoLines)
+{
+  auto document = validDocument();
+  auto & path = *document.parts.front().outer;
+  path.vertices.resize(2);
+  path.segments.resize(2);
+  EXPECT_TRUE(hasDocumentErrors(validateEditableDocument(document)));
+  for (auto & segment : path.segments)
+  {
+    segment.kind = EditableSegmentKind::Arc;
+    segment.center = {document.allocateEntityId(), 10.0, 0.0};
+  }
+  EXPECT_FALSE(hasDocumentErrors(validateEditableDocument(document)));
+  path.segments.back().kind = EditableSegmentKind::Line;
+  EXPECT_FALSE(hasDocumentErrors(validateEditableDocument(document)));
+  path.segments.front().kind = EditableSegmentKind::CubicBezier;
+  path.segments.front().control1 = {document.allocateEntityId(), 0.0, 10.0};
+  path.segments.front().control2 = {document.allocateEntityId(), 20.0, 10.0};
+  EXPECT_FALSE(hasDocumentErrors(validateEditableDocument(document)));
+}
+
 /// Проверяет сохранение открытой цепочки как диагностируемого черновика.
 TEST(EditablePolygonDocument, ReportsOpenPathWithoutRejectingTheValueObject)
 {

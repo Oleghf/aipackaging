@@ -124,6 +124,8 @@ private:
   void finishDrag(bool cancel);
   /// Выполняет очередной щелчок многостадийного инструмента рисования.
   void handleDrawingClick(const QPointF & sheetPoint, Qt::KeyboardModifiers modifiers);
+  /// Возвращает первую вершину только на допустимой стадии замыкания текущей цепочки.
+  aipackaging::editor::EntityId closingTarget() const;
   /// Создаёт первый узел внешнего контура или отверстия и начинает объединённый жест.
   void createPathAt(const QPointF & point, bool hole);
   /// Завершает готовый интерактивный сегмент и оставляет инструмент активным.
