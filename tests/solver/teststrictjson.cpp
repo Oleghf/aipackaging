@@ -85,3 +85,18 @@ TEST(StrictJson, ReadsTextFileExactly)
   std::filesystem::remove(path, ignored);
   EXPECT_EQ(readTextFile(path.string(), text).error, StrictJsonError::IoFailure);
 }
+
+/// Проверяет независимость UTF-8 имени от системной кодовой страницы Windows.
+TEST(StrictJson, OpensUnicodePath)
+{
+  const auto path = std::filesystem::temp_directory_path() / std::filesystem::path(u8"раскрой 漢字 пробел.json");
+  {
+    std::ofstream output(path, std::ios::binary);
+    output << "{}";
+  }
+  const auto utf8 = path.u8string();
+  std::string text;
+  EXPECT_TRUE(readTextFile(std::string(utf8.begin(), utf8.end()), text));
+  EXPECT_EQ(text, "{}");
+  std::filesystem::remove(path);
+}

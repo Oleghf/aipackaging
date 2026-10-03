@@ -7,6 +7,7 @@
 #include <aipackaging/editor/polygon_document_validation.h>
 #include <aipackaging/editor/polygon_draft_io.h>
 
+#include "../support/utf8path.h"
 #include "atomicfile.h"
 #include "strictjson.h"
 
@@ -532,6 +533,6 @@ bool savePolygonDraftToFile(const std::string & filePath, const PolygonDraft & d
   std::string text;
   if (!savePolygonDraftToText(draft, text, error))
     return false;
-  return aipackaging::solver::internal::writeFileAtomically(filePath, text, error, {}, "черновика");
+  return aipackaging::solver::internal::writeFileAtomically(files::nativePath(filePath), text, error, {}, "черновика");
 }
 } // namespace aipackaging::editor

@@ -12,6 +12,7 @@
 #include <aipackaging/nesting/polygon_environment.h>
 #include <aipackaging/nesting/polygon_io.h>
 
+#include "../../support/utf8path.h"
 #include "polygon_artifact_store_internal.h"
 #include "polygon_presentation_mapper.h"
 
@@ -23,7 +24,7 @@ namespace
 /// Читает файл целиком без преобразования переводов строк.
 bool readFile(const std::string & filePath, std::string & text, std::string & error)
 {
-  std::ifstream input(filePath, std::ios::binary);
+  std::ifstream input(aipackaging::files::nativePath(filePath), std::ios::binary);
   if (!input)
   {
     error = "Не удалось открыть документ";
@@ -42,7 +43,7 @@ bool readFile(const std::string & filePath, std::string & text, std::string & er
 std::optional<PolygonSourceFingerprint> fingerprint(const std::string & filePath)
 {
   std::error_code error;
-  const std::filesystem::path path(filePath);
+  const auto path = aipackaging::files::nativePath(filePath);
   const auto status = std::filesystem::symlink_status(path, error);
   if (error || !std::filesystem::is_regular_file(status))
     return std::nullopt;
@@ -529,7 +530,7 @@ PolygonRecoveryCandidate LocalPolygonEditableDocumentGateway::inspectRecovery(co
   PolygonRecoveryCandidate result;
   result.autosavePath = filePath;
   std::error_code statusError;
-  const auto status = std::filesystem::symlink_status(filePath, statusError);
+  const auto status = std::filesystem::symlink_status(aipackaging::files::nativePath(filePath), statusError);
   if ((statusError && statusError == std::errc::no_such_file_or_directory) || (!statusError && !std::filesystem::exists(status)))
     return result;
   result.present = true;
@@ -556,14 +557,14 @@ PolygonDocumentOperationResult LocalPolygonEditableDocumentGateway::removeRecove
   if (filePath.empty())
     return {true, {}};
   std::error_code error;
-  const auto status = std::filesystem::symlink_status(filePath, error);
+  const auto status = std::filesystem::symlink_status(aipackaging::files::nativePath(filePath), error);
   if ((error && error == std::errc::no_such_file_or_directory) || (!error && !std::filesystem::exists(status)))
     return {true, {}};
   if (error)
     return {false, "Не удалось проверить автоматический черновик"};
   if (!std::filesystem::is_regular_file(status))
     return {false, "Автоматический черновик должен быть обычным файлом"};
-  if (!std::filesystem::remove(filePath, error) || error)
+  if (!std::filesystem::remove(aipackaging::files::nativePath(filePath), error) || error)
     return {false, "Не удалось удалить автоматический черновик"};
   return {true, {}};
 }

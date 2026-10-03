@@ -8,6 +8,7 @@
 
 #include <aipackaging/import/dxf_import.h>
 
+#include "../../support/utf8path.h"
 #include "background_event_delivery.h"
 
 using namespace aipackaging::desktop::detail;
@@ -18,7 +19,7 @@ namespace
 bool readDxfFile(const std::string & filePath, std::string & contents, std::string & error)
 {
   std::error_code statusError;
-  const std::filesystem::path path(filePath);
+  const auto path = aipackaging::files::nativePath(filePath);
   const auto status = std::filesystem::symlink_status(path, statusError);
   if (statusError || !std::filesystem::is_regular_file(status) || std::filesystem::is_symlink(status))
   {

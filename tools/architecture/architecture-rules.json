@@ -16,6 +16,7 @@
     "src/infrastructure/desktop/polygondesktopinfrastructure.cpp"
   ],
   "layers": {
+    "file_support": "src/support",
     "app": "src/core/app",
     "editor": "src/editor",
     "editor_persistence": "src/persistence",
@@ -34,6 +35,7 @@
     "python_binding": "src/python"
   },
   "allowedInternalDependencies": {
+    "file_support": ["file_support"],
     "app": [
       "app",
       "editor"
@@ -42,6 +44,7 @@
       "editor"
     ],
     "editor_persistence": [
+      "file_support",
       "editor_persistence",
       "editor",
       "json"
@@ -73,6 +76,7 @@
       "nesting_core"
     ],
     "json": [
+      "file_support",
       "json",
       "search_contracts",
       "grid_core",
@@ -86,6 +90,7 @@
       "nesting_core"
     ],
     "onnx_inference": [
+      "file_support",
       "onnx_inference",
       "learning",
       "search",
@@ -105,6 +110,7 @@
       "nesting_core"
     ],
     "desktop_infrastructure": [
+      "file_support",
       "desktop_infrastructure",
       "app",
       "dxf_import",
@@ -122,6 +128,7 @@
       "editor"
     ],
     "cli": [
+      "file_support",
       "cli",
       "search",
       "search_contracts",

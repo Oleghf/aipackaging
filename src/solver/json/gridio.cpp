@@ -6,6 +6,7 @@
 #include <aipackaging/nesting/search_contracts.h>
 #include <nlohmann/json.hpp>
 
+#include "../../support/utf8path.h"
 #include "atomicfile.h"
 #include "solvermetadatavalidation.h"
 #include "strictjson.h"
@@ -405,6 +406,6 @@ std::string saveGridSolutionToText(const GridSolution & solution)
 /// Записывает готовый JSON во временный файл и атомарно заменяет назначение без потери прежнего содержимого при отказе.
 bool saveGridSolutionToFile(const std::string & filePath, const GridSolution & solution, std::string & error)
 {
-  return internal::writeFileAtomically(filePath, saveGridSolutionToText(solution), error);
+  return internal::writeFileAtomically(files::nativePath(filePath), saveGridSolutionToText(solution), error);
 }
 } // namespace aipackaging::solver

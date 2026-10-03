@@ -8,6 +8,9 @@ target_link_libraries(AIPackaging_CliSupport PRIVATE AIPackaging_Search AIPackag
 
 add_executable(AIPackaging_Cli "main.cpp")
 target_link_libraries(AIPackaging_Cli PRIVATE AIPackaging_CliSupport)
+if (WIN32)
+  target_link_libraries(AIPackaging_Cli PRIVATE shell32)
+endif()
 if (BUILD_ONNX_BACKEND)
   target_link_libraries(AIPackaging_CliSupport PRIVATE AIPackaging_OnnxInference)
   target_compile_definitions(AIPackaging_CliSupport PUBLIC AIPACKAGING_HAS_ONNX_BACKEND=1)

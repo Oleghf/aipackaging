@@ -5,6 +5,8 @@
 #include <fstream>
 #include <limits>
 
+#include "../../support/utf8path.h"
+
 namespace aipackaging::solver::internal
 {
 namespace
@@ -172,7 +174,7 @@ StrictJsonResult validateRootContract(const Json & root, std::string_view expect
 /// Читает байты файла без преобразования переводов строк и проверяет завершение потока.
 StrictJsonResult readTextFile(const std::string & filePath, std::string & text)
 {
-  std::ifstream input(filePath, std::ios::binary);
+  std::ifstream input(files::nativePath(filePath), std::ios::binary);
   if (!input)
     return {StrictJsonError::IoFailure, filePath};
   text.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());

@@ -4,6 +4,7 @@
 #include <aipackaging/nesting/polygon_io.h>
 #include <nlohmann/json.hpp>
 
+#include "../../support/utf8path.h"
 #include "atomicfile.h"
 #include "solvermetadatavalidation.h"
 #include "strictjson.h"
@@ -305,7 +306,7 @@ std::string savePolygonProblemToText(const PolygonProblem & problem)
 /// Передаёт канонические байты задачи общей атомарной замене файла назначения.
 bool savePolygonProblemToFile(const std::string & filePath, const PolygonProblem & problem, std::string & error)
 {
-  return internal::writeFileAtomically(filePath, savePolygonProblemToText(problem), error, {}, "задачи");
+  return internal::writeFileAtomically(files::nativePath(filePath), savePolygonProblemToText(problem), error, {}, "задачи");
 }
 
 /// Разбирает `polygon_solution` v1/v2 без доверия к записанной целевой функции.
@@ -469,7 +470,7 @@ std::string savePolygonSolutionToText(const PolygonSolution & solution)
 /// Записывает готовый JSON во временный файл и атомарно заменяет назначение без потери прежнего содержимого при отказе.
 bool savePolygonSolutionToFile(const std::string & filePath, const PolygonSolution & solution, std::string & error)
 {
-  return internal::writeFileAtomically(filePath, savePolygonSolutionToText(solution), error);
+  return internal::writeFileAtomically(files::nativePath(filePath), savePolygonSolutionToText(solution), error);
 }
 
 /// Разбирает только корневой объект JSON и возвращает строковое поле формата.

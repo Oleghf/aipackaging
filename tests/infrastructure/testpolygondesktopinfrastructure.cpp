@@ -531,6 +531,26 @@ TEST(PolygonDesktopInfrastructure, ConvertsProblemToEditableDocumentDeterministi
   std::filesystem::remove(path);
 }
 
+/// Проверяет запись, чтение, отпечаток и удаление русских путей без зависимости от кодовой страницы.
+TEST(PolygonDesktopInfrastructure, RoundTripsUnicodeProblemAndRecovery)
+{
+  const auto path = std::filesystem::temp_directory_path() / std::filesystem::path(u8"задача 漢字 с пробелом.json");
+  const auto encoded = path.u8string();
+  const std::string name(encoded.begin(), encoded.end());
+  std::string error;
+  ASSERT_TRUE(savePolygonProblemToFile(name, testProblem(), error)) << error;
+  auto store = std::make_shared<PolygonArtifactStore>();
+  LocalPolygonEditableDocumentGateway gateway(store);
+  auto loaded = gateway.load(name);
+  ASSERT_TRUE(loaded.success) << loaded.error;
+  ASSERT_TRUE(gateway.sourceFingerprint(name));
+  ASSERT_TRUE(gateway.saveDraft(name, loaded.document, PolygonDocumentSource::ProblemFile, name, 1, {}).success);
+  ASSERT_TRUE(gateway.loadRecovery(name).success);
+  EXPECT_TRUE(gateway.inspectRecovery(name).present);
+  EXPECT_TRUE(gateway.removeRecovery(name).success);
+  EXPECT_FALSE(std::filesystem::exists(path));
+}
+
 /// Проверяет сохранение неполного документа как черновика и обнаружение изменившегося источника.
 TEST(PolygonDesktopInfrastructure, PreservesInvalidDraftAndDetectsChangedSource)
 {

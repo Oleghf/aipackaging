@@ -13,6 +13,8 @@
 #include <aipackaging/nesting/polygon_solver.h>
 #include <cli_arguments.h>
 #include <cli_commands.h>
+
+#include "../support/utf8path.h"
 #ifdef AIPACKAGING_HAS_ONNX_BACKEND
 #include <aipackaging/inference/polygon_onnx.h>
 #endif
@@ -26,7 +28,7 @@ using namespace solver;
 /// Читает файл целиком для определения формата обмена до предметного разбора.
 bool readTextFile(const std::string & path, std::string & text)
 {
-  std::ifstream input(path, std::ios::binary);
+  std::ifstream input(files::nativePath(path), std::ios::binary);
   if (!input)
     return false;
   text.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());

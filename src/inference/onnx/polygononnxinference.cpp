@@ -24,6 +24,8 @@
 #include <nlohmann/json.hpp>
 #include <onnxruntime_cxx_api.h>
 
+#include "../../support/utf8path.h"
+
 namespace aipackaging::inference
 {
 using namespace aipackaging::solver;
@@ -150,7 +152,7 @@ std::string sha256File(const std::filesystem::path & path)
 {
   std::ifstream input(path, std::ios::binary);
   if (!input)
-    throw std::runtime_error("Не удалось открыть файл комплекта модели: " + path.string());
+    throw std::runtime_error("Не удалось открыть файл комплекта модели: " + files::utf8Path(path));
   Sha256 sha;
   std::array<unsigned char, std::size_t{64} * 1024> buffer{};
   while (input)
@@ -159,7 +161,7 @@ std::string sha256File(const std::filesystem::path & path)
     sha.update(buffer.data(), static_cast<std::size_t>(input.gcount()));
   }
   if (!input.eof())
-    throw std::runtime_error("Не удалось прочитать файл комплекта модели: " + path.string());
+    throw std::runtime_error("Не удалось прочитать файл комплекта модели: " + files::utf8Path(path));
   return sha.finish();
 }
 
@@ -234,7 +236,7 @@ PolygonModelMetadata loadMetadata(const std::filesystem::path & root)
   for (const auto & entry : std::filesystem::directory_iterator(root))
   {
     ++fileCount;
-    const std::string name = entry.path().filename().string();
+    const std::string name = files::utf8Path(entry.path().filename());
     if (!entry.is_regular_file() || (name != "metadata.json" && name != "encoder.onnx" && name != "placement-head.onnx"))
       throw std::runtime_error("Каталог модели должен содержать ровно три файла комплекта");
   }
@@ -553,7 +555,7 @@ std::shared_ptr<PolygonOnnxPolicy> PolygonOnnxPolicy::Load(const std::string & d
     const std::string runtimeVersion = OrtGetApiBase()->GetVersionString();
     if (!runtimeVersion.starts_with("1.29."))
       throw std::runtime_error("Требуется ONNX Runtime версии 1.29.x, обнаружена " + runtimeVersion);
-    const std::filesystem::path root(directory);
+    const auto root = files::nativePath(directory);
     PolygonModelMetadata metadata = loadMetadata(root);
     return std::shared_ptr<PolygonOnnxPolicy>(
       new PolygonOnnxPolicy(std::make_unique<PolygonOnnxPolicyImpl>(root, std::move(metadata))));
