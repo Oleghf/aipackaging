@@ -90,6 +90,7 @@ PolygonRunPanel::PolygonRunPanel(QWidget * parent)
   , timeoutSpin_(new QSpinBox(advancedGroup_))
   , neuralRolloutsSpin_(new QSpinBox(advancedGroup_))
   , modelLabel_(new QLabel(tr("Модель: не загружена"), this))
+  , modelMessage_(new QLabel(this))
   , unplacedList_(new QListWidget(this))
   , startAction_(new QAction(tr("Запустить раскрой"), this))
   , cancelAction_(new QAction(tr("Отменить расчёт"), this))
@@ -104,6 +105,13 @@ PolygonRunPanel::PolygonRunPanel(QWidget * parent)
   modelButton_->setObjectName("polygonModelButton");
   cancelModelButton_->setObjectName("polygonCancelModelButton");
   modelLabel_->setObjectName("polygonModelStatus");
+  modelLabel_->setWordWrap(true);
+  modelLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+  modelMessage_->setObjectName(QStringLiteral("polygonModelMessage"));
+  modelMessage_->setAccessibleName(tr("Результат подключения модели"));
+  modelMessage_->setWordWrap(true);
+  modelMessage_->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+  modelMessage_->setFocusPolicy(Qt::StrongFocus);
   advancedToggle_->setObjectName("polygonAdvancedToggle");
   advancedGroup_->setObjectName("polygonAdvancedGroup");
   seedEdit_->setObjectName("polygonSeedEdit");
@@ -168,6 +176,7 @@ PolygonRunPanel::PolygonRunPanel(QWidget * parent)
   layout->addWidget(solverBox_);
   layout->addLayout(runLayout);
   layout->addWidget(modelLabel_);
+  layout->addWidget(modelMessage_);
   layout->addWidget(modelButton_);
   layout->addWidget(cancelModelButton_);
   layout->addWidget(fitButton_);
@@ -268,14 +277,14 @@ bool PolygonRunPanel::settingsValid() const
 void PolygonRunPanel::present(const PolygonWorkspaceSnapshot & snapshot)
 {
   const QString modelHash = snapshot.modelSha256.empty() ? QString() : QString::fromStdString(snapshot.modelSha256.substr(0, 12));
-  modelLabel_->setText(
-    snapshot.modelState == PolygonModelState::Loading ? tr("Модель: выполняется проверка…")
-    : snapshot.modelReady
-      ? tr("Модель: %1 (%2)%3")
-          .arg(QString::fromStdString(snapshot.modelId), modelHash,
-               snapshot.modelStatusText.empty() ? QString() : tr(" — %1").arg(QString::fromStdString(snapshot.modelStatusText)))
-      : tr("Модель: не загружена%1")
-          .arg(snapshot.modelStatusText.empty() ? QString() : tr(" — %1").arg(QString::fromStdString(snapshot.modelStatusText))));
+  modelLabel_->setText(snapshot.modelState == PolygonModelState::Loading ? tr("Модель: выполняется проверка…")
+                       : snapshot.modelReady ? tr("Модель: %1 (%2)").arg(QString::fromStdString(snapshot.modelId), modelHash)
+                                             : tr("Модель: не загружена"));
+  QString modelMessage = QString::fromStdString(snapshot.modelStatusText);
+  if (snapshot.modelReady && snapshot.modelState == PolygonModelState::Error)
+    modelMessage += tr("\nИспользуется прежняя проверенная модель.");
+  modelMessage_->setText(modelMessage);
+  modelMessage_->setVisible(!modelMessage.isEmpty());
 
   openButton_->setEnabled(snapshot.canOpen);
   saveButton_->setEnabled(snapshot.canSave);

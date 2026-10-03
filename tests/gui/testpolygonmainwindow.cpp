@@ -1,25 +1,33 @@
 #include <limits>
 #include <memory>
+#include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
+#include <QFile>
+#include <QFileDialog>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSettings>
 #include <QStackedWidget>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QToolButton>
 
 #include <gtest/gtest.h>
+#include <polygondxfimportwizard.h>
 #include <polygonmainwindow.h>
 #include <polygonstartpage.h>
 #include <polygonworkspacewidget.h>
+#include <qtlocalization.h>
 
 namespace
 {
@@ -44,6 +52,105 @@ QApplication * application()
   return configure(created.get());
 }
 } // namespace
+
+/// Проверяет, что новое окно содержит только полигональную рабочую область.
+TEST(PolygonMainWindow, InstallsRussianQtTranslation)
+{
+  application();
+  ASSERT_TRUE(installRussianQtTranslation());
+  QMessageBox box(QMessageBox::Question, QStringLiteral("Проверка"), QStringLiteral("Сохранить?"),
+                  QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+  EXPECT_TRUE(box.button(QMessageBox::Save)->text().contains(QStringLiteral("Сохранить")));
+  EXPECT_TRUE(box.button(QMessageBox::Cancel)->text().contains(QStringLiteral("Отмена")));
+  PolygonDxfImportWizard wizard;
+  EXPECT_EQ(wizard.buttonText(QWizard::NextButton), QStringLiteral("Далее"));
+}
+
+/// Проверяет повторный запуск мастера для старой записи DXF без чтения её как задачи.
+TEST(PolygonMainWindow, ReopensRecentDxfThroughImport)
+{
+  application();
+  QSettings().clear();
+  QTemporaryDir temporary;
+  const QString path = temporary.filePath(QStringLiteral("part.DXF"));
+  QFile file(path);
+  ASSERT_TRUE(file.open(QIODevice::WriteOnly));
+  file.close();
+  QSettings().setValue(QStringLiteral("files/recentProblems"), QStringList{path});
+  PolygonMainWindow window;
+  bool problemOpened = false;
+  QString imported;
+  PolygonWorkspaceActions actions;
+  actions.openProblem = [&](const std::string &)
+  {
+    problemOpened = true;
+  };
+  window.setPolygonWorkspaceActions(actions);
+  PolygonImportActions imports;
+  imports.inspect = [&](const PolygonImportInspectionRequest & value)
+  {
+    imported = QString::fromStdString(value.filePath);
+  };
+  window.setPolygonImportActions(imports);
+  window.findChild<PolygonStartPage *>()->requestOpenPath(path);
+  EXPECT_EQ(imported, path);
+  EXPECT_FALSE(problemOpened);
+  ASSERT_NE(window.findChild<PolygonDxfImportWizard *>(), nullptr);
+  static_cast<QDialog *>(window.findChild<PolygonDxfImportWizard *>())->reject();
+  EXPECT_EQ(QSettings().value(QStringLiteral("files/recentSourceKinds")).toMap().value(path).toString(), QStringLiteral("dxf"));
+}
+
+/// Проверяет отдельную команду строгого сохранения исправленного черновика и отмену выбора пути.
+TEST(PolygonMainWindow, SavesValidDraftAsProblem)
+{
+  application();
+  QSettings().clear();
+  QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+  QTemporaryDir temporary;
+  PolygonMainWindow window;
+  std::string saved;
+  bool draft = true;
+  PolygonWorkspaceActions actions;
+  actions.saveDocument = [&](const std::string & path, bool asDraft)
+  {
+    saved = path;
+    draft = asDraft;
+  };
+  window.setPolygonWorkspaceActions(actions);
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.hasDocument = true;
+  snapshot.documentSource = PolygonDocumentSource::Draft;
+  snapshot.documentValid = true;
+  snapshot.canSaveDocument = true;
+  window.presentPolygonWorkspace(snapshot);
+  auto * save = window.findChild<QAction *>("saveProblemAsAction");
+  ASSERT_NE(save, nullptr);
+  ASSERT_TRUE(save->isEnabled());
+  const QString path = temporary.filePath(QStringLiteral("task.json"));
+  QTimer::singleShot(0,
+                     [&]()
+                     {
+                       auto * dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
+                       ASSERT_NE(dialog, nullptr);
+                       dialog->selectFile(path);
+                       QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+                     });
+  save->trigger();
+  EXPECT_EQ(QString::fromStdString(saved), path);
+  EXPECT_FALSE(draft);
+  saved.clear();
+  QTimer::singleShot(0,
+                     []()
+                     {
+                       if (auto * dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget()))
+                         dialog->reject();
+                     });
+  save->trigger();
+  EXPECT_TRUE(saved.empty());
+  snapshot.documentValid = false;
+  window.presentPolygonWorkspace(snapshot);
+  EXPECT_FALSE(save->isEnabled());
+}
 
 /// Проверяет, что новое окно содержит только полигональную рабочую область.
 TEST(PolygonMainWindow, HasOnlyPolygonWorkspace)
@@ -328,6 +435,9 @@ TEST(PolygonMainWindow, FitsMinimumResolutionAndExposesAccessibleControls)
   snapshot.canRun = true;
   snapshot.document.sourceIdentifier = "problem.json";
   snapshot.documentValid = true;
+  snapshot.hasDocument = true;
+  snapshot.canEdit = true;
+  snapshot.editableDocument = std::make_shared<const aipackaging::editor::EditablePolygonDocument>();
   window.presentPolygonWorkspace(snapshot);
   window.show();
   app->processEvents();
@@ -344,4 +454,32 @@ TEST(PolygonMainWindow, FitsMinimumResolutionAndExposesAccessibleControls)
   EXPECT_FALSE(modes->accessibleName().isEmpty());
   EXPECT_GE(window.width(), 1280);
   EXPECT_GE(window.height(), 720);
+  auto * tabs = window.findChild<QTabWidget *>("workspaceRightTabs");
+  auto * metrics = window.findChild<QToolButton *>("polygonMetricsToggle");
+  ASSERT_NE(tabs, nullptr);
+  ASSERT_NE(metrics, nullptr);
+  EXPECT_FALSE(metrics->isChecked());
+  tabs->setCurrentIndex(0);
+  app->processEvents();
+  auto * add = window.findChild<QPushButton *>("addPartButton");
+  ASSERT_NE(add, nullptr);
+  QScrollArea * forms = nullptr;
+  for (QWidget * parent = add->parentWidget(); parent; parent = parent->parentWidget())
+    if ((forms = qobject_cast<QScrollArea *>(parent)))
+      break;
+  ASSERT_NE(forms, nullptr);
+  forms->ensureWidgetVisible(add);
+  app->processEvents();
+  EXPECT_GE(forms->viewport()->height(), 175);
+  EXPECT_TRUE(forms->viewport()->rect().contains(add->mapTo(forms->viewport(), add->rect().center())));
+  tabs->setCurrentIndex(1);
+  auto * advanced = window.findChild<QToolButton *>("polygonAdvancedToggle");
+  ASSERT_NE(advanced, nullptr);
+  advanced->setChecked(true);
+  auto * runScroll = window.findChild<QScrollArea *>("polygonRunScroll");
+  ASSERT_NE(runScroll, nullptr);
+  runScroll->ensureWidgetVisible(start);
+  app->processEvents();
+  EXPECT_TRUE(runScroll->viewport()->rect().contains(start->mapTo(runScroll->viewport(), start->rect().center())));
+  EXPECT_EQ(window.size(), QSize(1280, 720));
 }

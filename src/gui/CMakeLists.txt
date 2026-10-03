@@ -7,6 +7,16 @@ target_sources(${gui_static_lib_name} PRIVATE
 "polygondocumentpanel.cpp" "polygoneditorpanel.cpp" "polygonrunpanel.cpp" "polygonstatuspanel.cpp"
 "polygonworkspacewidget.cpp" "polygonstartpage.cpp" "qtapplicationdispatcher.cpp" "polygonmainwindow.cpp")
 target_sources(${gui_static_lib_name} PRIVATE "polygondxfimportwizard.cpp")
+target_sources(${gui_static_lib_name} PRIVATE "qtlocalization.cpp")
+
+# Перевод входит в ресурс библиотеки и не требует установленного Qt на машине пользователя.
+get_filename_component(qt_prefix "${Qt6_DIR}/../../.." ABSOLUTE)
+find_file(qt_russian_translation qtbase_ru.qm
+  PATHS "${qt_prefix}/translations" NO_DEFAULT_PATH REQUIRED)
+get_filename_component(qt_translation_directory "${qt_russian_translation}" DIRECTORY)
+configure_file("polygon_translations.qrc.in" "${CMAKE_CURRENT_BINARY_DIR}/polygon_translations.qrc" @ONLY)
+qt_add_resources(qt_russian_sources "${CMAKE_CURRENT_BINARY_DIR}/polygon_translations.qrc")
+target_sources(${gui_static_lib_name} PRIVATE ${qt_russian_sources})
 
 target_include_directories(${gui_static_lib_name} PUBLIC
 "${CMAKE_SOURCE_DIR}/src/gui"

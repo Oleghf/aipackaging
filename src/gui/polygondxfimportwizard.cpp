@@ -141,6 +141,10 @@ PolygonDxfImportWizard::PolygonDxfImportWizard(QWidget * parent)
 {
   setObjectName(QStringLiteral("polygonDxfImportWizard"));
   setWindowTitle(tr("Импорт ASCII DXF"));
+  setButtonText(QWizard::BackButton, tr("Назад"));
+  setButtonText(QWizard::NextButton, tr("Далее"));
+  setButtonText(QWizard::FinishButton, tr("Построить документ"));
+  setButtonText(QWizard::CancelButton, tr("Отмена"));
   setOption(QWizard::NoBackButtonOnStartPage);
   setMinimumSize(900, 650);
   buildPages();

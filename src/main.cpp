@@ -15,6 +15,7 @@
 #include <polygonmainwindow.h>
 #include <polygonworkspacecontroller.h>
 #include <qtapplicationdispatcher.h>
+#include <qtlocalization.h>
 
 /// Создаёт полигональное окно и его адаптеры в порядке безопасного завершения фоновой работы.
 int main(int argc, char * argv[])
@@ -22,6 +23,8 @@ int main(int argc, char * argv[])
   QApplication app(argc, argv);
   QApplication::setOrganizationName(QStringLiteral("AIPackaging"));
   QApplication::setApplicationName(QStringLiteral("AIPackaging"));
+  if (!installRussianQtTranslation())
+    qWarning("Не удалось подключить русский перевод Qt");
 
   PolygonMainWindow mainWindow;
   mainWindow.show();

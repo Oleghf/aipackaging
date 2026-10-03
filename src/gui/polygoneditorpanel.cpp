@@ -13,7 +13,9 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSettings>
 #include <QSpinBox>
+#include <QSplitter>
 #include <QStringList>
 #include <QTreeWidget>
 #include <QVariant>
@@ -199,6 +201,9 @@ void PolygonEditorPanel::buildUi()
 
   auto * partGroup = new QGroupBox(tr("Тип детали"), commandArea_);
   auto * partForm = new QFormLayout(partGroup);
+  selectionHint_ = new QLabel(tr("Выберите одну сущность для изменения свойств"), partGroup);
+  selectionHint_->setWordWrap(true);
+  partForm->addRow(selectionHint_);
   partForm->addRow(tr("Идентификатор"), partId_);
   partForm->addRow(tr("Количество"), quantity_);
   partForm->addRow(tr("Повороты"), rotations_);
@@ -218,6 +223,7 @@ void PolygonEditorPanel::buildUi()
   partForm->addRow(applyPart);
 
   auto * geometryGroup = new QGroupBox(tr("Контур и сегмент"), commandArea_);
+  geometryGroup->setObjectName(QStringLiteral("editorGeometryGroup"));
   auto * geometryForm = new QFormLayout(geometryGroup);
   geometryForm->addRow(tr("Вид сегмента"), segmentKind_);
   geometryForm->addRow(tr("Направление дуги"), clockwise_);
@@ -269,10 +275,27 @@ void PolygonEditorPanel::buildUi()
   scroll->setWidget(commandArea_);
   auto * layout = new QVBoxLayout(this);
   layout->setContentsMargins(4, 4, 4, 4);
-  layout->addWidget(tree_, 1);
-  layout->addWidget(scroll, 2);
-  layout->addWidget(new QLabel(tr("Проблемы документа"), this));
-  layout->addWidget(diagnostics_);
+  auto * sections = new QSplitter(Qt::Vertical, this);
+  sections->setObjectName(QStringLiteral("editorSectionsSplitter"));
+  tree_->setMinimumHeight(65);
+  scroll->setMinimumHeight(180);
+  sections->addWidget(tree_);
+  sections->addWidget(scroll);
+  sections->setChildrenCollapsible(false);
+  sections->setStretchFactor(0, 1);
+  sections->setStretchFactor(1, 3);
+  const QByteArray saved = QSettings().value(QStringLiteral("ui/editorSectionsSplitter")).toByteArray();
+  if (saved.isEmpty() || !sections->restoreState(saved))
+    sections->setSizes({120, 360});
+  connect(sections, &QSplitter::splitterMoved, this,
+          [sections]() { QSettings().setValue(QStringLiteral("ui/editorSectionsSplitter"), sections->saveState()); });
+  layout->addWidget(sections, 1);
+  // Совместимый объект остаётся доступен тестам, но не дублирует постоянно видимую панель проблем.
+  diagnostics_->hide();
+  problemsButton_ = new QPushButton(tr("Проблемы документа: 0"), this);
+  problemsButton_->setObjectName(QStringLiteral("editorProblemsButton"));
+  connect(problemsButton_, &QPushButton::clicked, this, &PolygonEditorPanel::problemsRequested);
+  layout->addWidget(problemsButton_);
 
   connect(tree_, &QTreeWidget::itemSelectionChanged, this, &PolygonEditorPanel::presentSelection);
   connect(applyDocument, &QPushButton::clicked, this,
@@ -400,6 +423,9 @@ void PolygonEditorPanel::present(const PolygonWorkspaceSnapshot & snapshot)
   std::vector<std::uint64_t> selected;
   for (const QTreeWidgetItem * item : tree_->selectedItems())
     selected.push_back(item->data(0, ENTITY_ID_ROLE).toULongLong());
+  if (snapshot.documentIdentity != snapshot_.documentIdentity ||
+      snapshot.document.sourceIdentifier != snapshot_.document.sourceIdentifier)
+    selected.clear();
   snapshot_ = snapshot;
   updating_ = true;
   commandArea_->setEnabled(snapshot.canEdit);
@@ -422,6 +448,7 @@ void PolygonEditorPanel::present(const PolygonWorkspaceSnapshot & snapshot)
   diagnostics_->clear();
   for (const DocumentDiagnostic & diagnostic : snapshot.documentDiagnostics)
     diagnostics_->addItem(QString::fromStdString(diagnostic.message));
+  problemsButton_->setText(tr("Проблемы документа: %1").arg(snapshot.documentDiagnostics.size()));
   updating_ = false;
   presentSelection();
 }
@@ -441,8 +468,7 @@ void PolygonEditorPanel::selectEntities(const std::vector<std::uint64_t> & entit
       if (!current)
         current = item;
     }
-  if (current)
-    tree_->setCurrentItem(current);
+  tree_->setCurrentItem(current, 0, QItemSelectionModel::NoUpdate);
   updating_ = previous;
   if (!updating_)
     presentSelection();
@@ -512,16 +538,40 @@ void PolygonEditorPanel::rebuildTree()
 /// Находит выбранную сущность в снимке и заполняет относящиеся к ней поля.
 void PolygonEditorPanel::presentSelection()
 {
-  if (updating_ || !snapshot_.editableDocument || !tree_->currentItem())
+  if (updating_)
+    return;
+  const bool single = snapshot_.editableDocument && tree_->currentItem() && tree_->selectedItems().size() == 1;
+  selectionHint_->setVisible(!single);
+  for (QWidget * field : {static_cast<QWidget *>(partId_), static_cast<QWidget *>(quantity_), static_cast<QWidget *>(rotations_)})
+    field->setEnabled(single && snapshot_.canEdit);
+  for (const char * name : {"duplicatePartButton", "deletePartButton", "applyPartButton", "editorGeometryGroup"})
+    if (auto * control = findChild<QWidget *>(QString::fromLatin1(name)))
+      control->setEnabled(single && snapshot_.canEdit);
+  if (!single)
   {
-    if (!updating_)
+    partId_->clear();
+    quantity_->setValue(1);
+    rotations_->setText(QStringLiteral("0"));
+    for (auto * coordinate : {pointX_, pointY_, auxiliary1X_, auxiliary1Y_, auxiliary2X_, auxiliary2Y_})
+      coordinate->setValue(0);
+    if (tree_->selectedItems().isEmpty())
     {
       emit entitySelected(0);
       emit entitiesSelected({});
     }
+    else
+    {
+      std::vector<std::uint64_t> ids;
+      for (const auto * item : tree_->selectedItems())
+        ids.push_back(item->data(0, ENTITY_ID_ROLE).toULongLong());
+      emit entitiesSelected(ids);
+    }
     return;
   }
   const EntityId partId = selectedPart();
+  for (auto * coordinate : {pointX_, pointY_, auxiliary1X_, auxiliary1Y_, auxiliary2X_, auxiliary2Y_})
+    coordinate->setValue(0);
+  clockwise_->setChecked(false);
   if (const EditablePart * part = findPart(*snapshot_.editableDocument, partId))
   {
     partId_->setText(QString::fromStdString(part->partId));

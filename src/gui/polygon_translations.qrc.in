@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/translations">
+    <file alias="qtbase_ru.qm">@qt_russian_translation@</file>
+  </qresource>
+</RCC>

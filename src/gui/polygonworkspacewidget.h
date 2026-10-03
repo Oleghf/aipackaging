@@ -77,6 +77,8 @@ signals:
   void editorInteractionMessage(const QString & message);
 
 private:
+  /// Согласует общий `Esc` и не перехватывает букву вписывания в текстовых полях.
+  bool eventFilter(QObject * watched, QEvent * event) override;
   PolygonDocumentPanel * documentPanel_;
   PolygonCanvasWidget * canvas_;
   PolygonEditorToolBar * editorToolBar_;

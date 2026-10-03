@@ -2,13 +2,15 @@
 #include <cstdint>
 #include <QLabel>
 #include <QProgressBar>
+#include <QSettings>
 #include <QStringList>
 #include <QTextEdit>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include <polygonstatuspanel.h>
 
-/// Создаёт элементы состояния с прежними размерами и именами объектов Qt.
+/// Создаёт постоянное состояние и сворачиваемые метрики с совместимыми именами объектов Qt.
 PolygonStatusPanel::PolygonStatusPanel(QWidget * parent)
   : QWidget(parent)
   , statusLabel_(new QLabel(tr("Откройте polygon_problem v1"), this))
@@ -21,7 +23,7 @@ PolygonStatusPanel::PolygonStatusPanel(QWidget * parent)
   stageLabel_->setObjectName(QStringLiteral("polygonProgressStage"));
   progressBar_->setObjectName(QStringLiteral("polygonProgress"));
   metricsText_->setReadOnly(true);
-  metricsText_->setMinimumHeight(165);
+  metricsText_->setMinimumHeight(80);
   metricsText_->setMaximumHeight(130);
 
   auto * layout = new QVBoxLayout(this);
@@ -29,6 +31,19 @@ PolygonStatusPanel::PolygonStatusPanel(QWidget * parent)
   layout->addWidget(statusLabel_);
   layout->addWidget(stageLabel_);
   layout->addWidget(progressBar_);
+  auto * details = new QToolButton(this);
+  details->setObjectName(QStringLiteral("polygonMetricsToggle"));
+  details->setText(tr("Подробные метрики"));
+  details->setCheckable(true);
+  details->setChecked(QSettings().value(QStringLiteral("ui/metricsExpanded"), false).toBool());
+  metricsText_->setVisible(details->isChecked());
+  connect(details, &QToolButton::toggled, this,
+          [this](bool expanded)
+          {
+            metricsText_->setVisible(expanded);
+            QSettings().setValue(QStringLiteral("ui/metricsExpanded"), expanded);
+          });
+  layout->addWidget(details);
   layout->addWidget(metricsText_);
 }
 
@@ -36,11 +51,9 @@ PolygonStatusPanel::PolygonStatusPanel(QWidget * parent)
 void PolygonStatusPanel::present(const PolygonWorkspaceSnapshot & snapshot)
 {
   QString status = QString::fromStdString(snapshot.statusText);
-  QStringList diagnostics;
-  for (const auto & diagnostic : snapshot.documentDiagnostics)
-    diagnostics.push_back(QString::fromStdString(diagnostic.message));
-  if (!diagnostics.isEmpty())
-    status += QStringLiteral("\n") + diagnostics.join(QStringLiteral("\n"));
+  if (!snapshot.documentDiagnostics.empty())
+    status += tr("\nПроблемы документа: %1. Подробности на вкладке «Проблемы».")
+                .arg(static_cast<qulonglong>(snapshot.documentDiagnostics.size()));
   statusLabel_->setText(status);
   statusLabel_->setStyleSheet(snapshot.partial ? QStringLiteral("color:#B45309;font-weight:600") : QString());
   switch (snapshot.progress.stage)

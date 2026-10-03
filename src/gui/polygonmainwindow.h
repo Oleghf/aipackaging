@@ -4,6 +4,7 @@
 #include <QElapsedTimer>
 #include <QMainWindow>
 #include <QStringList>
+#include <QVariantMap>
 
 #include <polygonimportcontracts.h>
 #include <polygonworkspaceview.h>
@@ -50,6 +51,8 @@ private:
   void saveSolution();
   /// Сохраняет исходный документ в его формате либо предлагает путь для черновика.
   void saveDocument();
+  /// Сохраняет точно корректный документ как задачу по выбранному новому пути.
+  void saveProblemAs();
   /// Открывает диалог каталога и запускает фоновую проверку модели.
   void chooseModel();
   /// Освобождает выбранную модель и удаляет сохранённый путь.
@@ -76,6 +79,8 @@ private:
   void createDocument();
   /// Выбирает файл DXF и открывает пошаговый мастер импорта.
   void chooseDxf();
+  /// Повторно анализирует указанный DXF в новом мастере без автоматического принятия результата.
+  void openDxf(const QString & path);
   /// Передаёт выбранный путь приложению и запоминает каталог.
   void openPath(const QString & path);
   /// Добавляет только успешно загруженный путь в начало списка недавних задач.
@@ -94,6 +99,7 @@ private:
   QAction * createDocumentAction_;
   QAction * saveSolutionAction_;
   QAction * saveDocumentAction_;
+  QAction * saveProblemAsAction_;
   QAction * openModelAction_;
   QAction * importDxfAction_;
   QAction * forgetModelAction_;
@@ -107,6 +113,7 @@ private:
   QString pendingProblemPath_;
   QString pendingModelPath_;
   QStringList recentProblems_;
+  QVariantMap recentSourceKinds_;
   bool initialModelChoicePending_ = true;
   bool firstWorkspaceShown_ = false;
   QElapsedTimer documentLoadTimer_;

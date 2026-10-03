@@ -17,6 +17,7 @@ class QListWidget;
 class QPushButton;
 class QSpinBox;
 class QTreeWidget;
+class QLabel;
 
 /// Предоставляет числовые формы команд полигонального редактора без прямого изменения модели.
 class PolygonEditorPanel final : public QWidget
@@ -37,6 +38,8 @@ signals:
   void entitySelected(std::uint64_t entityId);
   /// Сообщает полотну и панели проблем полный устойчивый набор выбранных сущностей.
   void entitiesSelected(const std::vector<std::uint64_t> & entityIds);
+  /// Открывает общую вкладку полных диагностик документа.
+  void problemsRequested();
 
 private:
   /// Создаёт элементы форм и связывает их с командами редактора.
@@ -81,6 +84,8 @@ private:
   QDoubleSpinBox * auxiliary2Y_;
   QListWidget * diagnostics_;
   QWidget * commandArea_;
+  QLabel * selectionHint_ = nullptr;
+  QPushButton * problemsButton_ = nullptr;
   bool updating_ = false;
 };
 

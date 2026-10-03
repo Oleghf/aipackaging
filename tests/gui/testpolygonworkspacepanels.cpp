@@ -7,12 +7,15 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QGroupBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSettings>
+#include <QSplitter>
 #include <QTemporaryDir>
 #include <QTreeWidget>
 #include <variant>
@@ -71,6 +74,58 @@ aipackaging::editor::EditablePolygonDocument interactiveDocument()
   return document;
 }
 } // namespace
+
+/// Проверяет экранный приоритет точки, устойчивую привязку и выбор рамкой.
+TEST(PolygonEditorPanel, ClearsPropertiesAcrossDocumentsAndMultipleSelection)
+{
+  ensurePanelApplication();
+  PolygonEditorPanel panel;
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.canEdit = true;
+  snapshot.documentIdentity = 1;
+  snapshot.editableDocument = std::make_shared<const aipackaging::editor::EditablePolygonDocument>(interactiveDocument());
+  panel.present(snapshot);
+  panel.selectEntities({2});
+  auto * name = panel.findChild<QLineEdit *>("editorPartId");
+  auto * apply = panel.findChild<QPushButton *>("applyPartButton");
+  ASSERT_NE(name, nullptr);
+  ASSERT_NE(apply, nullptr);
+  EXPECT_EQ(name->text(), QStringLiteral("detail"));
+  EXPECT_TRUE(apply->isEnabled());
+  ++snapshot.documentIdentity;
+  panel.present(snapshot);
+  EXPECT_TRUE(name->text().isEmpty());
+  EXPECT_FALSE(apply->isEnabled());
+  EXPECT_TRUE(panel.findChild<QPushButton *>("addPartButton")->isEnabled());
+  panel.selectEntities({4, 5});
+  EXPECT_TRUE(name->text().isEmpty());
+  EXPECT_FALSE(apply->isEnabled());
+  panel.resize(340, 550);
+  panel.show();
+  QApplication::processEvents();
+  ASSERT_NE(panel.findChild<QSplitter *>("editorSectionsSplitter"), nullptr);
+  EXPECT_GE(panel.findChild<QScrollArea *>()->height(), 180);
+}
+
+/// Проверяет отдельную доступную строку отказа при сохранённой прежней модели.
+TEST(PolygonRunPanel, ShowsModelFailureSeparately)
+{
+  ensurePanelApplication();
+  PolygonRunPanel panel;
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.modelReady = true;
+  snapshot.modelState = PolygonModelState::Error;
+  snapshot.modelId = std::string(100, 'x');
+  snapshot.modelStatusText = "В каталоге модели отсутствует файл метаданных";
+  panel.present(snapshot);
+  auto * message = panel.findChild<QLabel *>("polygonModelMessage");
+  ASSERT_NE(message, nullptr);
+  EXPECT_TRUE(message->wordWrap());
+  EXPECT_FALSE(message->isHidden());
+  EXPECT_TRUE(message->text().contains(QStringLiteral("прежняя проверенная модель")));
+  EXPECT_TRUE(message->text().contains(QStringLiteral("отсутствует")));
+  EXPECT_EQ(message->focusPolicy(), Qt::StrongFocus);
+}
 
 /// Проверяет экранный приоритет точки, устойчивую привязку и выбор рамкой.
 TEST(PolygonCanvasInteraction, SelectsAndSnapsEditorEntitiesDeterministically)
@@ -315,7 +370,8 @@ TEST(PolygonStatusPanel, ShowsEditableDocumentDiagnostics)
 
   const auto * status = panel.findChild<QLabel *>(QStringLiteral("polygonStatus"));
   ASSERT_NE(status, nullptr);
-  EXPECT_TRUE(status->text().contains(QStringLiteral("Внешний контур детали открыт")));
+  EXPECT_TRUE(status->text().contains(QStringLiteral("Проблемы документа: 1")));
+  EXPECT_TRUE(status->text().contains(QStringLiteral("Подробности на вкладке «Проблемы»")));
 }
 
 /// Проверяет, что числовая панель публикует команды, а не изменяет снимок напрямую.

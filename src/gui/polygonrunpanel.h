@@ -87,6 +87,7 @@ private:
   QSpinBox * timeoutSpin_;
   QSpinBox * neuralRolloutsSpin_;
   QLabel * modelLabel_;
+  QLabel * modelMessage_;
   QListWidget * unplacedList_;
   QAction * startAction_;
   QAction * cancelAction_;

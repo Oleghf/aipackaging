@@ -1,6 +1,12 @@
 #include <QAction>
+#include <QApplication>
+#include <QKeyEvent>
+#include <QLineEdit>
+#include <QPlainTextEdit>
+#include <QScrollArea>
 #include <QSplitter>
 #include <QTabWidget>
+#include <QTextEdit>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -39,7 +45,11 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   splitter_->addWidget(canvasContainer);
   rightTabs_->setObjectName(QStringLiteral("workspaceRightTabs"));
   rightTabs_->addTab(editorPanel_, tr("Редактор"));
-  rightTabs_->addTab(runPanel_, tr("Раскрой"));
+  auto * runScroll = new QScrollArea(rightTabs_);
+  runScroll->setObjectName(QStringLiteral("polygonRunScroll"));
+  runScroll->setWidgetResizable(true);
+  runScroll->setWidget(runPanel_);
+  rightTabs_->addTab(runScroll, tr("Раскрой"));
   rightTabs_->addTab(problemsPanel_, tr("Проблемы"));
   splitter_->addWidget(rightTabs_);
   splitter_->setStretchFactor(0, 0);
@@ -62,6 +72,7 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
   connect(canvas_, &PolygonCanvasWidget::cursorPositionChanged, this, &PolygonWorkspaceWidget::cursorPositionChanged);
   connect(canvas_, &PolygonCanvasWidget::partSelected, documentPanel_, &PolygonDocumentPanel::showSelectedPart);
   connect(editorPanel_, &PolygonEditorPanel::editRequested, this, &PolygonWorkspaceWidget::requestEditDocument);
+  connect(editorPanel_, &PolygonEditorPanel::problemsRequested, this, [this]() { rightTabs_->setCurrentIndex(2); });
   connect(editorPanel_, &PolygonEditorPanel::entitySelected, canvas_, &PolygonCanvasWidget::selectEditorEntity);
   connect(editorPanel_, &PolygonEditorPanel::entitiesSelected, canvas_, &PolygonCanvasWidget::selectEditorEntities);
   connect(editorPanel_, &PolygonEditorPanel::entitiesSelected, problemsPanel_, &PolygonProblemsPanel::selectEntities);
@@ -83,7 +94,37 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
             canvas_->setCanvasMode(source ? PolygonCanvasMode::Source : PolygonCanvasMode::Solution);
           });
   canvas_->setSnapSettings(editorToolBar_->snapSettings());
+  addActions({startAction(), cancelAction(), fitAction()});
+  qApp->installEventFilter(this);
   present({});
+}
+
+/// Ограничивает обработку своим окном и отдаёт модальным диалогам первенство.
+bool PolygonWorkspaceWidget::eventFilter(QObject * watched, QEvent * event)
+{
+  auto * widget = qobject_cast<QWidget *>(watched);
+  if (!widget || (widget != this && !isAncestorOf(widget)) || QApplication::activeModalWidget())
+    return QWidget::eventFilter(watched, event);
+  if (event->type() == QEvent::ShortcutOverride)
+  {
+    const auto * key = static_cast<QKeyEvent *>(event);
+    if (key->key() == Qt::Key_F &&
+        (qobject_cast<QLineEdit *>(widget) || qobject_cast<QTextEdit *>(widget) || qobject_cast<QPlainTextEdit *>(widget)))
+    {
+      event->accept();
+      return true;
+    }
+  }
+  if (event->type() == QEvent::KeyPress && static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape)
+  {
+    if (cancelAction()->isEnabled())
+      cancelAction()->trigger();
+    else
+      cancelEditorInteraction();
+    event->accept();
+    return true;
+  }
+  return QWidget::eventFilter(watched, event);
 }
 
 /// Делегирует формирование запроса панели запуска.
@@ -103,12 +144,11 @@ void PolygonWorkspaceWidget::present(const PolygonWorkspaceSnapshot & snapshot)
 {
   if (snapshot.documentRevision != presentedRevision_)
   {
-    rightTabs_->setCurrentWidget(snapshot.documentDirty || !snapshot.documentValid ? static_cast<QWidget *>(editorPanel_)
-                                                                                   : static_cast<QWidget *>(runPanel_));
+    rightTabs_->setCurrentIndex(snapshot.documentDirty || !snapshot.documentValid ? 0 : 1);
     presentedRevision_ = snapshot.documentRevision;
   }
   else if (!snapshot.editableDocument && rightTabs_->currentWidget() == editorPanel_)
-    rightTabs_->setCurrentWidget(runPanel_);
+    rightTabs_->setCurrentIndex(1);
   documentPanel_->present(snapshot);
   editorPanel_->present(snapshot);
   problemsPanel_->present(snapshot);

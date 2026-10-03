@@ -293,7 +293,7 @@ const EditablePath * rejectedPath(const EditablePart * part, const PolygonNormal
 DocumentDiagnostic exactGeometryDiagnostic(const EditablePolygonDocument & document, const PolygonNormalizationError & error)
 {
   DocumentDiagnostic result{DocumentDiagnosticCode::ExactGeometryRejected, DiagnosticSeverity::Error, document.sheet.id,
-                            "Точная проверка геометрии отклонила документ: " + error.message};
+                            "Точная проверка геометрии отклонила документ"};
   const EditablePart * part = rejectedPart(document, error);
   const EditablePath * path = rejectedPath(part, error);
   if (part)
@@ -313,14 +313,17 @@ DocumentDiagnostic exactGeometryDiagnostic(const EditablePolygonDocument & docum
   {
     case PolygonNormalizationErrorCode::OuterRingInvalid:
       result.code = DocumentDiagnosticCode::SelfIntersectingPath;
+      result.message = "Внешний контур некорректен: проверьте замыкание, пересечения и площадь";
       break;
     case PolygonNormalizationErrorCode::HoleInvalid:
       result.code = DocumentDiagnosticCode::InvalidHolePlacement;
+      result.message = "Отверстие должно быть простым и находиться строго внутри внешнего контура";
       if (part && part->outer)
         result.relatedEntities.push_back(part->outer->id);
       break;
     case PolygonNormalizationErrorCode::HolesIntersect:
       result.code = DocumentDiagnosticCode::IntersectingHoles;
+      result.message = "Отверстия пересекаются или касаются друг друга";
       if (part && error.relatedRingIndex && *error.relatedRingIndex > 0 && *error.relatedRingIndex <= part->holes.size())
         result.relatedEntities.push_back(part->holes[*error.relatedRingIndex - 1].id);
       break;
@@ -328,9 +331,11 @@ DocumentDiagnostic exactGeometryDiagnostic(const EditablePolygonDocument & docum
     case PolygonNormalizationErrorCode::PartExtent:
     case PolygonNormalizationErrorCode::OrientationInvalid:
       result.code = DocumentDiagnosticCode::CoordinateLimitExceeded;
+      result.message = "Размеры или координаты геометрии выходят за допустимые пределы";
       break;
     case PolygonNormalizationErrorCode::PathApproximation:
       result.code = DocumentDiagnosticCode::RoundingCollapse;
+      result.message = "Не удалось аппроксимировать контур с заданной точностью; проверьте кривые и округление координат";
       break;
     case PolygonNormalizationErrorCode::None:
     case PolygonNormalizationErrorCode::UnsupportedCatalog:

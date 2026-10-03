@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <QAction>
 #include <QApplication>
 #include <QColor>
 #include <QComboBox>
@@ -132,6 +133,39 @@ TEST(PolygonWorkspaceWidget, DrawsAndCancelsInteractiveGeometry)
   EXPECT_DOUBLE_EQ(outer.segments.front().center.x, 20.0);
   EXPECT_DOUBLE_EQ(outer.vertices.back().x, 30.0);
 
+  clickCanvas(canvas, canvasPoint(canvas.size(), snapshot.scene, {20.0, 10.0}));
+  clickCanvas(canvas, canvasPoint(canvas.size(), snapshot.scene, {10.0, 10.0}));
+  ASSERT_TRUE(session.document().parts.front().outer->closed);
+  ASSERT_EQ(session.document().parts.front().outer->vertices.size(), 2U);
+  ASSERT_EQ(session.document().parts.front().outer->segments.size(), 2U);
+  const auto beforeDrag = *session.document().parts.front().outer;
+  canvas.setEditorTool(PolygonCanvasTool::Select);
+  canvas.selectEditorEntity(0);
+  const QPointF frameStart = canvasPoint(canvas.size(), snapshot.scene, {5.0, 25.0});
+  const QPointF frameEnd = canvasPoint(canvas.size(), snapshot.scene, {35.0, -5.0});
+  QMouseEvent framePress(QEvent::MouseButtonPress, frameStart, frameStart, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+  QApplication::sendEvent(&canvas, &framePress);
+  QMouseEvent frameMove(QEvent::MouseMove, frameEnd, frameEnd, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+  QApplication::sendEvent(&canvas, &frameMove);
+  QMouseEvent frameRelease(QEvent::MouseButtonRelease, frameEnd, frameEnd, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+  QApplication::sendEvent(&canvas, &frameRelease);
+  const QPointF from = canvasPoint(canvas.size(), snapshot.scene, {20.0, 0.0});
+  const QPointF to = canvasPoint(canvas.size(), snapshot.scene, {25.0, 5.0});
+  QMouseEvent dragPress(QEvent::MouseButtonPress, from, from, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+  QApplication::sendEvent(&canvas, &dragPress);
+  QMouseEvent dragRelease(QEvent::MouseButtonRelease, to, to, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+  QApplication::sendEvent(&canvas, &dragRelease);
+  const auto moved = *session.document().parts.front().outer;
+  for (std::size_t index = 0; index < beforeDrag.vertices.size(); ++index)
+  {
+    EXPECT_NEAR(moved.vertices[index].x, beforeDrag.vertices[index].x + 5.0, 1e-8);
+    EXPECT_NEAR(moved.vertices[index].y, beforeDrag.vertices[index].y + 5.0, 1e-8);
+    EXPECT_NEAR(moved.segments[index].center.x, beforeDrag.segments[index].center.x + 5.0, 1e-8);
+  }
+  ASSERT_TRUE(session.undo().accepted);
+  publish();
+  EXPECT_DOUBLE_EQ(session.document().parts.front().outer->vertices.front().x, 10.0);
+
   canvas.selectEditorEntity(2);
   canvas.setEditorTool(PolygonCanvasTool::Hole);
   clickCanvas(canvas, canvasPoint(canvas.size(), snapshot.scene, {40.0, 40.0}));
@@ -147,6 +181,64 @@ TEST(PolygonWorkspaceWidget, DrawsAndCancelsInteractiveGeometry)
   QFocusEvent focusOut(QEvent::FocusOut, Qt::OtherFocusReason);
   QApplication::sendEvent(&canvas, &focusOut);
   EXPECT_TRUE(session.document().parts.front().holes.empty());
+
+  canvas.selectEditorEntity(2);
+  canvas.setEditorTool(PolygonCanvasTool::Hole);
+  clickCanvas(canvas, canvasPoint(canvas.size(), snapshot.scene, {40.0, 40.0}));
+  canvas.setEditorTool(PolygonCanvasTool::CubicBezier);
+  clickCanvas(canvas, canvasPoint(canvas.size(), snapshot.scene, {40.0, 50.0}));
+  clickCanvas(canvas, canvasPoint(canvas.size(), snapshot.scene, {60.0, 50.0}));
+  clickCanvas(canvas, canvasPoint(canvas.size(), snapshot.scene, {60.0, 40.0}));
+  canvas.setEditorTool(PolygonCanvasTool::Line);
+  clickCanvas(canvas, canvasPoint(canvas.size(), snapshot.scene, {40.0, 40.0}));
+  ASSERT_EQ(session.document().parts.front().holes.size(), 1U);
+  const auto & curvedHole = session.document().parts.front().holes.front();
+  EXPECT_TRUE(curvedHole.closed);
+  EXPECT_EQ(curvedHole.vertices.size(), 2U);
+  ASSERT_EQ(curvedHole.segments.size(), 2U);
+  EXPECT_EQ(curvedHole.segments.front().kind, EditableSegmentKind::CubicBezier);
+  EXPECT_EQ(curvedHole.segments.back().kind, EditableSegmentKind::Line);
+}
+
+/// Проверяет общие сочетания при фокусе полотна и сохранение обычного текстового ввода.
+TEST(PolygonWorkspaceWidget, DispatchesShortcutsFromCanvasWithoutStealingText)
+{
+  ensureApplication();
+  PolygonWorkspaceWidget widget;
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.canRun = true;
+  snapshot.canCancel = true;
+  snapshot.documentValid = true;
+  widget.present(snapshot);
+  widget.resize(1280, 720);
+  widget.show();
+  widget.activateWindow();
+  QApplication::processEvents();
+  auto * canvas = widget.findChild<PolygonCanvasWidget *>();
+  canvas->setFocus();
+  int fits = 0;
+  int starts = 0;
+  int cancels = 0;
+  QObject::connect(widget.fitAction(), &QAction::triggered, [&]() { ++fits; });
+  QObject::connect(&widget, &PolygonWorkspaceWidget::requestStart, [&]() { ++starts; });
+  QObject::connect(&widget, &PolygonWorkspaceWidget::requestCancel, [&]() { ++cancels; });
+  const auto press = [](QWidget * target, int key, Qt::KeyboardModifiers modifiers, const QString & text = QString())
+  {
+    QKeyEvent event(QEvent::KeyPress, key, modifiers, text);
+    QApplication::sendEvent(target, &event);
+  };
+  press(canvas, Qt::Key_F, Qt::NoModifier);
+  press(canvas, Qt::Key_Return, Qt::ControlModifier);
+  press(canvas, Qt::Key_Escape, Qt::NoModifier);
+  EXPECT_EQ(fits, 1);
+  EXPECT_EQ(starts, 1);
+  EXPECT_EQ(cancels, 1);
+  auto * input = new QLineEdit(&widget);
+  input->show();
+  input->setFocus();
+  press(input, Qt::Key_F, Qt::NoModifier, QStringLiteral("f"));
+  EXPECT_EQ(input->text(), QStringLiteral("f"));
+  EXPECT_EQ(fits, 1);
 }
 
 /// Проверяет, что диспетчер не выполняет функцию синхронно и доставляет её в поток Qt.

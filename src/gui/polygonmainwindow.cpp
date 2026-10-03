@@ -61,6 +61,7 @@ PolygonMainWindow::PolygonMainWindow(QWidget * parent)
   , createDocumentAction_(nullptr)
   , saveSolutionAction_(nullptr)
   , saveDocumentAction_(nullptr)
+  , saveProblemAsAction_(nullptr)
   , openModelAction_(nullptr)
   , importDxfAction_(nullptr)
   , forgetModelAction_(nullptr)
@@ -94,6 +95,9 @@ void PolygonMainWindow::buildWindow()
   openProblemAction_ = fileMenu->addAction(tr("&Открыть задачу…"));
   importDxfAction_ = fileMenu->addAction(tr("&Импортировать DXF…"));
   saveDocumentAction_ = fileMenu->addAction(tr("&Сохранить документ"));
+  saveProblemAsAction_ = fileMenu->addAction(tr("Сохранить задачу как…"));
+  saveProblemAsAction_->setObjectName(QStringLiteral("saveProblemAsAction"));
+  connect(saveProblemAsAction_, &QAction::triggered, this, &PolygonMainWindow::saveProblemAs);
   saveSolutionAction_ = fileMenu->addAction(tr("&Сохранить решение…"));
   fileMenu->addSeparator();
   openModelAction_ = fileMenu->addAction(tr("Подключить &модель…"));
@@ -290,10 +294,39 @@ void PolygonMainWindow::saveDocument()
     asDraft = !importedProblem;
     settings.setValue(QStringLiteral("files/lastDirectory"), QFileInfo(path).absolutePath());
   }
+  if (QFileInfo(path).suffix().compare(QStringLiteral("dxf"), Qt::CaseInsensitive) == 0)
+  {
+    QMessageBox::warning(this, tr("Сохранение задачи"), tr("Исходный DXF нельзя заменять задачей. Выберите новый файл JSON."));
+    return;
+  }
   actions_.saveDocument(path.toStdString(), asDraft);
 }
 
-/// Запоминает выбранный каталог как ожидающий проверки и запускает прикладное действие модели.
+/// Запрашивает новый путь для строгой задачи и запрещает заменять исходный DXF.
+void PolygonMainWindow::saveProblemAs()
+{
+  if (!actions_.saveDocument || !lastSnapshot_.documentValid || !lastSnapshot_.canSaveDocument)
+    return;
+  const QString path = QFileDialog::getSaveFileName(
+    this, tr("Сохраните полигональную задачу"),
+    QDir(QSettings().value(QStringLiteral("files/lastDirectory")).toString()).filePath(QStringLiteral("polygon-problem.json")),
+    tr("Полигональная задача (*.json);;Все файлы (*)"));
+  if (path.isEmpty())
+    return;
+  const QFileInfo destination(path);
+  const QFileInfo source(QString::fromStdString(lastSnapshot_.document.sourceIdentifier));
+  if (destination.suffix().compare(QStringLiteral("dxf"), Qt::CaseInsensitive) == 0 ||
+      (source.suffix().compare(QStringLiteral("dxf"), Qt::CaseInsensitive) == 0 &&
+       destination.canonicalFilePath() == source.canonicalFilePath() && !source.canonicalFilePath().isEmpty()))
+  {
+    QMessageBox::warning(this, tr("Сохранение задачи"), tr("Исходный DXF нельзя заменять задачей. Выберите новый файл JSON."));
+    return;
+  }
+  actions_.saveDocument(path.toStdString(), false);
+  QSettings().setValue(QStringLiteral("files/lastDirectory"), destination.absolutePath());
+}
+
+/// Запоминает выбранный каталог как ожидающий проверки и запускает фоновую проверку модели.
 void PolygonMainWindow::chooseModel()
 {
   if (!actions_.openModel)
@@ -320,7 +353,9 @@ void PolygonMainWindow::forgetModel()
 void PolygonMainWindow::removeRecentProblem(const QString & path)
 {
   recentProblems_.removeAll(path);
+  recentSourceKinds_.remove(path);
   QSettings().setValue(QStringLiteral("files/recentProblems"), recentProblems_);
+  QSettings().setValue(QStringLiteral("files/recentSourceKinds"), recentSourceKinds_);
   startPage_->setRecentFiles(recentProblems_);
 }
 
@@ -408,6 +443,7 @@ void PolygonMainWindow::presentActions(const PolygonWorkspaceSnapshot & snapshot
   createDocumentAction_->setEnabled(snapshot.canOpen);
   saveSolutionAction_->setEnabled(snapshot.canSave);
   saveDocumentAction_->setEnabled(snapshot.canSaveDocument);
+  saveProblemAsAction_->setEnabled(snapshot.canSaveDocument && snapshot.documentValid);
   openModelAction_->setEnabled(snapshot.canLoadModel);
   const bool importEnabled = snapshot.canOpen && static_cast<bool>(importActions_.inspect);
   importDxfAction_->setEnabled(importEnabled);
@@ -513,7 +549,7 @@ void PolygonMainWindow::chooseProblem()
 /// Выбирает обычный файл DXF и запускает отдельный мастер без замены текущего документа.
 void PolygonMainWindow::chooseDxf()
 {
-  if (!importActions_.inspect || importWizard_ || !confirmDocumentReplacement())
+  if (!importActions_.inspect || importWizard_)
     return;
   QSettings settings;
   const QString directory = settings.value(QStringLiteral("files/lastDirectory")).toString();
@@ -521,6 +557,15 @@ void PolygonMainWindow::chooseDxf()
     QFileDialog::getOpenFileName(this, tr("Импортируйте ASCII DXF"), directory, tr("Файлы DXF (*.dxf);;Все файлы (*)"));
   if (path.isEmpty())
     return;
+  openDxf(path);
+}
+
+/// Создаёт новый сеанс импорта с явным подтверждением замены текущего документа.
+void PolygonMainWindow::openDxf(const QString & path)
+{
+  if (path.isEmpty() || !importActions_.inspect || importWizard_ || !lastSnapshot_.canOpen || !confirmDocumentReplacement())
+    return;
+  QSettings settings;
   settings.setValue(QStringLiteral("files/lastDirectory"), QFileInfo(path).absolutePath());
   importWizard_ = new PolygonDxfImportWizard(this);
   importWizard_->setAttribute(Qt::WA_DeleteOnClose);
@@ -533,6 +578,12 @@ void PolygonMainWindow::chooseDxf()
 /// Запоминает каталог, но добавляет путь в недавние только после успешного снимка.
 void PolygonMainWindow::openPath(const QString & path)
 {
+  if (recentSourceKinds_.value(path).toString() == QStringLiteral("dxf") ||
+      QFileInfo(path).suffix().compare(QStringLiteral("dxf"), Qt::CaseInsensitive) == 0)
+  {
+    openDxf(path);
+    return;
+  }
   if (path.isEmpty() || !actions_.openProblem || !confirmDocumentReplacement())
     return;
   pendingProblemPath_ = path;
@@ -568,9 +619,14 @@ void PolygonMainWindow::rememberProblem(const QString & path)
     return;
   recentProblems_.removeAll(path);
   recentProblems_.prepend(path);
+  recentSourceKinds_[path] = lastSnapshot_.documentSource == PolygonDocumentSource::Imported ||
+                                 QFileInfo(path).suffix().compare(QStringLiteral("dxf"), Qt::CaseInsensitive) == 0
+                             ? QStringLiteral("dxf")
+                             : QStringLiteral("document");
   while (recentProblems_.size() > MAX_RECENT_PROBLEMS)
-    recentProblems_.removeLast();
+    recentSourceKinds_.remove(recentProblems_.takeLast());
   QSettings().setValue(QStringLiteral("files/recentProblems"), recentProblems_);
+  QSettings().setValue(QStringLiteral("files/recentSourceKinds"), recentSourceKinds_);
   startPage_->setRecentFiles(recentProblems_);
 }
 
@@ -591,9 +647,18 @@ void PolygonMainWindow::restoreUiState()
   if (!state.isEmpty())
     restoreState(state);
   recentProblems_ = settings.value(QStringLiteral("files/recentProblems")).toStringList();
+  recentProblems_.removeDuplicates();
+  const QVariantMap previousKinds = settings.value(QStringLiteral("files/recentSourceKinds")).toMap();
+  recentSourceKinds_.clear();
   while (recentProblems_.size() > MAX_RECENT_PROBLEMS)
     recentProblems_.removeLast();
+  for (const QString & path : recentProblems_)
+    recentSourceKinds_[path] = previousKinds.value(path).toString() == QStringLiteral("dxf") ||
+                                   QFileInfo(path).suffix().compare(QStringLiteral("dxf"), Qt::CaseInsensitive) == 0
+                               ? QStringLiteral("dxf")
+                               : QStringLiteral("document");
   settings.setValue(QStringLiteral("files/recentProblems"), recentProblems_);
+  settings.setValue(QStringLiteral("files/recentSourceKinds"), recentSourceKinds_);
   startPage_->setRecentFiles(recentProblems_);
   const QString examples = exampleDirectory();
   startPage_->setExamples({{tr("Простой раскрой"), QDir(examples).filePath(QStringLiteral("problem-small.json"))},
