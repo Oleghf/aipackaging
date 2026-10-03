@@ -40,6 +40,23 @@ std::filesystem::path copyModel()
 }
 } // namespace
 
+/// Проверяет проверку хешей и создание сеансов из каталога с именем UTF-8.
+TEST(PolygonOnnxInference, LoadsUnicodeBundleDirectory)
+{
+  const auto root = copyModel();
+  const auto directory = root / std::filesystem::path(u8"модель 漢字 с пробелом");
+  std::filesystem::create_directory(directory);
+  for (const auto & entry : std::filesystem::directory_iterator(modelPath()))
+    std::filesystem::copy_file(entry.path(), directory / entry.path().filename());
+  const auto encoded = directory.u8string();
+  std::string error;
+  {
+    const auto policy = PolygonOnnxPolicy::Load(std::string(encoded.begin(), encoded.end()), error);
+    EXPECT_NE(policy, nullptr) << error;
+  }
+  std::filesystem::remove_all(root);
+}
+
 /// Проверяет строгую загрузку метаданных и идентичности модели.
 TEST(PolygonOnnxInference, LoadsStrictSyntheticBundle)
 {

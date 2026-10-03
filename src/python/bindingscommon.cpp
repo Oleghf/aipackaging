@@ -1,6 +1,7 @@
 #include <string>
 
 #include "bindingsinternal.h"
+#include "native_fingerprint.h"
 
 namespace aipackaging::python
 {
@@ -56,5 +57,11 @@ void configureModule(py::module_ & module)
   module.doc() = "Низкоуровневые bindings сред раскроя AIPackaging";
   module.attr("__version__") = AIPACKAGING_PYTHON_VERSION;
   module.attr("__revision__") = AIPACKAGING_BUILD_REVISION;
+  const auto builtins = py::module_::import("builtins");
+  py::dict properties;
+  properties["__source_fingerprint__"] =
+    builtins.attr("property")(py::cpp_function([](const py::object &) { return AIPACKAGING_SOURCE_FINGERPRINT; }));
+  module.attr("__class__") =
+    builtins.attr("type")("NativeBuildModule", py::make_tuple(py::module_::import("types").attr("ModuleType")), properties);
 }
 } // namespace aipackaging::python

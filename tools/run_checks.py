@@ -158,7 +158,11 @@ def nesting_checks() -> int:
 def python_checks() -> int:
     """Запускает полный набор тестов pytest в подготовленном окружении Python."""
 
-    return run([sys.executable, "-m", "pytest"])
+    return run_sequence([
+        [sys.executable, "tools/quality/check_native_freshness.py"],
+        [sys.executable, "-m", "unittest", "discover", "-s", "tools/quality/tests", "-v"],
+        [sys.executable, "-m", "pytest"],
+    ])
 
 
 def editor_performance_checks() -> int:
@@ -195,7 +199,8 @@ def editor_performance_checks() -> int:
         [
             configure,
             ["cmake", "--build", "--preset", f"build-{preset}", "--target", "AIPackaging_EditorPerformanceProbe"],
-            command,
+            [*command, "--segments", "500"],
+            [*command, "--segments", "1000"],
         ]
     )
 

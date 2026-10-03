@@ -97,7 +97,7 @@ if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
     "${CMAKE_SOURCE_DIR}/src/infrastructure/desktop"
   )
   target_link_libraries(AIPackaging_EditorPerformanceProbe PRIVATE
-    AIPackaging_Editor AIPackaging_DesktopInfrastructure AIPackaging_PolygonCore
+    AIPackaging_Editor AIPackaging_DesktopInfrastructure AIPackaging_PolygonCore AIPackaging_EditorPersistence
   )
   if (WIN32)
     target_link_libraries(AIPackaging_EditorPerformanceProbe PRIVATE psapi)

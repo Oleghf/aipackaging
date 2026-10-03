@@ -21,6 +21,8 @@
 #include <polygon_draft_jobs.h>
 #include <polygon_editable_document_gateway.h>
 #include <polygon_model_jobs.h>
+#include <polygondocumentcontroller.h>
+#include <polygonworkspacecontroller.h>
 
 namespace
 {
@@ -549,6 +551,42 @@ TEST(PolygonDesktopInfrastructure, RoundTripsUnicodeProblemAndRecovery)
   EXPECT_TRUE(gateway.inspectRecovery(name).present);
   EXPECT_TRUE(gateway.removeRecovery(name).success);
   EXPECT_FALSE(std::filesystem::exists(path));
+}
+
+/// Сохранение под новым именем не изменяет исходный файл и найденный чужой черновик.
+TEST(PolygonDesktopInfrastructure, SaveAsPreservesOriginalBytesAndForeignRecovery)
+{
+  const auto source = writeProblem();
+  const auto target = source.parent_path() / "aipackaging-r6-save-as.json";
+  const auto recovery = source.parent_path() / "aipackaging-r6-foreign.aipdraft.json";
+  const auto bytes = [](const std::filesystem::path & path)
+  {
+    std::ifstream stream(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(stream), {});
+  };
+  const auto original = bytes(source);
+  auto store = std::make_shared<PolygonArtifactStore>();
+  auto documents = std::make_shared<LocalPolygonDocumentGateway>(store);
+  auto editable = std::make_shared<LocalPolygonEditableDocumentGateway>(store);
+  const auto loaded = editable->load(source.string());
+  ASSERT_TRUE(loaded.success);
+  ASSERT_TRUE(
+    editable->saveDraft(recovery.string(), loaded.document, PolygonDocumentSource::ProblemFile, source.string(), 1, {}).success);
+  const auto foreignBytes = bytes(recovery);
+  auto active = std::make_shared<ActivePolygonDocument>();
+  auto workspace = std::make_shared<PolygonWorkspaceController>(nullptr, documents, nullptr, nullptr, active);
+  auto owner = std::make_shared<PolygonDocumentController>(editable, workspace, active, recovery.string());
+  owner->openDocument(source.string());
+  owner->editDocument({"Размер листа", {aipackaging::editor::SetSheetCommand{120.0, 80.0}}, std::nullopt});
+  owner->saveDocument(target.string(), false);
+  owner->saveDocument(workspace->snapshot().document.sourceIdentifier, false);
+  EXPECT_EQ(bytes(source), original);
+  EXPECT_EQ(bytes(recovery), foreignBytes);
+  EXPECT_NE(bytes(target), original);
+  EXPECT_FALSE(workspace->snapshot().documentDirty);
+  std::filesystem::remove(source);
+  std::filesystem::remove(target);
+  std::filesystem::remove(recovery);
 }
 
 /// Проверяет сохранение неполного документа как черновика и обнаружение изменившегося источника.

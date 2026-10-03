@@ -7,6 +7,13 @@ pybind11_add_module(_aipackaging_solver MODULE
   bindingsgrid.cpp
   bindingspolygon.cpp
 )
+add_custom_target(AIPackaging_NativeFingerprint
+  COMMAND "${Python_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/quality/native_fingerprint.py"
+    --header "${CMAKE_CURRENT_BINARY_DIR}/native_fingerprint.h"
+  BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/native_fingerprint.h"
+  VERBATIM)
+add_dependencies(_aipackaging_solver AIPackaging_NativeFingerprint)
+target_include_directories(_aipackaging_solver PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(_aipackaging_solver PRIVATE
   AIPackaging_Search AIPackaging_Json AIPackaging_Learning
 )

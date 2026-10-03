@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <aipackaging/editor/polygon_document_validation.h>
+#include <aipackaging/editor/polygon_draft_io.h>
 #include <aipackaging/editor/polygon_editor_commands.h>
 #include <polygon_artifact_store.h>
 #include <polygon_editable_document_gateway.h>
@@ -153,18 +154,27 @@ double percentile95(std::vector<double> values)
 }
 
 /// Измеряет текущий резидентный объём процесса в байтах, когда платформа его предоставляет.
-std::uint64_t residentBytes()
+std::uint64_t residentBytes(bool peak = false)
 {
 #ifdef _WIN32
   PROCESS_MEMORY_COUNTERS counters{};
   return GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters))
-         ? static_cast<std::uint64_t>(counters.WorkingSetSize)
+         ? static_cast<std::uint64_t>(peak ? counters.PeakWorkingSetSize : counters.WorkingSetSize)
          : 0;
 #else
-  std::ifstream input("/proc/self/statm");
-  std::uint64_t total = 0;
-  std::uint64_t resident = 0;
-  return input >> total >> resident ? resident * static_cast<std::uint64_t>(sysconf(_SC_PAGESIZE)) : 0;
+  std::ifstream input("/proc/self/status");
+  std::string key;
+  while (input >> key)
+  {
+    if (key == (peak ? "VmHWM:" : "VmRSS:"))
+    {
+      std::uint64_t kib = 0;
+      return input >> kib ? kib * 1024 : 0;
+    }
+    std::string rest;
+    std::getline(input, rest);
+  }
+  return 0;
 #endif
 }
 
@@ -213,9 +223,8 @@ std::vector<double> invalidValidationSamples(EditablePolygonDocument document)
 }
 
 /// Измеряет подтверждение, отмену и повтор небольшого изменения крупного документа.
-std::vector<double> historySamples(const EditablePolygonDocument & document)
+std::vector<double> historySamples(PolygonEditorSession & session)
 {
-  PolygonEditorSession session(document);
   const EntityId vertex = session.document().parts.front().outer->vertices.front().id;
   std::vector<double> samples;
   for (int index = 0; index < 200; ++index)
@@ -229,6 +238,19 @@ std::vector<double> historySamples(const EditablePolygonDocument & document)
   }
   return samples;
 }
+
+/// Сериализует документ с постоянными метаданными для побайтового сравнения отмены и повтора.
+std::string canonicalDocument(const EditablePolygonDocument & document)
+{
+  PolygonDraft draft;
+  draft.document = document;
+  draft.metadata.savedAtUtc = "2026-10-03T00:00:00Z";
+  std::string text;
+  std::string error;
+  if (!savePolygonDraftToText(draft, text, error))
+    throw std::runtime_error(error);
+  return text;
+}
 } // namespace
 
 /// Генерирует крупные документы, печатает измерения и возвращает ошибку при превышении ворот.
@@ -236,26 +258,64 @@ int main(int argc, char ** argv)
 {
   try
   {
-    const bool ci = argc > 1 && std::string(argv[1]) == "--ci";
+    bool ci = false;
+    std::size_t segmentCount = 1000;
+    for (int index = 1; index < argc; ++index)
+    {
+      const std::string argument(argv[index]);
+      if (argument == "--ci")
+        ci = true;
+      else if (argument == "--segments" && index + 1 < argc)
+        segmentCount = std::stoul(argv[++index]);
+      else
+        throw std::runtime_error("Неизвестный параметр измерения");
+    }
+    if (segmentCount != 500 && segmentCount != 1000)
+      throw std::runtime_error("Измерение поддерживает 500 или 1000 сегментов");
     const double multiplier = ci ? 4.0 : 1.0;
-    const EditablePolygonDocument medium = makeDocument(500, 20, "editor-500");
-    const EditablePolygonDocument large = makeDocument(1000, 40, "editor-1000");
+    const std::uint64_t initialMemory = residentBytes();
+    const EditablePolygonDocument large = makeDocument(segmentCount, segmentCount / 25, "editor-" + std::to_string(segmentCount));
     const auto store = std::make_shared<PolygonArtifactStore>();
     const std::vector<double> validation = validationSamples(large, store);
     const std::vector<double> invalidValidation = invalidValidationSamples(large);
-    const std::vector<double> history = historySamples(large);
+    for (int warmup = 0; warmup < 2; ++warmup)
+    {
+      PolygonEditorSession session(large);
+      static_cast<void>(historySamples(session));
+    }
+    PolygonEditorSession session(large);
+    const std::string original = canonicalDocument(session.document());
+    const std::vector<double> history = historySamples(session);
+    const std::string edited = canonicalDocument(session.document());
+    for (int index = 0; index < 200; ++index)
+      if (!session.undo().accepted)
+        throw std::runtime_error("Неполная отмена измерительной истории");
+    if (canonicalDocument(session.document()) != original)
+      throw std::runtime_error("Отмена изменила исходный документ");
+    for (int index = 0; index < 200; ++index)
+      if (!session.redo().accepted)
+        throw std::runtime_error("Неполный повтор измерительной истории");
+    if (canonicalDocument(session.document()) != edited)
+      throw std::runtime_error("Повтор не восстановил документ");
     const double validationMedian = median(validation);
     const double validationP95 = percentile95(validation);
     const double invalidValidationP95 = percentile95(invalidValidation);
     const double historyMedian = median(history);
     const double historyP95 = percentile95(history);
     const std::uint64_t memory = residentBytes();
-    std::cout << "{\"документы\":[\"" << medium.problemId << "\",\"" << large.problemId
-              << "\"],\"validationMedianMs\":" << validationMedian << ",\"validationP95Ms\":" << validationP95
-              << ",\"invalidValidationP95Ms\":" << invalidValidationP95 << ",\"historyMedianMs\":" << historyMedian
-              << ",\"historyP95Ms\":" << historyP95 << ",\"residentBytes\":" << memory << "}\n";
+    const std::uint64_t peakMemory = residentBytes(true);
+    if (!initialMemory || !memory || !peakMemory)
+    {
+      std::cerr << "Измерение памяти не проведено: платформа не предоставила значение\n";
+      return 2;
+    }
+    std::cout << "{\"документы\":[\"" << large.problemId << "\"],\"validationMedianMs\":" << validationMedian
+              << ",\"validationP95Ms\":" << validationP95 << ",\"invalidValidationP95Ms\":" << invalidValidationP95
+              << ",\"historyMedianMs\":" << historyMedian << ",\"historyP95Ms\":" << historyP95
+              << ",\"initialResidentBytes\":" << initialMemory << ",\"residentBytes\":" << memory
+              << ",\"peakResidentBytes\":" << peakMemory << "}\n";
     if (validationP95 > 3000.0 * multiplier || invalidValidationP95 > 3000.0 * multiplier || historyP95 > 250.0 * multiplier ||
-        (memory != 0 && memory > static_cast<std::uint64_t>(512.0 * 1024.0 * 1024.0 * multiplier)))
+        peakMemory > static_cast<std::uint64_t>(512.0 * 1024.0 * 1024.0 * multiplier))
       return 1;
     return 0;
   }

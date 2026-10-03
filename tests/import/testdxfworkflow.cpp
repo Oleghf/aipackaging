@@ -150,8 +150,12 @@ TEST(DxfImportWorkflow, CompilesImportedDocumentThroughExistingValidator)
   const auto documents = std::make_shared<LocalPolygonDocumentGateway>(store);
   const auto editable = std::make_shared<LocalPolygonEditableDocumentGateway>(store);
   LocalPolygonImportGateway gateway(editable, documents);
-  const auto path = writeDxf();
-  const PolygonImportInspection inspection = gateway.inspect({path.string()});
+  const auto original = writeDxf();
+  const auto path = original.parent_path() / std::filesystem::path(u8"деталь 漢字 с пробелом.dxf");
+  std::filesystem::rename(original, path);
+  const auto encoded = path.u8string();
+  const std::string source(encoded.begin(), encoded.end());
+  const PolygonImportInspection inspection = gateway.inspect({source});
   ASSERT_TRUE(inspection.success) << inspection.error;
   ASSERT_TRUE(inspection.session);
   ASSERT_EQ(inspection.paths.size(), 1U);
@@ -165,7 +169,7 @@ TEST(DxfImportWorkflow, CompilesImportedDocumentThroughExistingValidator)
   ASSERT_TRUE(result.success) << result.error;
   ASSERT_TRUE(result.document.compiled.has_value());
   EXPECT_EQ(result.document.source, PolygonDocumentSource::Imported);
-  EXPECT_EQ(result.document.sourceIdentifier, path.string());
+  EXPECT_EQ(result.document.sourceIdentifier, source);
   gateway.release(result);
   gateway.release(inspection.session);
   std::filesystem::remove(path);

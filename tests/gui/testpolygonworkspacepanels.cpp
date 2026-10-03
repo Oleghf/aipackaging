@@ -198,6 +198,14 @@ TEST(PolygonCanvasInteraction, CrossingRectangleChecksSegmentGeometry)
   const auto crossing = index.findInRectangle(QRectF(4, 4, 2, 2), true, {2});
   EXPECT_NE(std::find(crossing.begin(), crossing.end(), EntityId{8}), crossing.end());
   EXPECT_TRUE(index.findInRectangle(QRectF(4, 4, 2, 2), false, {2}).empty());
+
+  path.vertices.back().y = 0.0;
+  path.segments.front() = {{8}, EditableSegmentKind::CubicBezier, {}, {{12}, 0.0, 10.0}, {{13}, 10.0, 10.0}};
+  index.rebuild(document);
+  const auto outsideCurve = index.findInRectangle(QRectF(4, 2, 2, 2), true, {2});
+  EXPECT_EQ(std::find(outsideCurve.begin(), outsideCurve.end(), EntityId{8}), outsideCurve.end());
+  const auto insideCurve = index.findInRectangle(QRectF(4, 7, 2, 1), true, {2});
+  EXPECT_NE(std::find(insideCurve.begin(), insideCurve.end(), EntityId{8}), insideCurve.end());
 }
 
 /// Проверяет значения сетки по умолчанию и их сохранение в устойчивых ключах Qt.

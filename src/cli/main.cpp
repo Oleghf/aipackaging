@@ -6,8 +6,11 @@
 #include "../support/utf8path.h"
 #ifdef _WIN32
 #define NOMINMAX
-#include <shellapi.h>
+// Заголовок оболочки Windows требует типов, объявленных в windows.h.
+// clang-format off
 #include <windows.h>
+#include <shellapi.h>
+// clang-format on
 #endif
 
 #include <cli_boundary.h>
@@ -30,7 +33,7 @@ int main(int argc, char ** argv)
       int count = 0;
       const auto release = [](wchar_t ** value) noexcept
       {
-        LocalFree(value);
+        LocalFree(static_cast<void *>(value));
       };
       std::unique_ptr<wchar_t *, decltype(release)> wide(CommandLineToArgvW(GetCommandLineW(), &count), release);
       if (!wide)
@@ -40,6 +43,7 @@ int main(int argc, char ** argv)
       for (int index = 0; index < count; ++index)
         encoded.push_back(aipackaging::files::utf8Path(std::filesystem::path(wide.get()[index])));
       std::vector<char *> values;
+      values.reserve(encoded.size());
       for (auto & value : encoded)
         values.push_back(value.data());
       (void)arguments;
