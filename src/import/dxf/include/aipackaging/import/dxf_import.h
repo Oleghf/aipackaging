@@ -43,6 +43,7 @@ struct Diagnostic
   std::string layer;
   std::string entityType;
   std::string message;
+  bool unsupportedEntity = false;
 };
 
 /// Содержит краткие сведения об одном слое с геометрическими сущностями.

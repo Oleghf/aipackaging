@@ -98,6 +98,47 @@ TEST(DxfImport, RejectsBinaryAndTruncatedInput)
   EXPECT_FALSE(aipackaging::dxf::inspectAsciiDxf("0\nSECTION\n2\n").parsed);
 }
 
+/// Не принимает завершённые пары с незавершённой структурой секций или данными после конца файла.
+TEST(DxfImport, RejectsIncompleteSectionStructure)
+{
+  EXPECT_FALSE(aipackaging::dxf::inspectAsciiDxf("0\nSECTION\n2\nENTITIES\n" + squareEntities()).parsed);
+  EXPECT_FALSE(aipackaging::dxf::inspectAsciiDxf("0\nSECTION\n2\nENTITIES\n" + squareEntities() + "0\nEOF\n").parsed);
+  EXPECT_FALSE(aipackaging::dxf::inspectAsciiDxf(dxf(squareEntities()) + "0\nLINE\n").parsed);
+}
+
+/// Ошибка любой вершины, кривизны или счётчика не должна превращать полилинию в другую фигуру.
+TEST(DxfImport, RejectsWholeMalformedPolyline)
+{
+  for (const auto & fields : {"90\n4\n70\n1\n10\n0\n20\n0\n10\n10\n20\n0\n10\nbroken\n20\n10\n10\n0\n20\n10\n",
+                              "90\n2\n10\n0\n20\n0\n42\nbroken\n10\n10\n20\n10\n", "90\n3\n10\n0\n20\n0\n10\n10\n20\n10\n",
+                              "90\n2\n70\nbroken\n10\n0\n20\n0\n10\n10\n20\n10\n"})
+  {
+    const auto result = aipackaging::dxf::inspectAsciiDxf(dxf(std::string("0\nLWPOLYLINE\n") + fields));
+    EXPECT_TRUE(result.paths.empty());
+    EXPECT_TRUE(std::any_of(result.diagnostics.begin(), result.diagnostics.end(),
+                            [](const auto & item) { return item.severity == aipackaging::dxf::DiagnosticSeverity::Error; }));
+  }
+}
+
+/// Не проецирует наклонные и отрицательные нормали молча в плоскость XY.
+TEST(DxfImport, RejectsNonDefaultExtrusion)
+{
+  for (const auto & normal : {"210\n1\n220\n0\n230\n0\n", "230\n-1\n"})
+  {
+    const std::string entity = std::string("0\nCIRCLE\n10\n0\n20\n0\n40\n10\n") + normal;
+    const auto result = aipackaging::dxf::inspectAsciiDxf(dxf(entity));
+    EXPECT_TRUE(result.paths.empty());
+    EXPECT_FALSE(result.diagnostics.empty());
+    aipackaging::dxf::ImportOptions options;
+    options.problemId = "normal-test";
+    options.sheetWidth = 100;
+    options.sheetHeight = 100;
+    EXPECT_FALSE(aipackaging::dxf::importAsciiDxf(dxf(squareEntities() + entity), options).built);
+    options.ignoreUnsupportedOnSelectedLayers = true;
+    EXPECT_TRUE(aipackaging::dxf::importAsciiDxf(dxf(squareEntities() + entity), options).built);
+  }
+}
+
 /// Проверяет блокировку неподдерживаемой сущности выбранного слоя без подтверждения.
 TEST(DxfImport, RequiresUnsupportedEntityConfirmation)
 {

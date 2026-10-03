@@ -236,11 +236,14 @@ ParsedDxf parseDxf(std::string_view contents)
     return result;
 
   std::string section;
+  bool ended = false;
+  std::set<std::string> sections;
   for (std::size_t index = 0; index < pairs.size();)
   {
     if (pairs[index].code == 0 && pairs[index].value == "SECTION")
     {
-      if (index + 1 >= pairs.size() || pairs[index + 1].code != 2)
+      if (!section.empty() || index + 1 >= pairs.size() || pairs[index + 1].code != 2 || pairs[index + 1].value.empty() ||
+          !sections.insert(pairs[index + 1].value).second)
       {
         result.diagnostics.push_back({DiagnosticSeverity::Error, pairs[index].line, {}, {}, "раздел DXF не содержит имени"});
         return result;
@@ -251,12 +254,30 @@ ParsedDxf parseDxf(std::string_view contents)
     }
     if (pairs[index].code == 0 && pairs[index].value == "ENDSEC")
     {
+      if (section.empty())
+      {
+        result.diagnostics.push_back({DiagnosticSeverity::Error, pairs[index].line, {}, {}, "ENDSEC вне раздела DXF"});
+        return result;
+      }
       section.clear();
       ++index;
       continue;
     }
     if (pairs[index].code == 0 && pairs[index].value == "EOF")
+    {
+      if (!section.empty() || index + 1 != pairs.size())
+      {
+        result.diagnostics.push_back({DiagnosticSeverity::Error, pairs[index].line, {}, {}, "неверное завершение DXF"});
+        return result;
+      }
+      ended = true;
       break;
+    }
+    if (section.empty())
+    {
+      result.diagnostics.push_back({DiagnosticSeverity::Error, pairs[index].line, {}, {}, "данные DXF вне раздела"});
+      return result;
+    }
 
     if (section == "HEADER" && pairs[index].code == 9)
     {
@@ -289,6 +310,12 @@ ParsedDxf parseDxf(std::string_view contents)
     ++index;
   }
 
+  if (!ended || !section.empty())
+  {
+    result.diagnostics.push_back(
+      {DiagnosticSeverity::Error, pairs.empty() ? 0 : pairs.back().line, {}, {}, "DXF не завершён ENDSEC и EOF"});
+    return result;
+  }
   if (result.entities.empty())
   {
     result.diagnostics.push_back({DiagnosticSeverity::Error, 0, {}, {}, "раздел ENTITIES отсутствует или пуст"});
@@ -327,9 +354,44 @@ bool requireDouble(const Record & record, int code, double & value, std::vector<
   return true;
 }
 
+/// Проверяет числовые поля до преобразования, чтобы повреждение не превращалось в значение по умолчанию.
+bool numericFieldsValid(const Record & record, std::vector<Diagnostic> & diagnostics)
+{
+  for (const auto & item : record.fields)
+  {
+    double real = 0.0;
+    int integer = 0;
+    const bool invalid = ((item.code >= 10 && item.code <= 59) || (item.code >= 210 && item.code <= 239))
+                         ? !parseDouble(item.value, real)
+                         : ((item.code >= 70 && item.code <= 99) && !parseInteger(item.value, integer));
+    if (invalid)
+    {
+      diagnostics.push_back({DiagnosticSeverity::Error, item.line, layerOf(record), record.type,
+                             "неверное числовое поле DXF: " + std::to_string(item.code)});
+      return false;
+    }
+  }
+  return true;
+}
+
 /// Проверяет плоскостность сущности по указанным кодам координаты Z.
 bool planar(const Record & record, std::initializer_list<int> codes, std::vector<Diagnostic> & diagnostics)
 {
+  for (const int code : {210, 220, 230})
+  {
+    if (const auto * source = field(record, code))
+    {
+      double component = 0.0;
+      if (!requireDouble(record, code, component, diagnostics, "направления нормали"))
+        return false;
+      if (component != (code == 230 ? 1.0 : 0.0))
+      {
+        diagnostics.push_back({DiagnosticSeverity::Warning, source->line, layerOf(record), record.type,
+                               "нестандартное направление нормали DXF не поддерживается", true});
+        return false;
+      }
+    }
+  }
   for (int code : codes)
   {
     for (const Pair & item : record.fields)
@@ -337,10 +399,15 @@ bool planar(const Record & record, std::initializer_list<int> codes, std::vector
       if (item.code != code)
         continue;
       double z = 0.0;
-      if (!parseDouble(item.value, z) || std::abs(z) > POINT_EPSILON)
+      if (!parseDouble(item.value, z))
+      {
+        diagnostics.push_back({DiagnosticSeverity::Error, item.line, layerOf(record), record.type, "некорректная координата Z"});
+        return false;
+      }
+      if (std::abs(z) > POINT_EPSILON)
       {
         diagnostics.push_back(
-          {DiagnosticSeverity::Warning, item.line, layerOf(record), record.type, "трёхмерная геометрия не поддерживается"});
+          {DiagnosticSeverity::Warning, item.line, layerOf(record), record.type, "трёхмерная геометрия не поддерживается", true});
         return false;
       }
     }
@@ -462,7 +529,11 @@ void convertLightPolyline(const Record & record, double factor, std::size_t orde
       continue;
     double x = 0.0;
     if (!parseDouble(record.fields[index].value, x))
-      continue;
+    {
+      diagnostics.push_back({DiagnosticSeverity::Error, record.fields[index].line, layerOf(record), record.type,
+                             "некорректная координата X вершины"});
+      return;
+    }
     double y = 0.0;
     double bulge = 0.0;
     bool hasY = false;
@@ -471,7 +542,14 @@ void convertLightPolyline(const Record & record, double factor, std::size_t orde
       if (record.fields[cursor].code == 20)
         hasY = parseDouble(record.fields[cursor].value, y);
       else if (record.fields[cursor].code == 42)
-        parseDouble(record.fields[cursor].value, bulge);
+      {
+        if (!parseDouble(record.fields[cursor].value, bulge))
+        {
+          diagnostics.push_back({DiagnosticSeverity::Error, record.fields[cursor].line, layerOf(record), record.type,
+                                 "некорректный bulge полилинии"});
+          return;
+        }
+      }
     }
     Point point;
     if (!hasY || !scaledPoint(x, y, factor, point, record, diagnostics))
@@ -484,8 +562,16 @@ void convertLightPolyline(const Record & record, double factor, std::size_t orde
     bulges.push_back(bulge);
   }
   int flags = 0;
-  if (const Pair * source = field(record, 70))
-    parseInteger(source->value, flags);
+  int count = 0;
+  const Pair * countField = field(record, 90);
+  const Pair * flagsField = field(record, 70);
+  if (!countField || !parseInteger(countField->value, count) || count < 0 || static_cast<std::size_t>(count) != points.size() ||
+      (flagsField && (!parseInteger(flagsField->value, flags) || flags < 0 || (flags & ~129) != 0)))
+  {
+    diagnostics.push_back(
+      {DiagnosticSeverity::Error, record.line, layerOf(record), record.type, "неверные флаги или число вершин полилинии"});
+    return;
+  }
   if (points.size() < 2)
   {
     diagnostics.push_back(
@@ -503,10 +589,12 @@ std::size_t convertPolyline(const std::vector<Record> & records, std::size_t ind
   int flags = 0;
   if (const Pair * source = field(header, 70))
     parseInteger(source->value, flags);
+  bool valid = numericFieldsValid(header, diagnostics);
   if ((flags & (8 | 16 | 64)) != 0 || !planar(header, {30}, diagnostics))
   {
-    diagnostics.push_back(
-      {DiagnosticSeverity::Warning, header.line, layerOf(header), header.type, "поддерживаются только двумерные полилинии"});
+    valid = false;
+    diagnostics.push_back({DiagnosticSeverity::Warning, header.line, layerOf(header), header.type,
+                           "поддерживаются только двумерные полилинии", true});
   }
   std::vector<Point> points;
   std::vector<double> bulges;
@@ -516,14 +604,23 @@ std::size_t convertPolyline(const std::vector<Record> & records, std::size_t ind
     if (records[cursor].type != "VERTEX")
       break;
     const Record & vertex = records[cursor];
-    if (!planar(vertex, {30}, diagnostics))
+    if (!numericFieldsValid(vertex, diagnostics) || !planar(vertex, {30}, diagnostics))
+    {
+      valid = false;
       continue;
+    }
     double x = 0.0, y = 0.0;
     if (!requireDouble(vertex, 10, x, diagnostics, "X вершины") || !requireDouble(vertex, 20, y, diagnostics, "Y вершины"))
+    {
+      valid = false;
       continue;
+    }
     Point point;
     if (!scaledPoint(x, y, factor, point, vertex, diagnostics))
+    {
+      valid = false;
       continue;
+    }
     double bulge = 0.0;
     if (const Pair * source = field(vertex, 42))
       parseDouble(source->value, bulge);
@@ -536,7 +633,8 @@ std::size_t convertPolyline(const std::vector<Record> & records, std::size_t ind
       {DiagnosticSeverity::Error, header.line, layerOf(header), header.type, "POLYLINE не завершена записью SEQEND"});
     return cursor == 0 ? index : cursor - 1;
   }
-  appendPolyline(points, bulges, (flags & 1) != 0, layerOf(header), index, header.line, segments);
+  if (valid)
+    appendPolyline(points, bulges, (flags & 1) != 0, layerOf(header), index, header.line, segments);
   return cursor;
 }
 
@@ -676,7 +774,7 @@ void convertSpline(const Record & record, double factor, std::size_t order, std:
   if (degree != 3 || (flags & (1 | 2 | 4 | 8)) != 0 || !planar(record, {30}, diagnostics))
   {
     diagnostics.push_back({DiagnosticSeverity::Warning, record.line, layerOf(record), record.type,
-                           "поддерживаются только плоские нерациональные непериодические SPLINE степени 3"});
+                           "поддерживаются только плоские нерациональные непериодические SPLINE степени 3", true});
     return;
   }
   std::vector<double> knots;
@@ -719,7 +817,7 @@ void convertSpline(const Record & record, double factor, std::size_t order, std:
   if (!weights.empty() && std::any_of(weights.begin(), weights.end(), [](double value) { return value != 1.0; }))
   {
     diagnostics.push_back(
-      {DiagnosticSeverity::Warning, record.line, layerOf(record), record.type, "рациональный SPLINE не поддерживается"});
+      {DiagnosticSeverity::Warning, record.line, layerOf(record), record.type, "рациональный SPLINE не поддерживается", true});
     return;
   }
   if (controls.size() < 4 || knots.size() != controls.size() + 4 || !std::is_sorted(knots.begin(), knots.end()))
@@ -733,7 +831,7 @@ void convertSpline(const Record & record, double factor, std::size_t order, std:
         knots[knots.size() - 3] == knots[knots.size() - 4]))
   {
     diagnostics.push_back({DiagnosticSeverity::Warning, record.line, layerOf(record), record.type,
-                           "поддерживается только зажатый кубический SPLINE"});
+                           "поддерживается только зажатый кубический SPLINE", true});
     return;
   }
 
@@ -967,9 +1065,13 @@ Geometry buildGeometry(const ParsedDxf & parsed, LengthUnit unit, double joinTol
     {
       ++layer.unsupportedEntities;
       result.diagnostics.push_back({DiagnosticSeverity::Warning, record.line, layer.name, record.type,
-                                    "сущность DXF не поддерживается и не была интерпретирована"});
+                                    "сущность DXF не поддерживается и не была интерпретирована", true});
       continue;
     }
+    if (!numericFieldsValid(record, result.diagnostics))
+      continue;
+    const auto diagnosticStart = result.diagnostics.size();
+    const auto segmentStart = segments.size();
     ++layer.supportedEntities;
     if (record.type == "LINE")
       convertLine(record, factor, index, segments, result.diagnostics);
@@ -983,6 +1085,16 @@ Geometry buildGeometry(const ParsedDxf & parsed, LengthUnit unit, double joinTol
       convertCircle(record, factor, index, segments, result.diagnostics);
     else if (record.type == "SPLINE")
       convertSpline(record, factor, index, segments, result.diagnostics);
+    const auto begin = result.diagnostics.begin() + static_cast<std::ptrdiff_t>(diagnosticStart);
+    if (std::any_of(begin, result.diagnostics.end(), [](const Diagnostic & item) { return item.unsupportedEntity; }))
+    {
+      --layer.supportedEntities;
+      ++layer.unsupportedEntities;
+      segments.resize(segmentStart);
+    }
+    else if (std::any_of(begin, result.diagnostics.end(),
+                         [](const Diagnostic & item) { return item.severity == DiagnosticSeverity::Error; }))
+      segments.resize(segmentStart);
   }
   if (segments.empty())
   {
@@ -1353,8 +1465,7 @@ ImportResult importAsciiDxf(std::string_view contents, const ImportOptions & opt
   bool unsupportedSelected = false;
   for (const Diagnostic & diagnostic : result.diagnostics)
   {
-    if (diagnostic.message.find("не поддерживается") != std::string::npos &&
-        layerSelected(options.selectedLayers, diagnostic.layer))
+    if (diagnostic.unsupportedEntity && layerSelected(options.selectedLayers, diagnostic.layer))
       unsupportedSelected = true;
   }
   if (unsupportedSelected && !options.ignoreUnsupportedOnSelectedLayers)
