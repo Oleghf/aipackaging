@@ -81,10 +81,58 @@ def committed_state(
     return budget.checkpoint_state(result) if budget is not None else result
 
 
+def _validate_history(history: list[Mapping[str, Any]], stage: str, step: int) -> None:
+    """Проверяет записи и последовательность границ, сохраняя допустимый переход BC → PPO."""
+    counts = {"bc": 0, "ppo": 0}
+    for record in history:
+        kind = record.get("stage")
+        if kind not in counts or (kind == "bc" and counts["ppo"]) or (kind == "ppo" and stage == "bc"):
+            raise ValueError("история содержит неверный порядок этапов")
+        required = {"stage", "epoch", "samples", "trainingLoss", "validationNll"} if kind == "bc" else {
+            "stage", "update", "transitions", "loss", "entropyCoefficient"}
+        allowed = required if kind == "bc" else required | {"optimizerSteps", "validation"}
+        if not required <= record.keys() or not record.keys() <= allowed:
+            raise ValueError("история содержит неизвестные или пропущенные поля")
+        index_key = "epoch" if kind == "bc" else "update"
+        count_key = "samples" if kind == "bc" else "transitions"
+        integer_keys = [index_key, count_key]
+        if "optimizerSteps" in record:
+            integer_keys.append("optimizerSteps")
+        for key in integer_keys:
+            value = record[key]
+            if type(value) is not int or value < 0:
+                raise ValueError("история содержит некорректный счётчик")
+        if record[index_key] != counts[kind] + 1:
+            raise ValueError("история содержит пропущенные или повторные границы")
+        for key in ("trainingLoss", "validationNll") if kind == "bc" else ("loss", "entropyCoefficient"):
+            value = record[key]
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError("история содержит неконечную метрику")
+        if "validation" in record:
+            validation = record["validation"]
+            if not isinstance(validation, Mapping) or not validation or any(
+                isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+                for value in validation.values()
+            ):
+                raise ValueError("история содержит неверный проверочный результат")
+            grid_fields = {"solved", "tasks", "meanUsedLength", "meanLargestExtraRectangleArea", "meanFragmentationPenalty"}
+            polygon_fields = {"solved", "tasks", "winsVsRandom", "meanUsedLengthMicrometers"}
+            if set(validation) not in (grid_fields, polygon_fields):
+                raise ValueError("история не содержит обязательные проверочные метрики")
+            for key in {"solved", "tasks", "winsVsRandom"} & validation.keys():
+                if type(validation[key]) is not int or validation[key] < 0:
+                    raise ValueError("история содержит неверный проверочный счётчик")
+            if validation["solved"] > validation["tasks"]:
+                raise ValueError("число решённых задач превышает число проверенных")
+        counts[kind] += 1
+    if counts[stage] != step:
+        raise ValueError("история не соответствует подтверждённой границе")
+
+
 def restore_committed_state(payload: Mapping[str, Any], stage: str) -> tuple[int, list[dict[str, Any]], dict[str, Any]]:
     """Возвращает только строго подтверждённую границу и полную историю этапа."""
 
-    if payload.get("stage") != stage:
+    if stage not in {"bc", "ppo"} or payload.get("stage") != stage:
         raise ValueError(f"для продолжения {stage.upper()} требуется контрольная точка этапа {stage.upper()}")
     step = payload.get("step")
     state = payload.get("trainingState")
@@ -94,6 +142,7 @@ def restore_committed_state(payload: Mapping[str, Any], stage: str) -> tuple[int
         or not isinstance(step, int)
         or step < 0
         or not isinstance(state, Mapping)
+        or type(state.get(key)) is not int
         or state.get(key) != step
         or not isinstance(state.get("history"), list)
         or any(not isinstance(item, Mapping) for item in state["history"])
@@ -103,6 +152,7 @@ def restore_committed_state(payload: Mapping[str, Any], stage: str) -> tuple[int
             f"контрольная точка {stage.upper()} не подтверждает {boundary}; продолжение небезопасно"
         )
     history = [dict(item) for item in state["history"]]
+    _validate_history(history, stage, step)
     return step, history, dict(state)
 
 

@@ -30,7 +30,7 @@ from .polygon_training_data import PolygonExpertEpisode, load_polygon_baseline_s
 from .rl import compute_gae
 from .rollout import MultiprocessRolloutPool
 from .training import configure_determinism
-from .training_checkpoint import CheckpointContract, load_training_checkpoint, save_training_checkpoint
+from .training_checkpoint import CheckpointContract, load_training_checkpoint, read_training_checkpoint, save_training_checkpoint
 from .training_runtime import TrainingBudget, committed_state, resume_elapsed_seconds, restore_committed_state, write_metrics_history
 
 
@@ -565,12 +565,8 @@ def train_polygon_pipeline(config_path: str | Path, dataset_root: str | Path, ru
     device = torch.device(device_name)
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("полигональное обучение требует доступного устройства CUDA")
-    configure_determinism(config["seed"])
     invocation_started = time.monotonic()
-    output = Path(run_dir); output.mkdir(parents=True, exist_ok=True)
-    model = HierarchicalPolygonPolicyV1(config["model"]["hiddenSize"]).to(device)
-    resume_payload = load_polygon_checkpoint(resume, model, device, expected_config=config) if resume is not None else None
-    write_canonical_json(output / "training-config.json", config)
+    resume_payload = read_training_checkpoint(resume, _POLYGON_CHECKPOINT, device, expected_config=config) if resume is not None else None
     limit_seconds = float(config["ppo"]["maxWallTimeSeconds"])
     elapsed_before = _resume_elapsed_seconds(resume_payload, limit_seconds) if resume_payload is not None else 0.0
     budget = PolygonTrainingBudget(limit_seconds, elapsed_before, invocation_started)
@@ -578,6 +574,10 @@ def train_polygon_pipeline(config_path: str | Path, dataset_root: str | Path, ru
     train = load_polygon_expert_episodes(dataset_root, "train", expected_manifest_sha256=config["datasetManifestSha256"])
     validation = load_polygon_expert_episodes(dataset_root, "validation", expected_manifest_sha256=config["datasetManifestSha256"])
     baselines = load_polygon_baseline_solutions(dataset_root, "validation", expected_manifest_sha256=config["datasetManifestSha256"])
+    configure_determinism(config["seed"])
+    model = HierarchicalPolygonPolicyV1(config["model"]["hiddenSize"]).to(device)
+    output = Path(run_dir); output.mkdir(parents=True, exist_ok=True)
+    write_canonical_json(output / "training-config.json", config)
     if smoke:
         train = train[:1]; validation = validation[:1]
         baselines = {validation[0].problem["problemId"]: baselines[validation[0].problem["problemId"]]}

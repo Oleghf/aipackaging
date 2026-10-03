@@ -11,6 +11,7 @@ import numpy as np
 import torch
 
 from .datasets.serialization import sha256_file
+from .training_runtime import restore_committed_state, resume_elapsed_seconds
 
 
 @dataclass(frozen=True)
@@ -110,19 +111,15 @@ def _expected_digest(path: Path, expected_sha256: str | None) -> str | None:
     return normalized
 
 
-def load_training_checkpoint(
+def read_training_checkpoint(
     path: str | Path,
     contract: CheckpointContract,
-    model: torch.nn.Module,
     device: torch.device,
     *,
-    optimizer: torch.optim.Optimizer | None = None,
-    scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
-    restore_rng: bool = False,
     expected_sha256: str | None = None,
     expected_config: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Полностью проверяет оболочку до публикации её состояния в вызывающие объекты."""
+    """Читает и проверяет оболочку, не изменяя модель, генераторы или файлы запуска."""
 
     source = Path(path)
     if contract.write_sha256_sidecar and expected_sha256 is None:
@@ -159,6 +156,28 @@ def load_training_checkpoint(
         raise ValueError("контрольная точка содержит некорректный этап обучения")
     if expected_config is not None and payload.get("config") != dict(expected_config):
         raise ValueError("конфигурация контрольной точки не совпадает с запрошенным продолжением")
+    if expected_config is not None:
+        restore_committed_state(payload, payload["stage"])
+        if "elapsedTrainingSeconds" in payload["trainingState"] and "ppo" in expected_config:
+            resume_elapsed_seconds(payload, float(expected_config["ppo"]["maxWallTimeSeconds"]))
+    return dict(payload)
+
+
+def load_training_checkpoint(
+    path: str | Path,
+    contract: CheckpointContract,
+    model: torch.nn.Module,
+    device: torch.device,
+    *,
+    optimizer: torch.optim.Optimizer | None = None,
+    scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
+    restore_rng: bool = False,
+    expected_sha256: str | None = None,
+    expected_config: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Проверяет оболочку и историю продолжения до публикации состояний вычислений."""
+    payload = read_training_checkpoint(path, contract, device, expected_sha256=expected_sha256,
+                                       expected_config=expected_config)
 
     model.load_state_dict(payload["modelState"])
     if optimizer is not None:

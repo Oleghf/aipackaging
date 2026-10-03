@@ -351,7 +351,10 @@ def test_polygon_ppo_resume_restores_complete_history(tmp_path: Path) -> None:
                                      "valueCoefficient": 0.5, "maxGradientNorm": 0.5}}
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.0)
-    history = [{"stage": "bc", "epoch": 1}, {"stage": "ppo", "update": 1}]
+    history = [
+        {"stage": "bc", "epoch": 1, "samples": 1, "trainingLoss": 1.0, "validationNll": 1.0},
+        {"stage": "ppo", "update": 1, "transitions": 1, "loss": 1.0, "entropyCoefficient": 0.01},
+    ]
     checkpoint = tmp_path / "resume-source.pt"
     polygon_training.save_polygon_checkpoint(
         checkpoint, model, optimizer, scheduler, stage="ppo", step=1, config=config,

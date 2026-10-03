@@ -19,7 +19,7 @@ from .model import HierarchicalGridPolicyV1
 from .policy import PolicyRunner, encode_observation, evaluate_action, select_action
 from .rl import PpoTransition, compute_gae
 from .rollout import MultiprocessRolloutPool
-from .training_checkpoint import CheckpointContract, load_training_checkpoint, save_training_checkpoint
+from .training_checkpoint import CheckpointContract, load_training_checkpoint, read_training_checkpoint, save_training_checkpoint
 from .training_data import ExpertEpisode, load_expert_episodes, replay_expert_steps
 from .training_runtime import TrainingBudget, committed_state, restore_committed_state, resume_elapsed_seconds, write_metrics_history
 
@@ -646,11 +646,9 @@ def train_pipeline(
     device = torch.device(device_name)
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("каноническое обучение M3 требует доступного устройства CUDA")
-    configure_determinism(config["seed"])
     invocation_started = time.monotonic()
-    model = HierarchicalGridPolicyV1(config["model"]["hiddenSize"]).to(device)
     resume_payload = (
-        load_checkpoint(resume, model, device, expected_config=config) if resume is not None else None
+        read_training_checkpoint(resume, _GRID_CHECKPOINT, device, expected_config=config) if resume is not None else None
     )
     if resume_payload is not None:
         restore_committed_state(resume_payload, str(resume_payload["stage"]))
@@ -660,6 +658,8 @@ def train_pipeline(
     deadline = budget.deadline
     train_episodes = load_expert_episodes(dataset_root, "train", expected_manifest_sha256=config["datasetManifestSha256"])
     validation_episodes = load_expert_episodes(dataset_root, "validation", expected_manifest_sha256=config["datasetManifestSha256"])
+    configure_determinism(config["seed"])
+    model = HierarchicalGridPolicyV1(config["model"]["hiddenSize"]).to(device)
     if smoke:
         train_episodes = train_episodes[:2]
         validation_episodes = validation_episodes[:2]

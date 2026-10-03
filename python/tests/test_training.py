@@ -115,6 +115,38 @@ def test_grid_checkpoint_rejects_config_before_model_change(tmp_path: Path) -> N
     assert all(torch.equal(value, before[name]) for name, value in target.state_dict().items())
 
 
+@pytest.mark.parametrize("stage,step,marker,history", [
+    ("bc", 5, 5, []),
+    ("ppo", 1, True, [{"unrelated": 7}]),
+    ("bc", 1, 1, [{"stage": "bc", "epoch": 1, "samples": 1, "trainingLoss": float("nan"), "validationNll": 1.0}]),
+    ("bc", 1, 1, [{"stage": "bc", "epoch": 2, "samples": 1, "trainingLoss": 1.0, "validationNll": 1.0}]),
+])
+def test_rejects_corrupt_committed_history(stage, step, marker, history) -> None:
+    """Повреждённая история не подтверждает безопасное продолжение этапа."""
+    from aipackaging_ml.training_runtime import restore_committed_state
+    key = "bcCommittedEpoch" if stage == "bc" else "ppoCommittedUpdate"
+    with pytest.raises(ValueError):
+        restore_committed_state({"stage": stage, "step": step, "trainingState": {key: marker, "history": history}}, stage)
+
+
+def test_resume_history_rejection_preserves_model_and_rng(tmp_path: Path) -> None:
+    """Отказ истории происходит до загрузки весов и восстановления генератора."""
+    from aipackaging_ml.training import load_checkpoint, save_checkpoint
+    source = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.AdamW(source.parameters())
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.0)
+    path = tmp_path / "corrupt.pt"
+    save_checkpoint(path, source, optimizer, scheduler, stage="bc", step=5, config={"seed": 42},
+                    training_state={"bcCommittedEpoch": 5, "history": []})
+    target = torch.nn.Linear(1, 1)
+    before = {name: value.clone() for name, value in target.state_dict().items()}
+    rng = torch.get_rng_state().clone()
+    with pytest.raises(ValueError):
+        load_checkpoint(path, target, torch.device("cpu"), restore_rng=True, expected_config={"seed": 42})
+    assert torch.equal(torch.get_rng_state(), rng)
+    assert all(torch.equal(value, before[name]) for name, value in target.state_dict().items())
+
+
 def test_grid_bc_resume_matches_continuous_epochs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
