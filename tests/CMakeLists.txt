@@ -174,7 +174,8 @@ endif()
 if (BUILD_DESKTOP)
   add_executable(AIPackaging_GuiAcceptanceTests
     "gui/acceptance/main.cpp" "gui/acceptance/support.cpp"
-    "gui/acceptance/scenarios.cpp" "gui/acceptance/performance.cpp")
+    "gui/acceptance/scenarios.cpp" "gui/acceptance/performance.cpp"
+    "gui/acceptance/extended.cpp" "gui/acceptance/background.cpp")
   target_link_libraries(AIPackaging_GuiAcceptanceTests PRIVATE
     gtest AIPackaging_GUI AIPackaging_Application AIPackaging_DesktopInfrastructure AIPackaging_EditorPersistence)
   target_compile_definitions(AIPackaging_GuiAcceptanceTests PRIVATE

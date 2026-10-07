@@ -192,31 +192,41 @@ QByteArray bytes(const QString & path)
   return file.readAll();
 }
 /// Создаёт реальные шлюзы и фоновые исполнители с временем жизни корня композиции.
-Desktop::Desktop(QString directory)
+Desktop::Desktop(QString directory, const DesktopHooks & hooks)
   : root(std::move(directory))
 {
   auto output = std::shared_ptr<IPolygonWorkspaceOutput>(&window, [](IPolygonWorkspaceOutput *) {});
   auto importOutput = std::shared_ptr<IPolygonImportOutput>(&window, [](IPolygonImportOutput *) {});
   auto store = std::make_shared<PolygonArtifactStore>();
   auto documents = std::make_shared<LocalPolygonDocumentGateway>(store);
-  auto editable = std::make_shared<LocalPolygonEditableDocumentGateway>(store);
+  std::shared_ptr<IPolygonEditableDocumentGateway> editable = std::make_shared<LocalPolygonEditableDocumentGateway>(store);
+  if (hooks.editable)
+    editable = hooks.editable(editable);
   auto dispatcher = std::make_shared<QtApplicationDispatcher>(&window);
   auto baseline = std::make_shared<BaselinePolygonBackend>(store);
   std::shared_ptr<IPolygonModelJobRunner> models;
 #ifdef AIPACKAGING_HAS_ONNX_BACKEND
-  models = std::make_shared<StdThreadPolygonModelJobRunner>(std::make_shared<LocalPolygonModelGateway>(store), dispatcher);
-  auto backend = std::make_shared<PolygonBackendRouter>(baseline, std::make_shared<OnnxPolygonBackend>(store));
+  std::shared_ptr<IPolygonModelGateway> modelGateway = std::make_shared<LocalPolygonModelGateway>(store);
+  if (hooks.models)
+    modelGateway = hooks.models(modelGateway);
+  models = std::make_shared<StdThreadPolygonModelJobRunner>(modelGateway, dispatcher);
+  std::shared_ptr<IPolygonNestingBackend> backend =
+    std::make_shared<PolygonBackendRouter>(baseline, std::make_shared<OnnxPolygonBackend>(store));
 #else
-  auto backend = std::make_shared<PolygonBackendRouter>(baseline);
+  std::shared_ptr<IPolygonNestingBackend> backend = std::make_shared<PolygonBackendRouter>(baseline);
 #endif
+  if (hooks.backend)
+    backend = hooks.backend(backend);
   auto jobs = std::make_shared<StdThreadNestingJobRunner>(backend, dispatcher, documents);
   auto active = std::make_shared<ActivePolygonDocument>();
   workspace = std::make_shared<PolygonWorkspaceController>(output, documents, jobs, models, active);
   drafts = std::make_shared<StdThreadPolygonDraftJobRunner>(editable, dispatcher);
   document = std::make_shared<PolygonDocumentController>(editable, workspace, active,
                                                          (root + "/active.aipdraft.json").toStdString(), drafts);
-  auto imports = std::make_shared<StdThreadPolygonImportJobRunner>(
-    std::make_shared<LocalPolygonImportGateway>(editable, documents), dispatcher);
+  std::shared_ptr<IPolygonImportGateway> importGateway = std::make_shared<LocalPolygonImportGateway>(editable, documents);
+  if (hooks.imports)
+    importGateway = hooks.imports(importGateway);
+  auto imports = std::make_shared<StdThreadPolygonImportJobRunner>(importGateway, dispatcher);
   importer = std::make_shared<PolygonImportController>(importOutput, imports, document);
   auto actions = workspace->actions();
   document->bindActions(actions);

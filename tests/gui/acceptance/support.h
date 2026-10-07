@@ -41,6 +41,14 @@ T * widget(QObject & root, const char * name)
     throw std::runtime_error(std::string("Не найден тестовый элемент: ") + name);
   return result;
 }
+/// Оборачивает только внешние операции для управляемых барьеров и отказов в приёмке.
+struct DesktopHooks
+{
+  std::function<std::shared_ptr<IPolygonNestingBackend>(std::shared_ptr<IPolygonNestingBackend>)> backend;
+  std::function<std::shared_ptr<IPolygonEditableDocumentGateway>(std::shared_ptr<IPolygonEditableDocumentGateway>)> editable;
+  std::function<std::shared_ptr<IPolygonImportGateway>(std::shared_ptr<IPolygonImportGateway>)> imports;
+  std::function<std::shared_ptr<IPolygonModelGateway>(std::shared_ptr<IPolygonModelGateway>)> models;
+};
 /// Владеет настоящим настольным сценарием в изолированном каталоге приёмки.
 struct Desktop
 {
@@ -51,7 +59,7 @@ struct Desktop
   std::shared_ptr<StdThreadPolygonDraftJobRunner> drafts;
   QString root;
   /// Подключает порты как в приложении, но использует только заданный каталог восстановления.
-  explicit Desktop(QString directory);
+  explicit Desktop(QString directory, const DesktopHooks & hooks = {});
   /// Завершает контроллеры до уничтожения окна и отбрасывает поздние события.
   ~Desktop();
   /// Открывает задачу через сочетание окна и файловый диалог.
@@ -63,5 +71,7 @@ struct Desktop
 int performance(const QString & root, int segments);
 /// Выполняет сценарий отдельного процесса записи или восстановления тестового черновика.
 int recoveryWorker(const QStringList & arguments);
+/// Проверяет сохранение недавнего DXF между двумя изолированными процессами.
+int recentWorker(const QStringList & arguments);
 } // namespace acceptance
 #endif

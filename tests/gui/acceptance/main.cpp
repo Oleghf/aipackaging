@@ -27,9 +27,15 @@ int main(int argc, char ** argv)
   QCoreApplication::setOrganizationName(QStringLiteral("AIPackagingAcceptance"));
   QCoreApplication::setApplicationName(QStringLiteral("IsolatedGuiAcceptance"));
   QSettings::setDefaultFormat(QSettings::IniFormat);
-  QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, profile.path());
-  QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, profile.path());
+  QString profilePath = profile.path();
+  const auto recent = application.arguments().indexOf(QStringLiteral("--recent-worker"));
+  if (recent >= 0 && application.arguments().size() > recent + 2)
+    profilePath = application.arguments()[recent + 2] + "/settings";
+  QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, profilePath);
+  QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, profilePath);
   installRussianQtTranslation();
+  if (recent >= 0)
+    return acceptance::recentWorker(application.arguments());
   if (application.arguments().contains(QStringLiteral("--recovery-worker")))
     return acceptance::recoveryWorker(application.arguments());
   if (application.arguments().contains(QStringLiteral("--performance")))
