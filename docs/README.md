@@ -31,6 +31,8 @@
 
 ## Аудиты
 
+- [Программная приёмка GUI-A1](reviews/gui-programmatic-acceptance.md) —
+  сквозные сценарии Qt, измерения и незакрытые ограничения приёмки.
 - [Аудит архитектуры и корректности R6](reviews/architecture-correctness-audit-r6.md) —
   доказанные дефекты после M8 и `GUI-Fix`, проверки и порядок исправлений.
 - [Пользовательская проверка GUI редактора](reviews/gui-editor-user-audit-2026-10-03.md) —
