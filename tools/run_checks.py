@@ -230,6 +230,57 @@ def desktop_checks(qt_dir: str | None, *, with_onnx: bool = True) -> int:
     )
 
 
+def gui_acceptance_checks(qt_dir: str | None) -> int:
+    """Выполняет отдельную приёмку в обеих настольных конфигурациях, сохраняя все отказы."""
+    if platform.system() != "Windows":
+        print("Программная приёмка настроена для Windows.", file=sys.stderr)
+        return 1
+    failed = False
+    for preset in ("windows-desktop-no-onnx-tests", "windows-desktop-ci-tests"):
+        configure = ["cmake", "--preset", preset]
+        if qt_dir:
+            configure.append(f"-DQt6_DIR={qt_dir}")
+        result = run_sequence([configure, ["cmake", "--build", "--preset", f"build-{preset}",
+                                          "--target", "AIPackaging_GuiAcceptanceTests", "--parallel", "4"]])
+        if result:
+            failed = True
+            continue
+        failed = bool(run(["ctest", "--test-dir", f"build/{preset}", "-C", "Debug", "-L", "gui-acceptance",
+                           "--output-on-failure"])) or failed
+    return int(failed)
+
+
+def gui_performance_checks(qt_dir: str | None) -> int:
+    """Измеряет оба размера в отдельных процессах Release без изменения настольных кэшей."""
+    if platform.system() != "Windows":
+        print("Измерение GUI настроено для Windows.", file=sys.stderr)
+        return 1
+    directory = ROOT / "build/windows-gui-performance"
+    configure = ["cmake", "--preset", "windows-desktop-no-onnx-tests", "-B", str(directory),
+                 "-DCMAKE_BUILD_TYPE=Release"]
+    if qt_dir:
+        configure.append(f"-DQt6_DIR={qt_dir}")
+    for name in ("googletest", "nlohmann_json", "clipper2"):
+        for preset in ("windows-desktop-no-onnx-tests", "windows-headless-tests", "windows-tests"):
+            source = ROOT / "build" / preset / "_deps" / f"{name}-src"
+            if (source / "CMakeLists.txt").is_file():
+                configure.append(f"-DFETCHCONTENT_SOURCE_DIR_{name.upper()}={source}")
+                break
+    result = run_sequence([configure, ["cmake", "--build", str(directory), "--target",
+                                      "AIPackaging_GuiAcceptanceTests", "--parallel", "4"]])
+    if result:
+        return result
+    print(f"Окружение: {platform.platform()}; процессор: {platform.processor()}; Release, Qt: {qt_dir}", flush=True)
+    run(["git", "rev-parse", "HEAD"])
+    environment = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_SCALE_FACTOR="1")
+    failed = False
+    for segments in (500, 1000):
+        command = [str(directory / "tests/AIPackaging_GuiAcceptanceTests.exe"), "--performance", str(segments)]
+        print("+", subprocess.list2cmdline(command), flush=True)
+        failed = subprocess.run(command, cwd=ROOT, env=environment, timeout=180).returncode != 0 or failed
+    return int(failed)
+
+
 def main() -> int:
     """Выбирает контур проверки по подкоманде CLI."""
 
@@ -247,6 +298,8 @@ def main() -> int:
             "editor-performance",
             "desktop",
             "desktop-no-onnx",
+            "gui-acceptance",
+            "gui-performance",
             "all",
         ],
     )
@@ -264,6 +317,8 @@ def main() -> int:
         "editor-performance": editor_performance_checks,
         "desktop": lambda: desktop_checks(arguments.qt_dir),
         "desktop-no-onnx": lambda: desktop_checks(arguments.qt_dir, with_onnx=False),
+        "gui-acceptance": lambda: gui_acceptance_checks(arguments.qt_dir),
+        "gui-performance": lambda: gui_performance_checks(arguments.qt_dir),
     }
     if arguments.check != "all":
         return actions[arguments.check]()
