@@ -172,6 +172,25 @@ if (BUILD_DESKTOP OR BUILD_APPLICATION_TESTS)
 endif()
 
 if (BUILD_DESKTOP)
+  add_executable(AIPackaging_GuiAcceptanceTests
+    "gui/acceptance/main.cpp" "gui/acceptance/support.cpp"
+    "gui/acceptance/scenarios.cpp" "gui/acceptance/performance.cpp")
+  target_link_libraries(AIPackaging_GuiAcceptanceTests PRIVATE
+    gtest AIPackaging_GUI AIPackaging_Application AIPackaging_DesktopInfrastructure AIPackaging_EditorPersistence)
+  target_compile_definitions(AIPackaging_GuiAcceptanceTests PRIVATE
+    AIPACKAGING_SOURCE_ROOT="${CMAKE_SOURCE_DIR}"
+    AIPACKAGING_CLI_PATH="$<TARGET_FILE:AIPackaging_Cli>")
+  add_dependencies(AIPackaging_GuiAcceptanceTests AIPackaging_Cli)
+  foreach(scale IN ITEMS 1 1.5 2)
+    string(REPLACE "." "_" scale_name "${scale}")
+    add_test(NAME "AIPackaging_GuiAcceptance_${scale_name}" COMMAND AIPackaging_GuiAcceptanceTests)
+    set_tests_properties("AIPackaging_GuiAcceptance_${scale_name}" PROPERTIES
+      LABELS "gui-acceptance" TIMEOUT 180
+      ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=${scale}")
+  endforeach()
+  if (BUILD_ONNX_BACKEND)
+    aipackaging_copy_onnxruntime(AIPackaging_GuiAcceptanceTests)
+  endif()
   aipackaging_add_test_executable(AIPackaging_GuiTests
     "gui/testpolygonworkspacewidget.cpp" "gui/testpolygonworkspacepanels.cpp" "gui/testpolygonmainwindow.cpp"
     "gui/testpolygondxfimportwizard.cpp"
@@ -310,9 +329,14 @@ if (BUILD_SOLVER_CLI)
 endif()
 
 if (BUILD_DESKTOP)
+  copy_target_qt_dll(AIPackaging_GuiAcceptanceTests)
   copy_target_qt_dll(AIPackaging_GuiTests)
   find_package(Qt6QOffscreenIntegrationPlugin CONFIG REQUIRED
     PATHS "${Qt6_DIR}/../Qt6Gui" NO_DEFAULT_PATH)
+  add_custom_command(TARGET AIPackaging_GuiAcceptanceTests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:AIPackaging_GuiAcceptanceTests>/platforms"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:Qt6::QOffscreenIntegrationPlugin>"
+      "$<TARGET_FILE_DIR:AIPackaging_GuiAcceptanceTests>/platforms" VERBATIM)
   add_custom_command(TARGET AIPackaging_GuiTests POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:AIPackaging_GuiTests>/platforms"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -390,6 +414,11 @@ if (BUILD_ONNX_BACKEND)
   )
 endif()
 if (BUILD_DESKTOP)
+  aipackaging_assert_target_dependencies(
+    TARGET AIPackaging_GuiAcceptanceTests
+    ALLOW_QT
+    ALLOWED_DIRECT AIPackaging_GUI AIPackaging_Application AIPackaging_DesktopInfrastructure AIPackaging_EditorPersistence
+  )
   aipackaging_assert_target_dependencies(
     TARGET AIPackaging_GuiTests
     ALLOW_QT
