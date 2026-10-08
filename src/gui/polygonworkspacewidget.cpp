@@ -103,12 +103,22 @@ PolygonWorkspaceWidget::PolygonWorkspaceWidget(QWidget * parent)
 bool PolygonWorkspaceWidget::eventFilter(QObject * watched, QEvent * event)
 {
   auto * widget = qobject_cast<QWidget *>(watched);
-  if (!widget || (widget != this && !isAncestorOf(widget)) || QApplication::activeModalWidget())
+  if (!widget || widget->window() != window() || QApplication::activeModalWidget())
+    return QWidget::eventFilter(watched, event);
+  const bool workspaceTarget = widget == this || isAncestorOf(widget);
+  if (!workspaceTarget && widget != window())
     return QWidget::eventFilter(watched, event);
   if (event->type() == QEvent::ShortcutOverride)
   {
     const auto * key = static_cast<QKeyEvent *>(event);
-    if (key->key() == Qt::Key_F &&
+    // После отключения поля Qt может доставить `Esc` самому окну без виджета в фокусе.
+    // Забираем сочетание до QAction, чтобы отмена выполнялась только ниже, при нажатии.
+    if (key->key() == Qt::Key_Escape)
+    {
+      event->accept();
+      return true;
+    }
+    if (workspaceTarget && key->key() == Qt::Key_F &&
         (qobject_cast<QLineEdit *>(widget) || qobject_cast<QTextEdit *>(widget) || qobject_cast<QPlainTextEdit *>(widget)))
     {
       event->accept();

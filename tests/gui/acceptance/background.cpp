@@ -22,6 +22,7 @@
 #include <gtest/gtest.h>
 #include <polygoncanvaswidget.h>
 #include <polygondxfimportwizard.h>
+#include <polygonworkspacewidget.h>
 
 #include "support.h"
 
@@ -397,6 +398,13 @@ TEST_F(GuiBackgroundAcceptance, EscapeAfterStartingFromEachFocus)
     };
     Desktop app(directory_.path(), hooks);
     app.open(problem());
+    app.changeWidth(250);
+    ASSERT_TRUE(app.workspace->snapshot().canUndo);
+    int cancellationCount = 0;
+    auto * workspaceWidget = app.window.findChild<PolygonWorkspaceWidget *>();
+    ASSERT_NE(workspaceWidget, nullptr);
+    const auto connection =
+      QObject::connect(workspaceWidget, &PolygonWorkspaceWidget::requestCancel, &app.window, [&]() { ++cancellationCount; });
     auto * tabs = widget<QTabWidget>(app.window, "workspaceRightTabs");
     click(tabs->tabBar(), tabs->tabBar()->tabRect(focus == 3 ? 1 : 0).center());
     QWidget * target = nullptr;
@@ -410,6 +418,8 @@ TEST_F(GuiBackgroundAcceptance, EscapeAfterStartingFromEachFocus)
       target = widget<QComboBox>(app.window, "polygonSolverBox");
     key(target, Qt::Key_Return, Qt::ControlModifier);
     ASSERT_TRUE(waitUntil([&]() { return gate->entered.load(); }));
+    EXPECT_FALSE(app.workspace->snapshot().canUndo);
+    EXPECT_FALSE(app.workspace->snapshot().canEdit);
     QWidget * actualFocus = QApplication::focusWidget();
     // Qt направляет клавишу активному окну, если отключённое поле утратило фокус.
     if (!actualFocus)
@@ -421,7 +431,68 @@ TEST_F(GuiBackgroundAcceptance, EscapeAfterStartingFromEachFocus)
     ASSERT_TRUE(waitUntil([&]() { return app.workspace->snapshot().state != PolygonWorkspaceState::Running; }));
     EXPECT_TRUE(gate->cancelled);
     EXPECT_EQ(app.workspace->snapshot().state, PolygonWorkspaceState::Cancelled);
+    EXPECT_EQ(cancellationCount, 1);
+    EXPECT_TRUE(app.workspace->snapshot().canUndo);
+    EXPECT_TRUE(app.workspace->snapshot().canEdit);
+    QObject::disconnect(connection);
   }
+}
+
+/// Отдаёт `Esc` модальному диалогу и другому окну, сохраняя единственную отмену собственного расчёта.
+TEST_F(GuiBackgroundAcceptance, EscapeRespectsModalAndOtherWindows)
+{
+  auto gate = std::make_shared<OperationGate>();
+  DesktopHooks hooks;
+  hooks.backend = [gate](auto inner)
+  {
+    return std::make_shared<HeldBackend>(std::move(inner), gate);
+  };
+  Desktop app(directory_.path(), hooks);
+  app.open(problem());
+  int cancellationCount = 0;
+  auto * workspaceWidget = app.window.findChild<PolygonWorkspaceWidget *>();
+  ASSERT_NE(workspaceWidget, nullptr);
+  const auto connection =
+    QObject::connect(workspaceWidget, &PolygonWorkspaceWidget::requestCancel, &app.window, [&]() { ++cancellationCount; });
+  key(widget<PolygonCanvasWidget>(app.window, "polygonCanvas"), Qt::Key_Return, Qt::ControlModifier);
+  ASSERT_TRUE(waitUntil([&]() { return gate->entered.load(); }));
+
+  QDialog modal(&app.window);
+  modal.setModal(true);
+  modal.show();
+  ASSERT_TRUE(waitUntil([&]() { return QApplication::activeModalWidget() == &modal; }));
+  key(&modal, Qt::Key_Escape);
+  EXPECT_FALSE(modal.isVisible());
+  EXPECT_EQ(modal.result(), QDialog::Rejected);
+  EXPECT_EQ(cancellationCount, 0);
+
+  QWizard other(&app.window);
+  other.setPage(0, new QWizardPage);
+  other.show();
+  key(&other, Qt::Key_Escape);
+  EXPECT_FALSE(other.isVisible());
+  EXPECT_EQ(cancellationCount, 0);
+
+  QWidget separate;
+  separate.show();
+  key(&separate, Qt::Key_Escape);
+  EXPECT_EQ(cancellationCount, 0);
+  separate.close();
+  EXPECT_EQ(app.workspace->snapshot().state, PolygonWorkspaceState::Running);
+
+  // Проверяет маршрут окна без искусственного назначения фокуса полотну.
+  QApplication::setActiveWindow(&app.window);
+  if (auto * focused = QApplication::focusWidget())
+    focused->clearFocus();
+  EXPECT_EQ(QApplication::focusWidget(), nullptr);
+  QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, {});
+  QApplication::sendEvent(&app.window, &escape);
+  gate->release();
+  ASSERT_TRUE(waitUntil([&]() { return app.workspace->snapshot().state != PolygonWorkspaceState::Running; }));
+  EXPECT_EQ(cancellationCount, 1);
+  EXPECT_TRUE(gate->cancelled);
+  EXPECT_EQ(app.workspace->snapshot().state, PolygonWorkspaceState::Cancelled);
+  QObject::disconnect(connection);
 }
 
 #ifdef AIPACKAGING_HAS_ONNX_BACKEND
