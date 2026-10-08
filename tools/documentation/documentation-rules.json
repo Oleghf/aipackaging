@@ -9,7 +9,11 @@
     "docs/terminology.md",
     "docs/m3-training.md",
     "docs/m6-2-training.md",
-    "docs/m6-3-model-delivery.md"
+    "docs/m6-3-model-delivery.md",
+    "docs/user/index.md",
+    "docs/development.md",
+    "docs/release.md",
+    "docs/third-party-notices.md"
   ],
   "removedDocuments": [
     "architecture-audit.md",
@@ -29,6 +33,8 @@
   "requiredText": {
     "docs/current-state.md": [
       "завершённый этап — M8.3",
+      "Текущий этап — R1",
+      "приёмка не завершена",
       "Публичный выпуск ожидает публикации коммитов и успешного внешнего CI"
     ],
     "docs/roadmap.md": [
