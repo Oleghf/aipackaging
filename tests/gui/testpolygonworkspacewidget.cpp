@@ -126,7 +126,30 @@ TEST(PolygonWorkspaceWidget, DrawsAndCancelsInteractiveGeometry)
   ASSERT_TRUE(session.document().parts.front().outer.has_value());
   canvas.setEditorTool(PolygonCanvasTool::Arc);
   clickCanvas(canvas, canvasPoint(canvas.size(), snapshot.scene, {20.0, 10.0}));
+  const QPointF arcEnd = canvasPoint(canvas.size(), snapshot.scene, {30.0, 10.0});
+  QMouseEvent hover(QEvent::MouseMove, arcEnd, arcEnd, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+  QApplication::sendEvent(&canvas, &hover);
+  const auto hasColoredStroke = [&](const QPointF & sheetPoint)
+  {
+    QImage image(canvas.size(), QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    canvas.render(&image);
+    const QPoint pixel = canvasPoint(canvas.size(), snapshot.scene, sheetPoint).toPoint();
+    const QRect area = QRect(pixel - QPoint(8, 8), QSize(17, 17)).intersected(image.rect());
+    for (int y = area.top(); y <= area.bottom(); ++y)
+      for (int x = area.left(); x <= area.right(); ++x)
+        if (image.pixelColor(x, y).saturation() > 120)
+          return true;
+    return false;
+  };
+  // Обход против часовой стрелки от левой точки идёт вниз в координатах документа.
+  EXPECT_TRUE(hasColoredStroke({12.93, 2.93}));
+  EXPECT_FALSE(hasColoredStroke({12.93, 17.07}));
   clickCanvas(canvas, canvasPoint(canvas.size(), snapshot.scene, {30.0, 10.0}));
+  canvas.setEditorTool(PolygonCanvasTool::Select);
+  EXPECT_TRUE(hasColoredStroke({12.93, 2.93}));
+  EXPECT_FALSE(hasColoredStroke({12.93, 17.07}));
+  canvas.setEditorTool(PolygonCanvasTool::Arc);
   const auto & outer = *session.document().parts.front().outer;
   ASSERT_EQ(outer.segments.size(), 1U);
   EXPECT_EQ(outer.segments.front().kind, EditableSegmentKind::Arc);

@@ -1,7 +1,9 @@
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <QAction>
 #include <QApplication>
@@ -74,6 +76,67 @@ aipackaging::editor::EditablePolygonDocument interactiveDocument()
   return document;
 }
 } // namespace
+
+/// Сверяет дуги Qt с математическими точками и экстремумами, не отражая координаты документа.
+TEST(PolygonEditorCanvas, ArcPathPreservesDocumentAngles)
+{
+  using namespace aipackaging::editor;
+  for (const double start : {0.0, 45.0, 90.0, 180.0, 350.0})
+    for (const double sweep : {-270.0, -180.0, -90.0, -20.0, 20.0, 90.0, 180.0, 270.0})
+    {
+      SCOPED_TRACE(::testing::Message() << "start=" << start << " sweep=" << sweep);
+      const QPointF center(50.0, 60.0);
+      constexpr double radius = 30.0;
+      const auto point = [&](double degrees)
+      {
+        const double angle = degrees * std::numbers::pi / 180.0;
+        return center + QPointF(radius * std::cos(angle), radius * std::sin(angle));
+      };
+      const QPointF first = point(start);
+      const QPointF last = point(start + sweep);
+      EditablePath source;
+      source.vertices = {{{1}, first.x(), first.y()}, {{2}, last.x(), last.y()}};
+      source.segments = {{{3}, EditableSegmentKind::Arc, {{4}, center.x(), center.y()}, {}, {}, sweep < 0.0}};
+      const auto path = editablePainterPath(source);
+      ASSERT_GT(path.elementCount(), 1);
+      EXPECT_DOUBLE_EQ(path.elementAt(0).x, first.x());
+      EXPECT_DOUBLE_EQ(path.elementAt(0).y, first.y());
+      // Qt аппроксимирует дугу кубическими кривыми: это допуск проверки отображения, не нормализации.
+      constexpr double displayTolerance = 0.02;
+      EXPECT_NEAR(path.currentPosition().x(), last.x(), displayTolerance);
+      EXPECT_NEAR(path.currentPosition().y(), last.y(), displayTolerance);
+      double minX = std::min(first.x(), last.x());
+      double maxX = std::max(first.x(), last.x());
+      double minY = std::min(first.y(), last.y());
+      double maxY = std::max(first.y(), last.y());
+      for (int quadrant = -4; quadrant <= 8; ++quadrant)
+      {
+        const double angle = quadrant * 90.0;
+        if (angle < std::min(start, start + sweep) || angle > std::max(start, start + sweep))
+          continue;
+        const QPointF extreme = point(angle);
+        minX = std::min(minX, extreme.x());
+        maxX = std::max(maxX, extreme.x());
+        minY = std::min(minY, extreme.y());
+        maxY = std::max(maxY, extreme.y());
+      }
+      const QRectF bounds = path.boundingRect();
+      EXPECT_NEAR(bounds.left(), minX, displayTolerance);
+      EXPECT_NEAR(bounds.right(), maxX, displayTolerance);
+      EXPECT_NEAR(bounds.top(), minY, displayTolerance);
+      EXPECT_NEAR(bounds.bottom(), maxY, displayTolerance);
+      for (int index = 1; index < path.elementCount(); ++index)
+      {
+        const auto element = path.elementAt(index);
+        if (element.isLineTo())
+        {
+          // Возможна лишь малая поправка Qt к аппроксимированному началу, но не соединение с отражённой точкой.
+          EXPECT_NEAR(element.x, first.x(), displayTolerance);
+          EXPECT_NEAR(element.y, first.y(), displayTolerance);
+        }
+      }
+    }
+}
 
 /// Проверяет экранный приоритет точки, устойчивую привязку и выбор рамкой.
 TEST(PolygonEditorPanel, ClearsPropertiesAcrossDocumentsAndMultipleSelection)

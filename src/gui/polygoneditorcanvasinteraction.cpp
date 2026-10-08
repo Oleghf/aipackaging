@@ -35,7 +35,8 @@ void appendSegment(QPainterPath & path, const EditablePoint & start, const Edita
       sweep -= 360.0;
     if (!segment.clockwise && sweep < 0.0)
       sweep += 360.0;
-    path.arcTo(QRectF(segment.center.x - radius, segment.center.y - radius, radius * 2.0, radius * 2.0), startAngle, sweep);
+    // Qt отсчитывает углы с экранной осью Y вниз; сам путь остаётся в координатах документа с Y вверх.
+    path.arcTo(QRectF(segment.center.x - radius, segment.center.y - radius, radius * 2.0, radius * 2.0), -startAngle, -sweep);
     return;
   }
   path.lineTo(end.x, end.y);
