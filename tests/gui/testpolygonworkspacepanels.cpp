@@ -86,25 +86,26 @@ TEST(PolygonEditorCanvas, ArcPathPreservesDocumentAngles)
     {
       SCOPED_TRACE(::testing::Message() << "start=" << start << " sweep=" << sweep);
       const QPointF center(50.0, 60.0);
-      constexpr double radius = 30.0;
+      constexpr double RADIUS = 30.0;
       const auto point = [&](double degrees)
       {
         const double angle = degrees * std::numbers::pi / 180.0;
-        return center + QPointF(radius * std::cos(angle), radius * std::sin(angle));
+        return center + QPointF(RADIUS * std::cos(angle), RADIUS * std::sin(angle));
       };
       const QPointF first = point(start);
       const QPointF last = point(start + sweep);
       EditablePath source;
-      source.vertices = {{{1}, first.x(), first.y()}, {{2}, last.x(), last.y()}};
-      source.segments = {{{3}, EditableSegmentKind::Arc, {{4}, center.x(), center.y()}, {}, {}, sweep < 0.0}};
+      source.id = {3};
+      source.vertices = {{{4}, first.x(), first.y()}, {{5}, last.x(), last.y()}};
+      source.segments = {{{8}, EditableSegmentKind::Arc, {{12}, center.x(), center.y()}, {}, {}, sweep < 0.0}};
       const auto path = editablePainterPath(source);
       ASSERT_GT(path.elementCount(), 1);
       EXPECT_DOUBLE_EQ(path.elementAt(0).x, first.x());
       EXPECT_DOUBLE_EQ(path.elementAt(0).y, first.y());
       // Qt аппроксимирует дугу кубическими кривыми: это допуск проверки отображения, не нормализации.
-      constexpr double displayTolerance = 0.02;
-      EXPECT_NEAR(path.currentPosition().x(), last.x(), displayTolerance);
-      EXPECT_NEAR(path.currentPosition().y(), last.y(), displayTolerance);
+      constexpr double DISPLAY_TOLERANCE = 0.02;
+      EXPECT_NEAR(path.currentPosition().x(), last.x(), DISPLAY_TOLERANCE);
+      EXPECT_NEAR(path.currentPosition().y(), last.y(), DISPLAY_TOLERANCE);
       double minX = std::min(first.x(), last.x());
       double maxX = std::max(first.x(), last.x());
       double minY = std::min(first.y(), last.y());
@@ -121,18 +122,25 @@ TEST(PolygonEditorCanvas, ArcPathPreservesDocumentAngles)
         maxY = std::max(maxY, extreme.y());
       }
       const QRectF bounds = path.boundingRect();
-      EXPECT_NEAR(bounds.left(), minX, displayTolerance);
-      EXPECT_NEAR(bounds.right(), maxX, displayTolerance);
-      EXPECT_NEAR(bounds.top(), minY, displayTolerance);
-      EXPECT_NEAR(bounds.bottom(), maxY, displayTolerance);
+      EXPECT_NEAR(bounds.left(), minX, DISPLAY_TOLERANCE);
+      EXPECT_NEAR(bounds.right(), maxX, DISPLAY_TOLERANCE);
+      EXPECT_NEAR(bounds.top(), minY, DISPLAY_TOLERANCE);
+      EXPECT_NEAR(bounds.bottom(), maxY, DISPLAY_TOLERANCE);
+      auto document = interactiveDocument();
+      document.parts.front().outer = source;
+      const auto hit = findEditableEntity(document, point(start + sweep / 2.0), 0.1, {}, {2});
+      if (hit)
+        EXPECT_EQ(hit->entity, EntityId{8});
+      else
+        ADD_FAILURE() << "Середина дуги не найдена под указателем";
       for (int index = 1; index < path.elementCount(); ++index)
       {
         const auto element = path.elementAt(index);
         if (element.isLineTo())
         {
           // Возможна лишь малая поправка Qt к аппроксимированному началу, но не соединение с отражённой точкой.
-          EXPECT_NEAR(element.x, first.x(), displayTolerance);
-          EXPECT_NEAR(element.y, first.y(), displayTolerance);
+          EXPECT_NEAR(element.x, first.x(), DISPLAY_TOLERANCE);
+          EXPECT_NEAR(element.y, first.y(), DISPLAY_TOLERANCE);
         }
       }
     }

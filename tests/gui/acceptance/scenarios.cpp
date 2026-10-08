@@ -9,10 +9,12 @@
 #include <QFile>
 #include <QFocusEvent>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QProcess>
 #include <QPushButton>
 #include <QSettings>
+#include <QStyle>
 #include <QTabBar>
 #include <QTabWidget>
 #include <QTemporaryDir>
@@ -28,6 +30,40 @@
 
 namespace acceptance
 {
+namespace
+{
+/// Завершает отложенную компоновку и печатает геометрию мастера и всех контейнеров кнопки.
+void reportWizardGeometry(QWizard & wizard, const char * label)
+{
+  // Обрабатываем запросы компоновки до трёх одинаковых геометрий подряд, без задержки по времени.
+  QRect previous;
+  int stable = 0;
+  ASSERT_TRUE(waitUntil(
+    [&]()
+    {
+      QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
+      if (wizard.layout())
+        wizard.layout()->activate();
+      const QRect current = wizard.button(QWizard::NextButton)->geometry();
+      stable = current == previous ? stable + 1 : 0;
+      previous = current;
+      return stable >= 3;
+    }));
+  std::cout << "Геометрия мастера: " << label << "; масштаб=" << qgetenv("QT_SCALE_FACTOR").constData()
+            << "; плотность=" << wizard.devicePixelRatioF() << "; стиль мастера=" << wizard.wizardStyle()
+            << "; стиль Qt=" << wizard.style()->metaObject()->className() << '\n';
+  for (QWidget * container = wizard.button(QWizard::NextButton); container; container = container->parentWidget())
+  {
+    const QRect geometry = container->geometry();
+    const QRect visible = container->visibleRegion().boundingRect();
+    std::cout << "  " << container->metaObject()->className() << '/' << container->objectName().toStdString()
+              << "; геометрия=" << geometry.x() << ',' << geometry.y() << ',' << geometry.width() << ',' << geometry.height()
+              << "; видимая область=" << visible.x() << ',' << visible.y() << ',' << visible.width() << ',' << visible.height()
+              << "; центр доступен=" << container->visibleRegion().contains(container->rect().center()) << '\n';
+  }
+}
+} // namespace
+
 /// Готовит отдельные файлы каждой проверки и сбрасывает только тестовые настройки.
 class GuiAcceptance : public testing::Test
 {
@@ -230,7 +266,7 @@ TEST_F(GuiAcceptance, DxfNavigationButtonIsReachable)
   ASSERT_TRUE(waitUntil([&]() { return app.importer->snapshot().state == PolygonImportState::Ready; }));
   auto * wizard = widget<PolygonDxfImportWizard>(app.window, "polygonDxfImportWizard");
   auto * next = wizard->button(QWizard::NextButton);
-  QCoreApplication::processEvents();
+  reportWizardGeometry(*wizard, "штатный мастер DXF");
   EXPECT_TRUE(next->visibleRegion().contains(next->rect().center()))
     << "GUI-A1-01: кнопка Далее находится вне видимой области мастера offscreen";
   QWizard reference;
@@ -238,10 +274,17 @@ TEST_F(GuiAcceptance, DxfNavigationButtonIsReachable)
   reference.setPage(0, new QWizardPage);
   reference.setPage(1, new QWizardPage);
   reference.show();
-  QCoreApplication::processEvents();
+  reportWizardGeometry(reference, "пустой стандартный мастер");
   auto * referenceNext = reference.button(QWizard::NextButton);
   std::cout << "Доступность кнопки пустого мастера Qt: "
             << referenceNext->visibleRegion().contains(referenceNext->rect().center()) << '\n';
+  QWizard classic;
+  classic.setWizardStyle(QWizard::ClassicStyle);
+  classic.setMinimumSize(900, 650);
+  classic.setPage(0, new QWizardPage);
+  classic.setPage(1, new QWizardPage);
+  classic.show();
+  reportWizardGeometry(classic, "отдельная проба ClassicStyle, не продукт");
 }
 
 /// Замыкает две полуокружности через реальные контроллеры и отменяет стадии ввода отверстия.
