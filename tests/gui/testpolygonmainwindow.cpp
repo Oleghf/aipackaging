@@ -19,6 +19,7 @@
 #include <QStackedWidget>
 #include <QTabWidget>
 #include <QTemporaryDir>
+#include <QTextBrowser>
 #include <QTimer>
 #include <QToolButton>
 
@@ -52,6 +53,64 @@ QApplication * application()
   return configure(created.get());
 }
 } // namespace
+
+/// Проверяет автономную справку и переход по локальной ссылке без запуска браузера или сети.
+TEST(PolygonMainWindow, OpensOfflineHelp)
+{
+  application();
+  QSettings().clear();
+  PolygonMainWindow window;
+  auto * help = window.findChild<QAction *>("helpAction");
+  ASSERT_NE(help, nullptr);
+  EXPECT_EQ(help->shortcut(), QKeySequence::HelpContents);
+  help->trigger();
+  auto * browser = window.findChild<QTextBrowser *>("offlineHelpBrowser");
+  ASSERT_NE(browser, nullptr);
+  EXPECT_TRUE(browser->toPlainText().contains(QStringLiteral("руководство")));
+  browser->anchorClicked(QUrl(QStringLiteral("quick-start.md")));
+  EXPECT_TRUE(browser->toPlainText().contains(QStringLiteral("Первый раскрой")));
+  const QUrl previous = browser->source();
+  browser->anchorClicked(QUrl(QStringLiteral("https://example.invalid")));
+  EXPECT_EQ(browser->source(), previous);
+}
+
+/// Сохраняет внешний выбор, относительное происхождение комплектной модели и пользовательский режим.
+TEST(PolygonMainWindow, PreservesModelSourceAndUserPreset)
+{
+  application();
+  QSettings settings;
+  settings.clear();
+  settings.setValue(QStringLiteral("polygon/modelDirectory"), QStringLiteral("C:/external-model"));
+  settings.setValue(QStringLiteral("ui/runPreset"), 1);
+  PolygonMainWindow window;
+  QString requested;
+  int count = 0;
+  PolygonWorkspaceActions actions;
+  actions.openModel = [&](const std::string & path)
+  {
+    requested = QString::fromStdString(path);
+    ++count;
+  };
+  window.setPolygonWorkspaceActions(actions);
+  EXPECT_EQ(requested, QStringLiteral("C:/external-model"));
+  EXPECT_EQ(count, 1);
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.canLoadModel = true;
+  snapshot.modelState = PolygonModelState::Error;
+  window.presentPolygonWorkspace(snapshot);
+  EXPECT_EQ(count, 1);
+  auto * bundled = window.findChild<QAction *>("useBundledModelAction");
+  ASSERT_NE(bundled, nullptr);
+  bundled->trigger();
+  EXPECT_EQ(count, 2);
+  EXPECT_TRUE(requested.endsWith(QStringLiteral("/models/polygon-policy-v1")));
+  snapshot.modelState = PolygonModelState::Ready;
+  snapshot.modelReady = true;
+  window.presentPolygonWorkspace(snapshot);
+  EXPECT_EQ(settings.value(QStringLiteral("polygon/modelSource")).toString(), QStringLiteral("bundled"));
+  EXPECT_FALSE(settings.contains(QStringLiteral("polygon/modelDirectory")));
+  EXPECT_EQ(window.findChild<PolygonWorkspaceWidget *>()->selectedPreset(), 1);
+}
 
 /// Проверяет, что новое окно содержит только полигональную рабочую область.
 TEST(PolygonMainWindow, InstallsRussianQtTranslation)
@@ -399,6 +458,33 @@ TEST(PolygonMainWindow, RestoresWorkspaceSettingsAndMarksMissingRecentFiles)
   EXPECT_EQ(workspace->selectedPreset(), 1);
   ASSERT_EQ(recentList->count(), 8);
   EXPECT_TRUE(recentList->item(0)->text().contains(QStringLiteral("файл недоступен")));
+}
+
+/// Проверяет относительный комплект при повторном запуске и сохранение выбора во время проверки модели.
+TEST(PolygonMainWindow, RetriesBundledModelWithoutRememberingAbsolutePath)
+{
+  application();
+  QSettings().clear();
+  QSettings().setValue(QStringLiteral("polygon/modelSource"), QStringLiteral("bundled"));
+  PolygonMainWindow window;
+  std::string requested;
+  PolygonWorkspaceActions actions;
+  actions.openModel = [&](const std::string & path)
+  {
+    requested = path;
+  };
+  window.setPolygonWorkspaceActions(actions);
+  EXPECT_TRUE(QString::fromStdString(requested).endsWith(QStringLiteral("/models/polygon-policy-v1")));
+  EXPECT_FALSE(QSettings().contains(QStringLiteral("polygon/modelDirectory")));
+  auto * workspace = window.findChild<PolygonWorkspaceWidget *>();
+  ASSERT_NE(workspace, nullptr);
+  workspace->selectPreset(1);
+  PolygonWorkspaceSnapshot snapshot;
+  snapshot.modelState = PolygonModelState::Ready;
+  snapshot.modelReady = true;
+  window.presentPolygonWorkspace(snapshot);
+  EXPECT_EQ(workspace->selectedPreset(), 1);
+  EXPECT_FALSE(QSettings().contains(QStringLiteral("polygon/modelDirectory")));
 }
 
 /// Проверяет ограничение повреждённых размеров, положения панелей и режима запуска безопасными значениями.

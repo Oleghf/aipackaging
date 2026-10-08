@@ -8,6 +8,12 @@ target_sources(${gui_static_lib_name} PRIVATE
 "polygonworkspacewidget.cpp" "polygonstartpage.cpp" "qtapplicationdispatcher.cpp" "polygonmainwindow.cpp")
 target_sources(${gui_static_lib_name} PRIVATE "polygondxfimportwizard.cpp")
 target_sources(${gui_static_lib_name} PRIVATE "qtlocalization.cpp")
+target_sources(${gui_static_lib_name} PRIVATE "polygonmainwindowhelp.cpp")
+target_compile_definitions(${gui_static_lib_name} PRIVATE
+  AIPACKAGING_PROJECT_VERSION="${PROJECT_VERSION}" AIPACKAGING_BUILD_REVISION="${AIPACKAGING_BUILD_REVISION}")
+if(BUILD_ONNX_BACKEND)
+  target_compile_definitions(${gui_static_lib_name} PRIVATE AIPACKAGING_HAS_ONNX_BACKEND=1)
+endif()
 
 # Перевод входит в ресурс библиотеки и не требует установленного Qt на машине пользователя.
 get_filename_component(qt_prefix "${Qt6_DIR}/../../.." ABSOLUTE)

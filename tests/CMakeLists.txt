@@ -184,10 +184,18 @@ if (BUILD_DESKTOP)
   add_dependencies(AIPackaging_GuiAcceptanceTests AIPackaging_Cli)
   foreach(scale IN ITEMS 1 1.5 2)
     string(REPLACE "." "_" scale_name "${scale}")
-    add_test(NAME "AIPackaging_GuiAcceptance_${scale_name}" COMMAND AIPackaging_GuiAcceptanceTests)
+    add_test(NAME "AIPackaging_GuiAcceptance_${scale_name}" COMMAND AIPackaging_GuiAcceptanceTests
+      --gtest_filter=-GuiAcceptance.DxfNavigationButtonIsReachable)
     set_tests_properties("AIPackaging_GuiAcceptance_${scale_name}" PROPERTIES
       LABELS "gui-acceptance" TIMEOUT 180
       ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=${scale}")
+    if(WIN32)
+      add_test(NAME "AIPackaging_GuiWizardWindows_${scale_name}" COMMAND AIPackaging_GuiAcceptanceTests
+        --gtest_filter=GuiAcceptance.DxfNavigationButtonIsReachable)
+      set_tests_properties("AIPackaging_GuiWizardWindows_${scale_name}" PROPERTIES
+        LABELS "gui-acceptance;gui-windows" TIMEOUT 60
+        ENVIRONMENT "QT_QPA_PLATFORM=windows;QT_SCALE_FACTOR=${scale}")
+    endif()
   endforeach()
   if (BUILD_ONNX_BACKEND)
     aipackaging_copy_onnxruntime(AIPackaging_GuiAcceptanceTests)
@@ -198,6 +206,8 @@ if (BUILD_DESKTOP)
   )
   target_include_directories(AIPackaging_GuiTests PRIVATE "${CMAKE_SOURCE_DIR}/src/gui")
   target_link_libraries(AIPackaging_GuiTests PRIVATE AIPackaging_GUI AIPackaging_Application)
+  add_custom_command(TARGET AIPackaging_GuiTests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/docs/user" "$<TARGET_FILE_DIR:AIPackaging_GuiTests>/docs/user" VERBATIM)
   set_tests_properties(AIPackaging_GuiTests PROPERTIES LABELS "gui")
   foreach(scale IN ITEMS 1 1.5 2)
     string(REPLACE "." "_" scale_name "${scale}")

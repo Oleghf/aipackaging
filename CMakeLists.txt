@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.27)
-project("AIPackaging" VERSION 0.12.0 LANGUAGES CXX)
+project("AIPackaging" VERSION 1.0.0 LANGUAGES CXX)
 
 set(AIPACKAGING_BUILD_REVISION "unknown")
 find_package(Git QUIET)
@@ -19,6 +19,19 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if (MSVC)
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/EHsc>)
+    # Некоторые установки MSVC содержат только русский язык даже при VSLANG=1033.
+    # Используем системную кодовую страницу компилятора, а не кодировку терминала.
+    if(CMAKE_GENERATOR MATCHES "Ninja")
+        file(WRITE "${CMAKE_BINARY_DIR}/includes_probe.cpp" "#include <stddef.h>\n")
+        execute_process(COMMAND "${CMAKE_CXX_COMPILER}" /nologo /showIncludes /EP "${CMAKE_BINARY_DIR}/includes_probe.cpp"
+          OUTPUT_VARIABLE includes_output ERROR_VARIABLE includes_error ENCODING ANSI RESULT_VARIABLE includes_result)
+        string(REGEX MATCH "[^\r\n]*: +[A-Za-z]:[/\\\\]" includes_prefix "${includes_output}${includes_error}")
+        string(REGEX REPLACE "[A-Za-z]:[/\\\\]$" "" includes_prefix "${includes_prefix}")
+        if(NOT includes_result EQUAL 0 OR NOT includes_prefix)
+            message(FATAL_ERROR "Cannot determine MSVC header dependency prefix")
+        endif()
+        set(CMAKE_CL_SHOWINCLUDES_PREFIX "${includes_prefix}")
+    endif()
 endif()
 
 include("${CMAKE_SOURCE_DIR}/cmake/helpers.cmake")

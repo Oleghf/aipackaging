@@ -17,6 +17,7 @@
         },
       {
         "name": "windows-base",
+        "environment": {"VSLANG": "1033"},
         "description": "windows base preset",
         "generator": "Visual Studio 18 2026",
         "hidden": true,
@@ -100,6 +101,17 @@
             "inherits": "windows-headless-tests",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "windows-release-candidate",
+            "inherits": "windows-headless-tests",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BUILD_DESKTOP": "ON",
+                "BUILD_ONNX_BACKEND": "ON",
+                "BUILD_TESTS": "OFF",
+                "BUILD_APPLICATION_TESTS": "OFF"
             }
         },
         {

@@ -43,6 +43,12 @@ protected:
   void closeEvent(QCloseEvent * event) override;
 
 private:
+  /// Открывает автономное руководство из каталога поставки, не обращаясь к сети.
+  void showHelp();
+  /// Показывает версию сборки и сведения о подключённой модели.
+  void showAbout();
+  /// Подключает комплектную модель относительно текущего расположения приложения.
+  void useBundledModel();
   /// Собирает страницы, основные действия, панель инструментов и строку состояния.
   void buildWindow();
   /// Связывает команды окна, стартовой страницы и рабочей области.
@@ -101,6 +107,7 @@ private:
   QAction * saveDocumentAction_;
   QAction * saveProblemAsAction_;
   QAction * openModelAction_;
+  QAction * bundledModelAction_ = nullptr;
   QAction * importDxfAction_;
   QAction * forgetModelAction_;
   QAction * undoAction_;
@@ -112,6 +119,8 @@ private:
   QTimer * autosaveTimer_;
   QString pendingProblemPath_;
   QString pendingModelPath_;
+  bool pendingBundledModel_ = false;
+  int initialModelPreset_ = 0;
   QStringList recentProblems_;
   QVariantMap recentSourceKinds_;
   bool initialModelChoicePending_ = true;

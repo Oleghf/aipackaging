@@ -260,10 +260,12 @@ TEST_F(GuiAcceptance, DxfExamplesThroughAllWizardPages)
 /// Не позволяет принять программный щелчок по кнопке вне видимой области мастера.
 TEST_F(GuiAcceptance, DxfNavigationButtonIsReachable)
 {
+  std::cout << std::unitbuf;
   Desktop app(directory_.path());
   chooseFile(QStringLiteral(AIPACKAGING_SOURCE_ROOT "/examples/dxf/square-mm.dxf"));
   action(app.window, "importDxfAction");
-  ASSERT_TRUE(waitUntil([&]() { return app.importer->snapshot().state == PolygonImportState::Ready; }));
+  ASSERT_TRUE(waitUntil([&]() { return app.importer->snapshot().state == PolygonImportState::Ready; }))
+    << app.importer->snapshot().statusText;
   auto * wizard = widget<PolygonDxfImportWizard>(app.window, "polygonDxfImportWizard");
   auto * next = wizard->button(QWizard::NextButton);
   reportWizardGeometry(*wizard, "штатный мастер DXF");
@@ -285,6 +287,25 @@ TEST_F(GuiAcceptance, DxfNavigationButtonIsReachable)
   classic.setPage(1, new QWizardPage);
   classic.show();
   reportWizardGeometry(classic, "отдельная проба ClassicStyle, не продукт");
+  classic.close();
+  reference.close();
+  if (!next->visibleRegion().contains(next->rect().center()))
+    return; // Отказ уже зарегистрирован; скрытые кнопки диагностической пробы не нажимаются.
+  for (int page = 1; page <= 4; ++page)
+  {
+    std::cout << "Переход на страницу " << page << '\n';
+    click(next);
+    EXPECT_EQ(wizard->currentId(), page);
+    auto * back = wizard->button(QWizard::BackButton);
+    EXPECT_TRUE(back->visibleRegion().contains(back->rect().center()));
+  }
+  auto * finish = wizard->button(QWizard::FinishButton);
+  EXPECT_TRUE(finish->visibleRegion().contains(finish->rect().center()));
+  for (int page = 3; page >= 0; --page)
+  {
+    click(wizard->button(QWizard::BackButton));
+    EXPECT_EQ(wizard->currentId(), page);
+  }
 }
 
 /// Замыкает две полуокружности через реальные контроллеры и отменяет стадии ввода отверстия.

@@ -25,6 +25,7 @@ def run(command: list[str], *, expect_failure: str | None = None) -> int:
         check=False,
         capture_output=expect_failure is not None,
         text=expect_failure is not None,
+        env={**os.environ, **({"VSLANG": "1033"} if platform.system() == "Windows" else {})},
     )
     if expect_failure:
         print(completed.stdout, end="")
@@ -250,6 +251,19 @@ def gui_acceptance_checks(qt_dir: str | None) -> int:
     return int(failed)
 
 
+def gui_environment_diagnostic() -> int:
+    """Повторяет ограничение мастера `offscreen` отдельно от оконной приёмки, сохраняя ненулевой результат."""
+    failed = False
+    for preset in ("windows-desktop-no-onnx-tests", "windows-desktop-ci-tests"):
+        executable = ROOT / "build" / preset / "tests/AIPackaging_GuiAcceptanceTests.exe"
+        for scale in ("1", "1.5", "2"):
+            environment = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_SCALE_FACTOR=scale)
+            result = subprocess.run([str(executable), "--gtest_filter=GuiAcceptance.DxfNavigationButtonIsReachable"],
+                                    cwd=ROOT, env=environment, check=False)
+            failed = result.returncode != 0 or failed
+    return int(failed)
+
+
 def gui_performance_checks(qt_dir: str | None) -> int:
     """Измеряет оба размера в отдельных процессах Release без изменения настольных кэшей."""
     if platform.system() != "Windows":
@@ -299,6 +313,7 @@ def main() -> int:
             "desktop",
             "desktop-no-onnx",
             "gui-acceptance",
+            "gui-environment-diagnostic",
             "gui-performance",
             "all",
         ],
@@ -318,6 +333,7 @@ def main() -> int:
         "desktop": lambda: desktop_checks(arguments.qt_dir),
         "desktop-no-onnx": lambda: desktop_checks(arguments.qt_dir, with_onnx=False),
         "gui-acceptance": lambda: gui_acceptance_checks(arguments.qt_dir),
+        "gui-environment-diagnostic": gui_environment_diagnostic,
         "gui-performance": lambda: gui_performance_checks(arguments.qt_dir),
     }
     if arguments.check != "all":

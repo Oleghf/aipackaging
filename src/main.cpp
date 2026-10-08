@@ -1,5 +1,6 @@
 #include <QApplication>
 #include <QDir>
+#include <QIcon>
 #include <QStandardPaths>
 
 #include <nesting_job_runner.h>
@@ -23,6 +24,8 @@ int main(int argc, char * argv[])
   QApplication app(argc, argv);
   QApplication::setOrganizationName(QStringLiteral("AIPackaging"));
   QApplication::setApplicationName(QStringLiteral("AIPackaging"));
+  QApplication::setApplicationVersion(QStringLiteral(AIPACKAGING_PROJECT_VERSION));
+  QApplication::setWindowIcon(QIcon(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("aipackaging.ico"))));
   if (!installRussianQtTranslation())
     qWarning("Не удалось подключить русский перевод Qt");
 

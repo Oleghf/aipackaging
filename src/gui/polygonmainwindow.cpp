@@ -102,6 +102,9 @@ void PolygonMainWindow::buildWindow()
   fileMenu->addSeparator();
   openModelAction_ = fileMenu->addAction(tr("Подключить &модель…"));
   forgetModelAction_ = fileMenu->addAction(tr("Забыть модель"));
+  bundledModelAction_ = fileMenu->addAction(tr("Использовать комплектную модель"));
+  bundledModelAction_->setObjectName(QStringLiteral("useBundledModelAction"));
+  connect(bundledModelAction_, &QAction::triggered, this, &PolygonMainWindow::useBundledModel);
   openProblemAction_->setShortcut(QKeySequence::Open);
   saveDocumentAction_->setShortcut(QKeySequence::Save);
   saveSolutionAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
@@ -119,6 +122,15 @@ void PolygonMainWindow::buildWindow()
   redoAction_->setShortcuts({QKeySequence::Redo, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z)});
   undoAction_->setObjectName(QStringLiteral("undoDocumentAction"));
   redoAction_->setObjectName(QStringLiteral("redoDocumentAction"));
+
+  auto * helpMenu = menuBar()->addMenu(tr("&Справка"));
+  auto * help = helpMenu->addAction(tr("&Руководство пользователя"));
+  help->setObjectName(QStringLiteral("helpAction"));
+  help->setShortcut(QKeySequence::HelpContents);
+  connect(help, &QAction::triggered, this, &PolygonMainWindow::showHelp);
+  auto * about = helpMenu->addAction(tr("&О программе"));
+  about->setObjectName(QStringLiteral("aboutAction"));
+  connect(about, &QAction::triggered, this, &PolygonMainWindow::showAbout);
 
   auto * toolbar = addToolBar(tr("Основные команды"));
   toolbar->setObjectName(QStringLiteral("mainToolbar"));
@@ -337,6 +349,7 @@ void PolygonMainWindow::chooseModel()
   if (path.isEmpty())
     return;
   pendingModelPath_ = path;
+  pendingBundledModel_ = false;
   modelLoadTimer_.start();
   actions_.openModel(path.toStdString());
 }
@@ -347,6 +360,7 @@ void PolygonMainWindow::forgetModel()
   if (actions_.forgetModel)
     actions_.forgetModel();
   QSettings().remove(QStringLiteral("polygon/modelDirectory"));
+  QSettings().setValue(QStringLiteral("polygon/modelSource"), QStringLiteral("none"));
 }
 
 /// Удаляет все совпадения пути, сохраняет список и немедленно обновляет стартовую страницу.
@@ -393,12 +407,21 @@ void PolygonMainWindow::setPolygonWorkspaceActions(PolygonWorkspaceActions actio
   actions_ = std::move(actions);
   workspace_->setEditorActions(actions_);
   const QString remembered = QSettings().value(QStringLiteral("polygon/modelDirectory")).toString();
-  if (!remembered.isEmpty() && actions_.openModel)
+  const QString source = QSettings().value(QStringLiteral("polygon/modelSource")).toString();
+  initialModelChoicePending_ = !QSettings().contains(QStringLiteral("ui/runPreset"));
+  initialModelPreset_ = workspace_->selectedPreset();
+  if (source != QStringLiteral("bundled") && source != QStringLiteral("none") && !remembered.isEmpty() && actions_.openModel)
   {
     pendingModelPath_ = remembered;
     modelLoadTimer_.start();
     actions_.openModel(remembered.toStdString());
   }
+  else if (source != QStringLiteral("none") &&
+           (source == QStringLiteral("bundled") ||
+            QFileInfo::exists(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("release-manifest.json"))) ||
+            QFileInfo::exists(
+              QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("models/polygon-policy-v1/metadata.json")))))
+    useBundledModel();
 }
 
 /// Сохраняет независимые действия импорта и открывает доступ к мастеру на стартовой странице.
@@ -445,6 +468,7 @@ void PolygonMainWindow::presentActions(const PolygonWorkspaceSnapshot & snapshot
   saveDocumentAction_->setEnabled(snapshot.canSaveDocument);
   saveProblemAsAction_->setEnabled(snapshot.canSaveDocument && snapshot.documentValid);
   openModelAction_->setEnabled(snapshot.canLoadModel);
+  bundledModelAction_->setEnabled(snapshot.canLoadModel);
   const bool importEnabled = snapshot.canOpen && static_cast<bool>(importActions_.inspect);
   importDxfAction_->setEnabled(importEnabled);
   startPage_->setImportEnabled(importEnabled);
@@ -499,14 +523,23 @@ void PolygonMainWindow::presentModelLoad(const PolygonWorkspaceSnapshot & snapsh
       modelLoadTimer_.invalidate();
     }
     QSettings settings;
-    settings.setValue(QStringLiteral("polygon/modelDirectory"), pendingModelPath_);
-    settings.setValue(QStringLiteral("model/lastDirectory"), pendingModelPath_);
+    settings.setValue(QStringLiteral("polygon/modelSource"),
+                      pendingBundledModel_ ? QStringLiteral("bundled") : QStringLiteral("external"));
+    if (pendingBundledModel_)
+      settings.remove(QStringLiteral("polygon/modelDirectory"));
+    else
+    {
+      settings.setValue(QStringLiteral("polygon/modelDirectory"), pendingModelPath_);
+      settings.setValue(QStringLiteral("model/lastDirectory"), pendingModelPath_);
+    }
     pendingModelPath_.clear();
-    if (initialModelChoicePending_)
+    if (initialModelChoicePending_ && workspace_->selectedPreset() == initialModelPreset_)
       workspace_->selectRecommendedMode();
+    initialModelChoicePending_ = false;
   }
   if (snapshot.modelState == PolygonModelState::Error)
   {
+    initialModelChoicePending_ = false;
     modelLoadTimer_.invalidate();
     pendingModelPath_.clear();
   }
